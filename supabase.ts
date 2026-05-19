@@ -7,6 +7,23 @@ const supabaseUrl = env.VITE_SUPABASE_URL;
 const supabaseKey = env.VITE_SUPABASE_ANON_KEY;
 const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey);
 
+export const getSupabaseConfigStatus = () => {
+  let urlHost = '';
+  try {
+    urlHost = supabaseUrl ? new URL(supabaseUrl).host : '';
+  } catch {
+    urlHost = 'INVALID_URL';
+  }
+  return {
+    hasUrl: Boolean(supabaseUrl),
+    hasAnonKey: Boolean(supabaseKey),
+    urlHost,
+    defaultTenantSlug: env.VITE_DEFAULT_TENANT_SLUG || '',
+    mode: env.MODE || '',
+    prod: Boolean(env.PROD),
+  };
+};
+
 if (!supabaseUrl || !supabaseKey) {
   console.warn('Missing Supabase environment variables. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
 }

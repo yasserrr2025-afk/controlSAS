@@ -29,7 +29,7 @@ import CommitteePublicView from './screens/public/CommitteePublicView';
 import StudentLookupView from './screens/public/StudentLookupView';
 import GlobalQRScanner from './components/GlobalQRScanner';
 import { BellRing, Menu, X, CheckCircle2, AlertCircle, Info, AlertTriangle, Loader2 } from 'lucide-react';
-import { db, getActiveTenantId, setActiveTenant, supabase } from './supabase';
+import { db, getActiveTenantId, getSupabaseConfigStatus, setActiveTenant, supabase } from './supabase';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -234,6 +234,28 @@ const App: React.FC = () => {
   const isStudentLookup = new URLSearchParams(window.location.search).get('student_lookup');
   if (isStudentLookup) {
     return <StudentLookupView students={students} />;
+  }
+
+  const isEnvDebug = new URLSearchParams(window.location.search).get('env_debug');
+  if (isEnvDebug) {
+    const status = getSupabaseConfigStatus();
+    return (
+      <div className="min-h-screen bg-slate-950 text-white font-['Tajawal'] p-6 flex items-center justify-center" dir="rtl">
+        <div className="w-full max-w-xl bg-white/10 border border-white/10 rounded-[2rem] p-8 space-y-5">
+          <h1 className="text-2xl font-black">فحص إعدادات Supabase</h1>
+          <div className="grid grid-cols-1 gap-3 text-sm font-bold">
+            <div className="bg-white/5 rounded-2xl p-4 flex justify-between"><span>VITE_SUPABASE_URL</span><span>{status.hasUrl ? 'موجود' : 'غير موجود'}</span></div>
+            <div className="bg-white/5 rounded-2xl p-4 flex justify-between"><span>VITE_SUPABASE_ANON_KEY</span><span>{status.hasAnonKey ? 'موجود' : 'غير موجود'}</span></div>
+            <div className="bg-white/5 rounded-2xl p-4 flex justify-between"><span>Supabase Host</span><span dir="ltr">{status.urlHost || '-'}</span></div>
+            <div className="bg-white/5 rounded-2xl p-4 flex justify-between"><span>Default Tenant</span><span dir="ltr">{status.defaultTenantSlug || '-'}</span></div>
+            <div className="bg-white/5 rounded-2xl p-4 flex justify-between"><span>Mode</span><span dir="ltr">{status.mode} / {status.prod ? 'prod' : 'dev'}</span></div>
+          </div>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            لا يتم عرض قيمة المفتاح حفاظًا على الأمان. إذا ظهر أي متغير غير موجود في Vercel، فهذا يعني أن آخر build لم يستلم المتغيرات.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
