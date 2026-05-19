@@ -5,12 +5,13 @@ import { User, Student, Absence, Supervision, ControlRequest, DeliveryLog, Syste
 const env = import.meta.env;
 const supabaseUrl = env.VITE_SUPABASE_URL;
 const supabaseKey = env.VITE_SUPABASE_ANON_KEY;
+const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey);
 
 if (!supabaseUrl || !supabaseKey) {
   console.warn('Missing Supabase environment variables. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
 }
 
-export const supabase = createClient(supabaseUrl || 'https://example.supabase.co', supabaseKey || 'missing-key');
+export const supabase = createClient(supabaseUrl || 'https://missing-supabase-url.invalid', supabaseKey || 'missing-key');
 
 const ACTIVE_TENANT_KEY = 'activeTenantId';
 const ACTIVE_TENANT_SLUG_KEY = 'activeTenantSlug';
@@ -41,6 +42,9 @@ const withTenant = <T extends Record<string, any>>(row: T): T => {
 const withTenantList = <T extends Record<string, any>>(rows: T[]) => rows.map(withTenant);
 
 const resolveTenantBySlug = async (slug?: string) => {
+  if (!isSupabaseConfigured) {
+    throw new Error('متغيرات Supabase غير موجودة في الاستضافة. أضف VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY في Vercel ثم أعد النشر.');
+  }
   const normalizedSlug = (slug || getActiveTenantSlug()).trim().toLowerCase();
   if (!normalizedSlug) return null;
   const { data, error } = await supabase
@@ -64,6 +68,28 @@ const handleError = (error: any, context: string) => {
   return null;
 };
 
+const supabaseRest = async <T = any>(path: string, options: RequestInit = {}) => {
+  if (!isSupabaseConfigured) {
+    throw new Error('متغيرات Supabase غير موجودة في الاستضافة. أضف VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY في Vercel ثم أعد النشر.');
+  }
+  const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
+      'Content-Type': 'application/json; charset=utf-8',
+      ...(options.headers || {}),
+    },
+  });
+  const text = await response.text();
+  const body = text ? JSON.parse(text) : null;
+  if (!response.ok) {
+    const message = body?.message || body?.details || body?.hint || `Supabase REST ${response.status}`;
+    throw new Error(message);
+  }
+  return body as T;
+};
+
 export const db = {
   tenants: {
     resolveBySlug: resolveTenantBySlug,
@@ -83,63 +109,75 @@ export const db = {
       adminPhone?: string;
     }) => {
       const slug = input.slug.trim().toLowerCase();
-      const { data: existing, error: existingError } = await supabase
-        .from('tenants')
-        .select('id')
-        .eq('slug', slug)
-        .maybeSingle();
-      const existingErr = handleError(existingError, 'tenants.createSchool.checkSlug');
-      if (existingErr) throw new Error(existingErr);
-      if (existing) throw new Error('رمز المدرسة مستخدم مسبقًا. اختر رمزًا آخر.');
+      try {
+        const existing = await supabaseRest<any[]>(
+          `tenants?select=id&slug=eq.${encodeURIComponent(slug)}`,
+        );
+        if (existing?.length) throw new Error('رمز المدرسة مستخدم مسبقًا. اختر رمزًا آخر.');
 
-      const { data: tenant, error: tenantError } = await supabase
-        .from('tenants')
-        .insert([{
-          name: input.schoolName.trim(),
-          slug,
-          status: 'TRIAL',
-          plan: 'starter'
-        }])
-        .select('id,name,slug,status,plan,logo_url')
-        .single();
-      const tenantErr = handleError(tenantError, 'tenants.createSchool.insertTenant');
-      if (tenantErr) throw new Error(tenantErr);
+        const tenantRows = await supabaseRest<any[]>('tenants?select=id,name,slug,status,plan,logo_url', {
+          method: 'POST',
+          headers: { Prefer: 'return=representation' },
+          body: JSON.stringify([{
+            name: input.schoolName.trim(),
+            slug,
+            status: 'TRIAL',
+            plan: 'starter'
+          }]),
+        });
+        const tenant = tenantRows?.[0];
+        if (!tenant?.id) throw new Error('تعذر إنشاء سجل المدرسة.');
 
-      const tenantId = tenant.id;
-      const adminUser = {
-        id: crypto.randomUUID(),
-        tenant_id: tenantId,
-        national_id: input.adminNationalId.trim(),
-        full_name: input.adminName.trim(),
-        role: 'ADMIN',
-        phone: input.adminPhone?.trim() || '',
-        assigned_committees: [],
-        assigned_grades: []
-      };
+        const tenantId = tenant.id;
+        const adminUser = {
+          id: crypto.randomUUID(),
+          tenant_id: tenantId,
+          national_id: input.adminNationalId.trim(),
+          full_name: input.adminName.trim(),
+          role: 'ADMIN',
+          phone: input.adminPhone?.trim() || '',
+          assigned_committees: [],
+          assigned_grades: []
+        };
 
-      const { error: configError } = await supabase.from('system_config').insert([{
-        tenant_id: tenantId,
-        id: 'main_config',
-        exam_start_time: '08:00',
-        active_exam_date: new Date().toISOString().split('T')[0],
-        allow_manual_join: false
-      }]);
-      const configErr = handleError(configError, 'tenants.createSchool.insertConfig');
-      if (configErr) throw new Error(configErr);
+        try {
+          await supabaseRest('system_config', {
+            method: 'POST',
+            headers: { Prefer: 'return=minimal' },
+            body: JSON.stringify([{
+              tenant_id: tenantId,
+              id: 'main_config',
+              exam_start_time: '08:00',
+              active_exam_date: new Date().toISOString().split('T')[0],
+              allow_manual_join: false
+            }]),
+          });
 
-      const { data: user, error: userError } = await supabase
-        .from('users')
-        .insert([adminUser])
-        .select('*')
-        .single();
-      const userErr = handleError(userError, 'tenants.createSchool.insertAdmin');
-      if (userErr) throw new Error(userErr);
+          const userRows = await supabaseRest<any[]>('users?select=*', {
+            method: 'POST',
+            headers: { Prefer: 'return=representation' },
+            body: JSON.stringify([adminUser]),
+          });
+          const user = userRows?.[0];
+          if (!user?.id) throw new Error('تعذر إنشاء مدير المدرسة.');
 
-      setActiveTenant({ id: tenantId, slug });
-      return {
-        tenant: tenant as Tenant,
-        user: { ...(user as User), tenant_name: tenant.name, tenant_slug: tenant.slug } as User
-      };
+          setActiveTenant({ id: tenantId, slug });
+          return {
+            tenant: tenant as Tenant,
+            user: { ...(user as User), tenant_name: tenant.name, tenant_slug: tenant.slug } as User
+          };
+        } catch (err) {
+          await supabaseRest(`tenants?id=eq.${encodeURIComponent(tenantId)}`, {
+            method: 'DELETE',
+          }).catch(() => {});
+          throw err;
+        }
+      } catch (err: any) {
+        if (err?.message === 'Failed to fetch') {
+          throw new Error('تعذر الاتصال بقاعدة Supabase. تحقق من الاتصال أو إعدادات VITE_SUPABASE_URL و VITE_SUPABASE_ANON_KEY.');
+        }
+        throw err;
+      }
     }
   },
 

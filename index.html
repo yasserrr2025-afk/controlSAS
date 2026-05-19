@@ -37,7 +37,6 @@
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="https://www.raed.net/img?id=1488645">
 
-    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@200;300;400;500;700;800;900&display=swap" rel="stylesheet">
@@ -105,12 +104,18 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
 </head>
 <body>
     <div id="root"></div>
     <script>
-        if ('serviceWorker' in navigator) {
+        const isLocalDev = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+        if ('serviceWorker' in navigator && isLocalDev) {
+            navigator.serviceWorker.getRegistrations()
+              .then((registrations) => registrations.forEach((registration) => registration.unregister()))
+              .catch(() => {});
+        }
+
+        if ('serviceWorker' in navigator && !isLocalDev) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('/sw.js')
                   .then((reg) => {
