@@ -74,6 +74,72 @@ export const db = {
       const err = handleError(error, 'tenants.getActive');
       if (err) throw new Error(err);
       return data as Tenant | null;
+    },
+    createSchool: async (input: {
+      schoolName: string;
+      slug: string;
+      adminName: string;
+      adminNationalId: string;
+      adminPhone?: string;
+    }) => {
+      const slug = input.slug.trim().toLowerCase();
+      const { data: existing, error: existingError } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('slug', slug)
+        .maybeSingle();
+      const existingErr = handleError(existingError, 'tenants.createSchool.checkSlug');
+      if (existingErr) throw new Error(existingErr);
+      if (existing) throw new Error('رمز المدرسة مستخدم مسبقًا. اختر رمزًا آخر.');
+
+      const { data: tenant, error: tenantError } = await supabase
+        .from('tenants')
+        .insert([{
+          name: input.schoolName.trim(),
+          slug,
+          status: 'TRIAL',
+          plan: 'starter'
+        }])
+        .select('id,name,slug,status,plan,logo_url')
+        .single();
+      const tenantErr = handleError(tenantError, 'tenants.createSchool.insertTenant');
+      if (tenantErr) throw new Error(tenantErr);
+
+      const tenantId = tenant.id;
+      const adminUser = {
+        id: crypto.randomUUID(),
+        tenant_id: tenantId,
+        national_id: input.adminNationalId.trim(),
+        full_name: input.adminName.trim(),
+        role: 'ADMIN',
+        phone: input.adminPhone?.trim() || '',
+        assigned_committees: [],
+        assigned_grades: []
+      };
+
+      const { error: configError } = await supabase.from('system_config').insert([{
+        tenant_id: tenantId,
+        id: 'main_config',
+        exam_start_time: '08:00',
+        active_exam_date: new Date().toISOString().split('T')[0],
+        allow_manual_join: false
+      }]);
+      const configErr = handleError(configError, 'tenants.createSchool.insertConfig');
+      if (configErr) throw new Error(configErr);
+
+      const { data: user, error: userError } = await supabase
+        .from('users')
+        .insert([adminUser])
+        .select('*')
+        .single();
+      const userErr = handleError(userError, 'tenants.createSchool.insertAdmin');
+      if (userErr) throw new Error(userErr);
+
+      setActiveTenant({ id: tenantId, slug });
+      return {
+        tenant: tenant as Tenant,
+        user: { ...(user as User), tenant_name: tenant.name, tenant_slug: tenant.slug } as User
+      };
     }
   },
 

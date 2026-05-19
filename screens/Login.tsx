@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { APP_CONFIG } from '../constants';
 import { db } from '../supabase';
-import { ShieldCheck, Download, Smartphone, Share, KeyRound, Fingerprint, Sparkles } from 'lucide-react';
+import { ShieldCheck, Download, Smartphone, Share, KeyRound, Fingerprint, Sparkles, School, UserPlus, ArrowRight, Building2 } from 'lucide-react';
 
 interface Props {
   users: User[];
@@ -12,14 +12,32 @@ interface Props {
 }
 
 const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
   const [loginId, setLoginId] = useState('');
   const [schoolCode, setSchoolCode] = useState(localStorage.getItem('activeTenantSlug') || '');
   const [isLoading, setIsLoading] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [registration, setRegistration] = useState({
+    schoolName: '',
+    slug: '',
+    adminName: '',
+    adminNationalId: '',
+    adminPhone: ''
+  });
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showIosHint, setShowIosHint] = useState(false);
   const [focused, setFocused] = useState(false);
   const tenantFromUrl = new URLSearchParams(window.location.search).get('tenant') || '';
   const isSchoolLink = !!tenantFromUrl;
+
+  const normalizeSlug = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
 
   useEffect(() => {
     if (tenantFromUrl) {
@@ -59,6 +77,38 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
       onAlert(err.message || 'خطأ في الاتصال بقاعدة البيانات.', 'error');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleRegistrationSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const schoolName = registration.schoolName.trim();
+    const slug = normalizeSlug(registration.slug || registration.schoolName);
+    const adminName = registration.adminName.trim();
+    const adminNationalId = registration.adminNationalId.trim();
+
+    if (!schoolName) { onAlert('يرجى إدخال اسم المدرسة', 'warning'); return; }
+    if (!slug || slug.length < 3) { onAlert('رمز المدرسة يجب أن يكون بالإنجليزية ولا يقل عن 3 أحرف', 'warning'); return; }
+    if (!adminName) { onAlert('يرجى إدخال اسم مدير المدرسة', 'warning'); return; }
+    if (!adminNationalId) { onAlert('يرجى إدخال رقم هوية المدير', 'warning'); return; }
+
+    setIsRegistering(true);
+    try {
+      const result = await db.tenants.createSchool({
+        schoolName,
+        slug,
+        adminName,
+        adminNationalId,
+        adminPhone: registration.adminPhone
+      });
+      localStorage.setItem('activeTab', 'dashboard');
+      window.history.replaceState(null, '', `${window.location.pathname}?tenant=${result.tenant.slug}`);
+      onAlert('تم إنشاء المدرسة بنجاح. أهلاً بك في لوحة الإدارة.', 'success');
+      onLogin(result.user);
+    } catch (err: any) {
+      onAlert(err.message || 'تعذر تسجيل المدرسة. تحقق من البيانات وحاول مرة أخرى.', 'error');
+    } finally {
+      setIsRegistering(false);
     }
   };
 
@@ -125,6 +175,30 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
           </div>
 
           {/* ── نموذج الدخول ── */}
+          <div className="grid grid-cols-2 gap-2 bg-white/5 p-1.5 rounded-[1.7rem] mb-5">
+            <button
+              type="button"
+              onClick={() => setMode('login')}
+              className={`py-3 rounded-[1.3rem] font-black text-xs transition-all flex items-center justify-center gap-2 ${
+                mode === 'login' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25' : 'text-white/40 hover:text-white'
+              }`}
+            >
+              <KeyRound size={15} />
+              دخول
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('register')}
+              className={`py-3 rounded-[1.3rem] font-black text-xs transition-all flex items-center justify-center gap-2 ${
+                mode === 'register' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-white/40 hover:text-white'
+              }`}
+            >
+              <School size={15} />
+              مدرسة جديدة
+            </button>
+          </div>
+
+          {mode === 'login' ? (
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isSchoolLink && (
               <div className="relative">
@@ -202,6 +276,134 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
               </span>
             </button>
           </form>
+          ) : (
+          <form onSubmit={handleRegistrationSubmit} className="space-y-4">
+            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 px-5 py-4 rounded-[1.6rem] text-center">
+              <p className="font-black text-sm">تسجيل مدرسة جديدة</p>
+              <p className="text-[10px] text-emerald-100/70 font-bold mt-1">
+                سيتم إنشاء رابط مستقل للمدرسة ومدير نظام أول.
+              </p>
+            </div>
+
+            <div className="relative">
+              <div className="absolute inset-0 rounded-[1.8rem] bg-white/5 transition-all duration-300" />
+              <div className="relative flex items-center">
+                <div className="absolute right-5 text-white/25">
+                  <Building2 size={20} />
+                </div>
+                <input
+                  type="text"
+                  value={registration.schoolName}
+                  onChange={(e) => {
+                    const schoolName = e.target.value;
+                    setRegistration((prev) => ({
+                      ...prev,
+                      schoolName,
+                      slug: prev.slug ? prev.slug : normalizeSlug(schoolName)
+                    }));
+                  }}
+                  placeholder="اسم المدرسة"
+                  className="w-full pr-14 pl-6 py-4 bg-transparent text-white text-right text-base font-black placeholder:text-white/25 outline-none border-0"
+                />
+              </div>
+            </div>
+
+            <div className="relative">
+              <div className="absolute inset-0 rounded-[1.8rem] bg-white/5 transition-all duration-300" />
+              <div className="relative flex items-center">
+                <div className="absolute right-5 text-white/25">
+                  <Sparkles size={20} />
+                </div>
+                <input
+                  type="text"
+                  value={registration.slug}
+                  onChange={(e) => setRegistration((prev) => ({ ...prev, slug: normalizeSlug(e.target.value) }))}
+                  placeholder="رابط المدرسة بالإنجليزية مثل: alnoor-school"
+                  className="w-full pr-14 pl-6 py-4 bg-transparent text-white text-center text-sm font-black placeholder:text-white/25 outline-none tracking-widest border-0"
+                  autoCapitalize="none"
+                  dir="ltr"
+                />
+              </div>
+            </div>
+
+            <div className="relative">
+              <div className="absolute inset-0 rounded-[1.8rem] bg-white/5 transition-all duration-300" />
+              <div className="relative flex items-center">
+                <div className="absolute right-5 text-white/25">
+                  <UserPlus size={20} />
+                </div>
+                <input
+                  type="text"
+                  value={registration.adminName}
+                  onChange={(e) => setRegistration((prev) => ({ ...prev, adminName: e.target.value }))}
+                  placeholder="اسم مدير المدرسة"
+                  className="w-full pr-14 pl-6 py-4 bg-transparent text-white text-right text-base font-black placeholder:text-white/25 outline-none border-0"
+                />
+              </div>
+            </div>
+
+            <div className="relative">
+              <div className="absolute inset-0 rounded-[1.8rem] bg-white/5 transition-all duration-300" />
+              <div className="relative flex items-center">
+                <div className="absolute right-5 text-white/25">
+                  <Fingerprint size={20} />
+                </div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={registration.adminNationalId}
+                  onChange={(e) => setRegistration((prev) => ({ ...prev, adminNationalId: e.target.value }))}
+                  placeholder="هوية المدير للدخول"
+                  className="w-full pr-14 pl-6 py-4 bg-transparent text-white text-center text-base font-black placeholder:text-white/25 outline-none tracking-widest border-0"
+                  dir="ltr"
+                />
+              </div>
+            </div>
+
+            <div className="relative">
+              <div className="absolute inset-0 rounded-[1.8rem] bg-white/5 transition-all duration-300" />
+              <div className="relative flex items-center">
+                <div className="absolute right-5 text-white/25">
+                  <Smartphone size={20} />
+                </div>
+                <input
+                  type="text"
+                  inputMode="tel"
+                  value={registration.adminPhone}
+                  onChange={(e) => setRegistration((prev) => ({ ...prev, adminPhone: e.target.value }))}
+                  placeholder="جوال المدير اختياري"
+                  className="w-full pr-14 pl-6 py-4 bg-transparent text-white text-center text-base font-black placeholder:text-white/25 outline-none tracking-widest border-0"
+                  dir="ltr"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isRegistering}
+              className={`w-full relative py-5 rounded-[1.8rem] font-black text-lg transition-all duration-300 overflow-hidden group ${
+                isRegistering
+                  ? 'bg-emerald-600/50 text-white/50 cursor-wait'
+                  : 'bg-emerald-500 hover:bg-emerald-400 text-white active:scale-[0.98] shadow-2xl shadow-emerald-600/20'
+              }`}
+            >
+              <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+              <span className="relative flex items-center justify-center gap-3">
+                {isRegistering ? (
+                  <>
+                    <div className="w-5 h-5 border-3 border-white/20 border-t-white rounded-full animate-spin" style={{ borderWidth: '3px' }} />
+                    جاري إنشاء المدرسة...
+                  </>
+                ) : (
+                  <>
+                    <ArrowRight size={20} />
+                    إنشاء المدرسة والدخول
+                  </>
+                )}
+              </span>
+            </button>
+          </form>
+          )}
 
           {/* ── تثبيت التطبيق (Android) ── */}
           {deferredPrompt && (
