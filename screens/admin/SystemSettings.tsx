@@ -22,6 +22,7 @@ const AdminSystemSettings: React.FC<Props> = ({ systemConfig, setSystemConfig, r
   const [isSavingCfg, setIsSavingCfg] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const schoolLink = `${window.location.origin}${window.location.pathname}?tenant=${encodeURIComponent(getActiveTenantSlug())}`;
+  const studentLookupLink = `${window.location.origin}${window.location.pathname}?tenant=${encodeURIComponent(getActiveTenantSlug())}&student_lookup=1`;
 
   const sqlManualJoinFix = `-- إصلاح وتحديث قاعدة البيانات بالكامل (نسخة الميدان المحدثة V6)
 -- 1. جدول إعدادات النظام
@@ -99,7 +100,7 @@ ALTER TABLE control_requests ADD COLUMN IF NOT EXISTS assistant_name TEXT;`;
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white p-10 rounded-[4rem] shadow-2xl border-2 border-blue-50 space-y-6 lg:col-span-2">
+        <div className="bg-white p-10 rounded-[4rem] shadow-2xl border-2 border-blue-50 space-y-6">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
             <div className="flex items-center gap-5">
               <div className="p-5 bg-blue-50 text-blue-600 rounded-[2rem] shadow-inner"><Link2 size={36} /></div>
@@ -118,6 +119,28 @@ ALTER TABLE control_requests ADD COLUMN IF NOT EXISTS assistant_name TEXT;`;
           </div>
           <div className="bg-slate-50 border-2 border-slate-100 rounded-[2rem] p-5 text-left font-mono text-sm text-slate-700 overflow-x-auto" dir="ltr">
             {schoolLink}
+          </div>
+        </div>
+
+        <div className="bg-white p-10 rounded-[4rem] shadow-2xl border-2 border-emerald-50 space-y-6">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div className="flex items-center gap-5">
+              <div className="p-5 bg-emerald-50 text-emerald-600 rounded-[2rem] shadow-inner"><Users2 size={36} /></div>
+              <div>
+                <h3 className="text-3xl font-black text-slate-900">رابط استعلام الطلاب</h3>
+                <p className="text-slate-400 font-bold text-sm mt-1">انسخ هذا الرابط وأرسله للطلاب لمعرفة اللجنة ورقم الجلوس برقم الهوية أو الرقم المسجل.</p>
+              </div>
+            </div>
+            <button
+              onClick={() => handleCopy(studentLookupLink, 'student-lookup-link')}
+              className="bg-emerald-600 text-white px-7 py-4 rounded-2xl font-black flex items-center justify-center gap-3 hover:bg-emerald-700 transition-all"
+            >
+              {copied === 'student-lookup-link' ? <Check size={20} /> : <Copy size={20} />}
+              {copied === 'student-lookup-link' ? 'تم النسخ' : 'نسخ الرابط'}
+            </button>
+          </div>
+          <div className="bg-slate-50 border-2 border-slate-100 rounded-[2rem] p-5 text-left font-mono text-sm text-slate-700 overflow-x-auto" dir="ltr">
+            {studentLookupLink}
           </div>
         </div>
 

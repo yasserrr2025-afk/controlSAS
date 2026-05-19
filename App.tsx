@@ -26,6 +26,7 @@ import EnvelopeOpeningView from './screens/control/EnvelopeOpeningView';
 import EnvelopeLabelsPrint from './screens/admin/EnvelopeLabelsPrint';
 import DoorLabelsPrint from './screens/admin/DoorLabelsPrint';
 import CommitteePublicView from './screens/public/CommitteePublicView';
+import StudentLookupView from './screens/public/StudentLookupView';
 import GlobalQRScanner from './components/GlobalQRScanner';
 import { BellRing, Menu, X, CheckCircle2, AlertCircle, Info, AlertTriangle, Loader2 } from 'lucide-react';
 import { db, getActiveTenantId, setActiveTenant, supabase } from './supabase';
@@ -208,7 +209,7 @@ const App: React.FC = () => {
   };
 
   if (isInitialLoading) {
-    if (new URLSearchParams(window.location.search).get('public_committee')) {
+    if (new URLSearchParams(window.location.search).get('public_committee') || new URLSearchParams(window.location.search).get('student_lookup')) {
        return (
          <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-6 font-['Tajawal']" dir="rtl">
            <Loader2 size={48} className="text-blue-600 animate-spin" />
@@ -228,6 +229,11 @@ const App: React.FC = () => {
   const publicCommitteeId = new URLSearchParams(window.location.search).get('public_committee');
   if (publicCommitteeId) {
     return <CommitteePublicView committeeNumber={publicCommitteeId} students={students} supervisions={supervisions} absences={absences} users={users} />;
+  }
+
+  const isStudentLookup = new URLSearchParams(window.location.search).get('student_lookup');
+  if (isStudentLookup) {
+    return <StudentLookupView students={students} />;
   }
 
   return (
