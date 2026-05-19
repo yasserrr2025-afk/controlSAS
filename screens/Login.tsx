@@ -15,6 +15,8 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [loginId, setLoginId] = useState('');
   const [schoolCode, setSchoolCode] = useState(localStorage.getItem('activeTenantSlug') || '');
+  const [resolvedSchoolName, setResolvedSchoolName] = useState('');
+  const [isResolvingSchool, setIsResolvingSchool] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [registration, setRegistration] = useState({
@@ -27,6 +29,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showIosHint, setShowIosHint] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [isSchoolCodeFocused, setIsSchoolCodeFocused] = useState(false);
   const tenantFromUrl = new URLSearchParams(window.location.search).get('tenant') || '';
   const isSchoolLink = !!tenantFromUrl;
 
@@ -39,11 +42,38 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '');
 
+  const resolveSchoolName = async (value = schoolCode, options: { silent?: boolean } = {}) => {
+    const slug = normalizeSlug(value);
+    if (!slug) {
+      setResolvedSchoolName('');
+      return null;
+    }
+    setIsResolvingSchool(true);
+    try {
+      const tenant = await db.tenants.resolveBySlug(slug);
+      if (tenant?.name) {
+        setResolvedSchoolName(tenant.name);
+        setSchoolCode(tenant.slug);
+        return tenant;
+      }
+      setResolvedSchoolName('');
+      if (!options.silent) onAlert('رمز المدرسة غير موجود', 'warning');
+      return null;
+    } catch (err: any) {
+      setResolvedSchoolName('');
+      if (!options.silent) onAlert(err.message || 'تعذر التحقق من رمز المدرسة', 'error');
+      return null;
+    } finally {
+      setIsResolvingSchool(false);
+    }
+  };
+
   useEffect(() => {
     if (tenantFromUrl) {
       const normalized = tenantFromUrl.trim().toLowerCase();
       setSchoolCode(normalized);
       localStorage.setItem('activeTenantSlug', normalized);
+      resolveSchoolName(normalized, { silent: true });
     }
 
     const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
@@ -170,7 +200,11 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
               <p className="text-white/40 font-bold text-[10px] uppercase tracking-[0.3em]">المملكة العربية السعودية</p>
               <p className="text-white/70 font-black text-sm">وزارة التعليم</p>
               <p className="text-white/55 font-bold text-xs">إدارة التعليم بمحافظة جدة</p>
-              <p className="text-blue-400/80 font-black text-xs">مدرسة عماد الدين زنكي المتوسطة</p>
+              {resolvedSchoolName && (
+                <p className="text-blue-400/80 font-black text-xs animate-fade-in">
+                  {resolvedSchoolName}
+                </p>
+              )}
             </div>
           </div>
 
@@ -209,8 +243,16 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
                   </div>
                   <input
                     type="text"
-                    value={schoolCode}
-                    onChange={(e) => setSchoolCode(e.target.value)}
+                    value={!isSchoolCodeFocused && resolvedSchoolName ? resolvedSchoolName : schoolCode}
+                    onChange={(e) => {
+                      setSchoolCode(normalizeSlug(e.target.value));
+                      setResolvedSchoolName('');
+                    }}
+                    onFocus={() => setIsSchoolCodeFocused(true)}
+                    onBlur={() => {
+                      setIsSchoolCodeFocused(false);
+                      resolveSchoolName();
+                    }}
                     placeholder="رمز المدرسة أو الجهة"
                     className="w-full pr-14 pl-6 py-4 bg-transparent text-white text-center text-base font-black placeholder:text-white/25 outline-none tracking-widest border-0"
                     autoCapitalize="none"
@@ -220,10 +262,23 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
               </div>
             )}
 
+            {!isSchoolLink && (resolvedSchoolName || isResolvingSchool) && (
+              <div className="bg-blue-500/10 border border-blue-500/20 text-blue-300 px-5 py-3 rounded-[1.5rem] text-center">
+                <p className="text-[10px] font-black uppercase tracking-widest">
+                  {isResolvingSchool ? 'جاري التحقق من المدرسة...' : 'تم التعرف على المدرسة'}
+                </p>
+                {resolvedSchoolName && (
+                  <p className="font-black text-sm mt-1">{resolvedSchoolName}</p>
+                )}
+              </div>
+            )}
+
             {isSchoolLink && (
               <div className="bg-blue-500/10 border border-blue-500/20 text-blue-300 px-5 py-3 rounded-[1.5rem] text-center">
                 <p className="text-[10px] font-black uppercase tracking-widest">رابط دخول المدرسة</p>
-                <p className="font-black text-sm mt-1" dir="ltr">{schoolCode}</p>
+                <p className="font-black text-sm mt-1">
+                  {resolvedSchoolName || (isResolvingSchool ? 'جاري التحقق...' : schoolCode)}
+                </p>
               </div>
             )}
 
@@ -444,7 +499,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
 
       {/* ── نص سفلي ── */}
       <p className="relative z-10 mt-8 text-[10px] text-white/15 font-bold text-center tracking-[0.3em] animate-fade-in">
-        مدرسة عماد الدين زنكي المتوسطة · نظام كنترول الاختبارات الموحد
+        نظام كنترول الاختبارات الموحد
       </p>
 
       <style>{`
