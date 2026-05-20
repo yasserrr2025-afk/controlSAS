@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { User, DeliveryLog, Student, UserRole, SystemConfig, Absence, Supervision } from '../../types';
 import { ROLES_ARABIC } from '../../constants';
+import { APP_CONFIG } from '../../constants';
 import { supabase, db, getActiveTenantId } from '../../supabase';
 
 type ExamScheduleRow = {
@@ -519,31 +520,56 @@ const ControlManager: React.FC<ControlManagerProps> = ({
               <style>{`
                 .smart-assignment-report { display: none; }
                 @media print {
-                  .no-print { display: none !important; }
+                  body * { visibility: hidden !important; }
+                  .smart-assignment-report,
+                  .smart-assignment-report * { visibility: visible !important; }
                   .smart-assignment-report {
                     display: block !important;
+                    position: absolute;
+                    inset: 0;
                     font-family: Tajawal, Arial, sans-serif;
                     color: #111827;
-                    padding: 14mm;
+                    padding: 10mm 12mm;
+                    background: white;
                   }
                   .smart-assignment-report table {
                     width: 100%;
                     border-collapse: collapse;
-                    margin-top: 8mm;
+                    margin-top: 6mm;
                     font-size: 11pt;
                   }
                   .smart-assignment-report th,
                   .smart-assignment-report td {
                     border: 1px solid #111827;
                     padding: 7px;
-                    text-align: center;
+                   text-align: center;
                   }
                   .smart-assignment-report th { background: #f1f5f9; }
+                  @page { size: A4 portrait; margin: 8mm; }
                 }
               `}</style>
+              <div style={{ borderBottom: '4px double #111827', paddingBottom: '4mm', marginBottom: '7mm' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 1fr', alignItems: 'center', gap: '8mm' }}>
+                  <div style={{ textAlign: 'right', fontWeight: 900, fontSize: '10pt', lineHeight: 1.8 }}>
+                    <p>المملكة العربية السعودية</p>
+                    <p>{APP_CONFIG.MINISTRY_NAME}</p>
+                    <p>{APP_CONFIG.ADMINISTRATION_NAME}</p>
+                    <p>{APP_CONFIG.SCHOOL_NAME}</p>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <img src={APP_CONFIG.LOGO_URL} alt="شعار" style={{ width: '22mm', height: '22mm', objectFit: 'contain', margin: '0 auto' }} />
+                    <p style={{ fontSize: '7pt', fontWeight: 800, color: '#475569', marginTop: '1mm' }}>نظام الكنترول المطور</p>
+                  </div>
+                  <div style={{ textAlign: 'left', fontWeight: 800, fontSize: '10pt', lineHeight: 1.8 }}>
+                    <p>التاريخ: {new Date().toLocaleDateString('ar-SA')}</p>
+                    <p>اليوم: {new Intl.DateTimeFormat('ar-SA', { weekday: 'long' }).format(new Date())}</p>
+                    <p>المرفقات: تقرير توزيع المراقبين</p>
+                  </div>
+                </div>
+              </div>
               <div className="text-center">
-                 <h1 style={{ fontSize: '20pt', fontWeight: 900 }}>تقرير توزيع المراقبين على اللجان</h1>
-                 <p style={{ marginTop: '4mm', fontWeight: 700 }}>توزيع متعدد الأيام والفترات</p>
+                 <h1 style={{ fontSize: '18pt', fontWeight: 900 }}>تقرير توزيع المراقبين على اللجان</h1>
+                 <p style={{ marginTop: '2mm', fontWeight: 700 }}>توزيع متعدد الأيام والفترات</p>
               </div>
               <table>
                  <thead>
