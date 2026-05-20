@@ -171,7 +171,10 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
       </div>
 
       {/* ── الكارت الرئيسي ── */}
-      <div className="login-card-shell relative z-10 w-full max-w-sm mx-auto animate-slide-up">
+      <div
+        className="login-card-shell relative z-10 mx-auto overflow-hidden animate-slide-up"
+        style={{ width: 'min(88vw, 384px)', maxWidth: 'calc(100vw - 2rem)' }}
+      >
 
         {/* إطار ضوئي خارجي */}
         <div className="absolute -inset-px bg-gradient-to-b from-white/10 via-transparent to-blue-500/20 rounded-[3rem] pointer-events-none" />
