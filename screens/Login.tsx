@@ -71,6 +71,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
   useEffect(() => {
     if (tenantFromUrl) {
       const normalized = tenantFromUrl.trim().toLowerCase();
+      setMode('login');
       setSchoolCode(normalized);
       localStorage.setItem('activeTenantSlug', normalized);
       resolveSchoolName(normalized, { silent: true });
@@ -143,7 +144,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#020917] p-4 font-['Tajawal'] relative overflow-hidden" dir="rtl">
+    <div className="login-screen min-h-[100dvh] w-full flex flex-col items-center justify-start lg:justify-center bg-[#020917] p-3 sm:p-4 py-4 sm:py-6 font-['Tajawal'] relative overflow-x-hidden overflow-y-auto" dir="rtl">
 
       {/* ── طبقة خلفية ── */}
       {/* دوائر ضوئية */}
@@ -156,37 +157,37 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
         style={{ backgroundImage: 'linear-gradient(#6366f1 1px, transparent 1px), linear-gradient(90deg, #6366f1 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
 
       {/* ── نص ترحيبي علوي ── */}
-      <div className="relative z-10 text-center mb-8 space-y-2 animate-fade-in">
-        <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 text-blue-400 px-5 py-2 rounded-full text-xs font-black uppercase tracking-[0.3em] mb-4">
+      <div className="login-hero relative z-10 text-center mb-3 sm:mb-4 space-y-2 animate-fade-in">
+        <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 text-blue-400 px-4 sm:px-5 py-2 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] mb-3 sm:mb-4">
           <ShieldCheck size={13} />
           بوابة الدخول الآمن
         </div>
-        <h1 className="text-4xl md:text-5xl font-black text-white tracking-tighter leading-tight">
+        <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tighter leading-tight">
           الكنترول المطور
         </h1>
-        <p className="text-slate-500 font-bold text-sm uppercase tracking-widest">
+        <p className="text-slate-500 font-bold text-[10px] sm:text-sm uppercase tracking-[0.18em] sm:tracking-widest">
           Smart Exam Control System
         </p>
       </div>
 
       {/* ── الكارت الرئيسي ── */}
-      <div className="relative z-10 w-full max-w-sm animate-slide-up">
+      <div className="login-card-shell relative z-10 w-full max-w-sm mx-auto animate-slide-up">
 
         {/* إطار ضوئي خارجي */}
         <div className="absolute -inset-px bg-gradient-to-b from-white/10 via-transparent to-blue-500/20 rounded-[3rem] pointer-events-none" />
 
-        <div className="relative bg-white/[0.04] backdrop-blur-2xl border border-white/10 rounded-[3rem] p-8 shadow-2xl overflow-hidden">
+        <div className="relative bg-white/[0.04] backdrop-blur-2xl border border-white/10 rounded-[2rem] sm:rounded-[3rem] p-5 sm:p-6 shadow-2xl overflow-hidden">
 
           {/* توهج داخلي أعلى */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-16 bg-blue-500/10 blur-2xl rounded-full pointer-events-none" />
 
           {/* ── شعار الوزارة ── */}
-          <div className="flex flex-col items-center mb-8">
-            <div className="relative mb-5">
+          <div className="flex flex-col items-center mb-5">
+            <div className="relative mb-3 sm:mb-5">
               {/* هالة ضوئية خلف الشعار */}
               <div className="absolute inset-0 bg-blue-500/20 rounded-[1.8rem] blur-xl scale-125 pointer-events-none" />
-              <div className="relative w-22 h-22 bg-white rounded-[1.8rem] p-3 shadow-2xl border border-white/20"
-                style={{ width: '88px', height: '88px' }}>
+              <div className="relative w-18 h-18 bg-white rounded-[1.5rem] p-2.5 shadow-2xl border border-white/20"
+                style={{ width: '72px', height: '72px' }}>
                 <img src={APP_CONFIG.LOGO_URL} alt="وزارة التعليم" className="w-full h-full object-contain" />
               </div>
               {/* نقطة تحقق */}
@@ -209,7 +210,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
           </div>
 
           {/* ── نموذج الدخول ── */}
-          <div className="grid grid-cols-2 gap-2 bg-white/5 p-1.5 rounded-[1.7rem] mb-5">
+          <div className={`grid ${isSchoolLink ? 'grid-cols-1' : 'grid-cols-2'} gap-2 bg-white/5 p-1.5 rounded-[1.7rem] mb-5`}>
             <button
               type="button"
               onClick={() => setMode('login')}
@@ -223,7 +224,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
             <button
               type="button"
               onClick={() => setMode('register')}
-              className={`py-3 rounded-[1.3rem] font-black text-xs transition-all flex items-center justify-center gap-2 ${
+              className={`py-3 rounded-[1.3rem] font-black text-xs transition-all ${isSchoolLink ? 'hidden' : 'flex'} items-center justify-center gap-2 ${
                 mode === 'register' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-white/40 hover:text-white'
               }`}
             >
@@ -297,7 +298,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
                   onFocus={() => setFocused(true)}
                   onBlur={() => setFocused(false)}
                   placeholder="أدخل رقم الهوية الوطنية"
-                  className="w-full pr-14 pl-6 py-5 bg-transparent text-white text-center text-lg font-black placeholder:text-white/25 outline-none tracking-widest border-0"
+                  className="w-full pr-14 pl-6 py-4 bg-transparent text-white text-center text-base font-black placeholder:text-white/25 outline-none tracking-widest border-0"
                   style={{ caretColor: '#3b82f6' }}
                 />
               </div>
@@ -307,7 +308,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
             <button
               type="submit"
               disabled={isLoading}
-              className={`w-full relative py-5 rounded-[1.8rem] font-black text-lg transition-all duration-300 overflow-hidden group
+              className={`w-full relative py-4 rounded-[1.8rem] font-black text-base transition-all duration-300 overflow-hidden group
                 ${isLoading
                   ? 'bg-blue-600/50 text-white/50 cursor-wait'
                   : 'bg-blue-600 hover:bg-blue-500 text-white active:scale-[0.98] shadow-2xl shadow-blue-600/30'
@@ -436,7 +437,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
             <button
               type="submit"
               disabled={isRegistering}
-              className={`w-full relative py-5 rounded-[1.8rem] font-black text-lg transition-all duration-300 overflow-hidden group ${
+              className={`w-full relative py-4 rounded-[1.8rem] font-black text-base transition-all duration-300 overflow-hidden group ${
                 isRegistering
                   ? 'bg-emerald-600/50 text-white/50 cursor-wait'
                   : 'bg-emerald-500 hover:bg-emerald-400 text-white active:scale-[0.98] shadow-2xl shadow-emerald-600/20'
@@ -486,7 +487,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
           )}
 
           {/* ── Footer ── */}
-          <div className="mt-8 pt-6 border-t border-white/5 flex items-center justify-between">
+          <div className="mt-5 pt-4 border-t border-white/5 flex items-center justify-between">
             <p className="text-[9px] text-white/15 font-black tracking-[0.3em] uppercase">V 8.0 SECURE</p>
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
@@ -506,7 +507,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
         @keyframes fade-in  { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideUp  { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in    { animation: fade-in  0.6s ease-out both; }
-        .animate-slide-up   { animation: slideUp  0.7s ease-out 0.15s both; }
+        .animate-slide-up   { animation: slideUp  0.7s ease-out both; }
       `}</style>
     </div>
   );

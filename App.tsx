@@ -259,7 +259,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div id="app-root" className="min-h-screen bg-[#f8fafc] font-['Tajawal'] overflow-x-hidden text-right selection:bg-blue-100" dir="rtl">
+    <div id="app-root" className="min-h-screen w-full max-w-[100vw] bg-[#f8fafc] font-['Tajawal'] overflow-x-hidden text-right selection:bg-blue-100" dir="rtl">
       {/* التنبيهات الذكية */}
       <div className="fixed top-24 left-6 right-6 lg:right-auto lg:left-8 z-[1000] flex flex-col gap-3 max-w-sm pointer-events-none no-print">
         {notifications.map(n => (
@@ -285,12 +285,12 @@ const App: React.FC = () => {
         <>
           <header
             style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}
-            className="fixed top-0 right-0 left-0 bg-white/90 backdrop-blur-md z-[90] lg:hidden border-b px-6 pb-4 flex justify-between items-center no-print shadow-sm"
+            className="fixed top-0 right-0 left-0 bg-white/90 backdrop-blur-md z-[90] lg:hidden border-b px-4 sm:px-6 pb-4 flex justify-between items-center no-print shadow-sm"
           >
              <button onClick={() => setIsSidebarOpen(true)} className="p-2 bg-slate-100 rounded-xl hover:bg-blue-50 transition-colors">
                 <Menu size={24} className="text-slate-700" />
              </button>
-             <h1 className="font-black text-slate-900 text-lg">كنترول الاختبارات</h1>
+             <h1 className="font-black text-slate-900 text-base sm:text-lg truncate px-3">كنترول الاختبارات</h1>
              <div className="w-10"></div>
           </header>
           <div className="no-print">
@@ -311,7 +311,7 @@ const App: React.FC = () => {
 
       <main
         style={{ paddingTop: currentUser ? 'calc(env(safe-area-inset-top) + 80px)' : undefined }}
-        className={`transition-all duration-300 min-h-screen ${currentUser ? (isSidebarCollapsed ? 'lg:mr-24' : 'lg:mr-80') : ''} ${currentUser ? 'px-4 pb-6 lg:p-10 lg:pt-10' : ''}`}
+        className={`transition-all duration-300 min-h-screen ${currentUser ? (isSidebarCollapsed ? 'lg:mr-24' : 'lg:mr-80') : ''} ${currentUser ? 'safe-page-x pb-6 lg:p-10 lg:pt-10' : ''}`}
       >
         {currentUser ? renderContent() : <Login users={users} onLogin={handleLoginSuccess} onAlert={addLocalNotification} />}
       </main>
