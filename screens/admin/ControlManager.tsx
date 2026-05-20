@@ -7,7 +7,7 @@ import {
   Target, Filter, Zap, MessageSquare, Briefcase,
   MonitorPlay, Fingerprint, Award, TrendingUp,
   Mail, BellRing, UserCheck, ShieldAlert, Info,
-  Timer, Gauge, FileSpreadsheet, History,
+  Timer, Gauge, FileSpreadsheet, FileText, History,
   ArrowRightLeft, UserMinus, UserX, CheckCircle,
   PackageSearch, Unlock, ShieldX, Ghost, Scan,
   UserCog, LogOut, ToggleLeft, ToggleRight,
@@ -18,6 +18,26 @@ import {
 import { User, DeliveryLog, Student, UserRole, SystemConfig, Absence, Supervision } from '../../types';
 import { ROLES_ARABIC } from '../../constants';
 import { supabase, db, getActiveTenantId } from '../../supabase';
+
+type ExamScheduleRow = {
+  id: string;
+  date: string;
+  subject: string;
+  period: number;
+};
+
+type SmartPreviewItem = {
+  key: string;
+  scheduleId: string;
+  date: string;
+  subject: string;
+  period: number;
+  committeeNumber: string;
+  teacherId: string;
+  teacherName: string;
+  loadBefore: number;
+  repeatedToday: boolean;
+};
 
 interface ControlManagerProps {
   users: User[];
@@ -33,10 +53,11 @@ interface ControlManagerProps {
   setSystemConfig: (cfg: any) => Promise<void>;
   onRemoveSupervision: (teacherId: string) => Promise<void>;
   onAssignProctor: (teacherId: string, committeeNumber: string) => Promise<void>;
+  onSmartAssign: (assignments: { teacherId: string; committeeNumber: string; date: string; period: number; subject: string }[], replaceExisting: boolean) => Promise<void>;
 }
 
 const ControlManager: React.FC<ControlManagerProps> = ({ 
-  users, deliveryLogs, students, onBroadcast, onUpdateUserGrades, onUpdateUserCommittees, systemConfig, absences, supervisions, setDeliveryLogs, setSystemConfig, onRemoveSupervision, onAssignProctor
+  users, deliveryLogs, students, onBroadcast, onUpdateUserGrades, onUpdateUserCommittees, systemConfig, absences, supervisions, setDeliveryLogs, setSystemConfig, onRemoveSupervision, onAssignProctor, onSmartAssign
 }) => {
   const [activeTab, setActiveTab] = useState<'cockpit' | 'assignments' | 'emergency-receipt' | 'comms' | 'proctors-mgmt'>('cockpit');
   const [broadcastTarget, setBroadcastTarget] = useState<UserRole | 'ALL'>('ALL');
@@ -48,6 +69,20 @@ const ControlManager: React.FC<ControlManagerProps> = ({
   const [isAssigning, setIsAssigning] = useState(false);
   const [targetCommittee, setTargetCommittee] = useState<string | null>(null);
   const [proctorSearchInModal, setProctorSearchInModal] = useState('');
+  const [excludedProctorIds, setExcludedProctorIds] = useState<string[]>([]);
+  const [replaceExistingSmart, setReplaceExistingSmart] = useState(false);
+  const [isCommittingSmart, setIsCommittingSmart] = useState(false);
+  const [assignmentHistory, setAssignmentHistory] = useState<Supervision[]>([]);
+  const [smartPreview, setSmartPreview] = useState<SmartPreviewItem[]>([]);
+  const [draggedPreviewKey, setDraggedPreviewKey] = useState<string | null>(null);
+  const [examSchedule, setExamSchedule] = useState<ExamScheduleRow[]>([
+    {
+      id: crypto.randomUUID(),
+      date: systemConfig.active_exam_date || new Date().toISOString().split('T')[0],
+      subject: 'اختبار',
+      period: 1
+    }
+  ]);
 
   const stats = useMemo(() => {
     const totalComs = new Set(students.map(s => s.committee_number)).size;
@@ -62,22 +97,226 @@ const ControlManager: React.FC<ControlManagerProps> = ({
 
   const committeeStatus = useMemo(() => {
     const comNums = Array.from(new Set(students.map(s => s.committee_number))).filter(Boolean).sort((a,b)=>Number(a)-Number(b));
+    const activeDate = systemConfig.active_exam_date || new Date().toISOString().split('T')[0];
     return comNums.map(num => {
-      const sv = supervisions.find(s => s.committee_number === num);
+      const sv = supervisions.find(s => s.committee_number === num && s.date?.startsWith(activeDate));
       const user = users.find(u => u.id === sv?.teacher_id);
       const gradesInCommittee = Array.from(new Set(students.filter(s => s.committee_number === num).map(s => s.grade)));
       return { num, proctor: user, svId: sv?.id, grades: gradesInCommittee };
     });
-  }, [students, supervisions, users]);
+  }, [students, supervisions, users, systemConfig.active_exam_date]);
 
   const availableProctors = useMemo(() => {
-    const activeTeacherIds = supervisions.map(s => s.teacher_id);
+    const activeDate = systemConfig.active_exam_date || new Date().toISOString().split('T')[0];
+    const activeTeacherIds = supervisions.filter(s => s.date?.startsWith(activeDate)).map(s => s.teacher_id);
     return users.filter(u => u.role === 'PROCTOR' && !activeTeacherIds.includes(u.id));
-  }, [users, supervisions]);
+  }, [users, supervisions, systemConfig.active_exam_date]);
 
   const proctorsListForModal = useMemo(() => {
     return users.filter(u => u.role === 'PROCTOR' && (u.full_name.includes(proctorSearchInModal) || u.national_id.includes(proctorSearchInModal)));
   }, [users, proctorSearchInModal]);
+
+  const proctors = useMemo(() => users.filter(u => u.role === 'PROCTOR'), [users]);
+  const activeDate = systemConfig.active_exam_date || new Date().toISOString().split('T')[0];
+
+  useEffect(() => {
+    db.supervision.getAll()
+      .then(setAssignmentHistory)
+      .catch(() => setAssignmentHistory(supervisions));
+  }, [supervisions]);
+
+  const smartStats = useMemo(() => {
+    const counts = proctors.map(proctor => ({
+      id: proctor.id,
+      name: proctor.full_name,
+      count: assignmentHistory.filter(s => s.teacher_id === proctor.id).length
+    }));
+    return {
+      min: counts.length ? Math.min(...counts.map(item => item.count)) : 0,
+      max: counts.length ? Math.max(...counts.map(item => item.count)) : 0,
+      counts
+    };
+  }, [assignmentHistory, proctors]);
+
+  const addScheduleRow = () => {
+    setExamSchedule(prev => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        date: prev[prev.length - 1]?.date || activeDate,
+        subject: '',
+        period: (prev[prev.length - 1]?.period || 0) + 1
+      }
+    ]);
+  };
+
+  const updateScheduleRow = (id: string, patch: Partial<ExamScheduleRow>) => {
+    setExamSchedule(prev => prev.map(row => row.id === id ? { ...row, ...patch } : row));
+  };
+
+  const removeScheduleRow = (id: string) => {
+    setExamSchedule(prev => prev.length === 1 ? prev : prev.filter(row => row.id !== id));
+  };
+
+  const makePreviewKey = (date: string, period: number, committeeNumber: string) => `${date}|${period}|${committeeNumber}`;
+
+  const getExistingForSlot = (date: string, period: number) => {
+    return supervisions.filter(s => s.date?.startsWith(date) && Number(s.period || 1) === Number(period));
+  };
+
+  const generateSmartAssignments = () => {
+    const excluded = new Set(excludedProctorIds);
+    const validSchedule = examSchedule.filter(row => row.date && row.subject.trim() && Number(row.period) > 0);
+    const eligible = proctors.filter(proctor => !excluded.has(proctor.id));
+
+    if (validSchedule.length === 0) {
+      alert('أضف تاريخ الاختبار والمادة والفترة أولاً.');
+      setSmartPreview([]);
+      return;
+    }
+    if (eligible.length === 0) {
+      alert('لا يوجد مراقبون متاحون بعد الاستثناءات.');
+      setSmartPreview([]);
+      return;
+    }
+
+    const preview: SmartPreviewItem[] = [];
+    const usedByDate = new Map<string, Set<string>>();
+    const workingLoad = new Map<string, number>(eligible.map(proctor => [
+      proctor.id,
+      assignmentHistory.filter(s => s.teacher_id === proctor.id).length
+    ]));
+
+    validSchedule.forEach(schedule => {
+      const existingSlot = getExistingForSlot(schedule.date, schedule.period);
+      const occupiedCommittees = new Set(existingSlot.map(s => s.committee_number));
+      const targetCommittees = committeeStatus
+        .filter(com => replaceExistingSmart || !occupiedCommittees.has(com.num))
+        .map(com => com.num);
+
+      if (!usedByDate.has(schedule.date)) {
+        usedByDate.set(schedule.date, new Set(supervisions.filter(s => s.date?.startsWith(schedule.date)).map(s => s.teacher_id)));
+      }
+      const usedToday = usedByDate.get(schedule.date)!;
+
+      targetCommittees.forEach(committeeNumber => {
+        let candidates = eligible.filter(proctor => !usedToday.has(proctor.id));
+        let repeatedToday = false;
+        if (candidates.length === 0) {
+          candidates = eligible;
+          repeatedToday = true;
+        }
+
+        const selected = [...candidates].sort((a, b) => {
+          const loadDiff = (workingLoad.get(a.id) || 0) - (workingLoad.get(b.id) || 0);
+          if (loadDiff !== 0) return loadDiff;
+          return a.full_name.localeCompare(b.full_name, 'ar');
+        })[0];
+
+        const loadBefore = workingLoad.get(selected.id) || 0;
+        preview.push({
+          key: makePreviewKey(schedule.date, schedule.period, committeeNumber),
+          scheduleId: schedule.id,
+          date: schedule.date,
+          subject: schedule.subject.trim(),
+          period: Number(schedule.period),
+          committeeNumber,
+          teacherId: selected.id,
+          teacherName: selected.full_name,
+          loadBefore,
+          repeatedToday
+        });
+        usedToday.add(selected.id);
+        workingLoad.set(selected.id, loadBefore + 1);
+      });
+    });
+
+    if (preview.length === 0) {
+      alert('كل لجان الفترات المحددة مرتبطة حالياً. فعّل خيار إعادة توزيع اللجان المرتبطة إذا أردت توليد توزيع جديد.');
+      setSmartPreview([]);
+      return;
+    }
+
+    setSmartPreview(preview);
+  };
+
+  const swapPreviewAssignments = (sourceKey: string, targetKey: string) => {
+    if (sourceKey === targetKey) return;
+    setSmartPreview(prev => {
+      const source = prev.find(item => item.key === sourceKey);
+      const target = prev.find(item => item.key === targetKey);
+      if (!source || !target) return prev;
+      return prev.map(item => {
+        if (item.key === sourceKey) {
+          return { ...item, teacherId: target.teacherId, teacherName: target.teacherName, loadBefore: target.loadBefore, repeatedToday: target.repeatedToday };
+        }
+        if (item.key === targetKey) {
+          return { ...item, teacherId: source.teacherId, teacherName: source.teacherName, loadBefore: source.loadBefore, repeatedToday: source.repeatedToday };
+        }
+        return item;
+      });
+    });
+  };
+
+  const replacePreviewProctor = (itemKey: string) => {
+    setSmartPreview(prev => {
+      const target = prev.find(item => item.key === itemKey);
+      if (!target) return prev;
+      const usedInSameDate = new Set(prev.filter(item => item.date === target.date && item.key !== itemKey).map(item => item.teacherId));
+      const candidates = proctors
+        .filter(proctor => !excludedProctorIds.includes(proctor.id) && !usedInSameDate.has(proctor.id))
+        .sort((a, b) => {
+          const aLoad = assignmentHistory.filter(s => s.teacher_id === a.id).length;
+          const bLoad = assignmentHistory.filter(s => s.teacher_id === b.id).length;
+          return aLoad - bLoad || a.full_name.localeCompare(b.full_name, 'ar');
+        });
+      const replacement = candidates.find(proctor => proctor.id !== target.teacherId);
+      if (!replacement) {
+        alert('لا يوجد بديل مناسب لهذه اللجنة بعد الاستثناءات.');
+        return prev;
+      }
+      const loadBefore = assignmentHistory.filter(s => s.teacher_id === replacement.id).length;
+      return prev.map(item => item.key === itemKey ? {
+        ...item,
+        teacherId: replacement.id,
+        teacherName: replacement.full_name,
+        loadBefore,
+        repeatedToday: false
+      } : item);
+    });
+  };
+
+  const commitSmartAssignments = async () => {
+    if (smartPreview.length === 0) return;
+    setIsCommittingSmart(true);
+    try {
+      await onSmartAssign(
+        smartPreview.map(item => ({
+          teacherId: item.teacherId,
+          committeeNumber: item.committeeNumber,
+          date: item.date,
+          period: item.period,
+          subject: item.subject
+        })),
+        replaceExistingSmart
+      );
+      onBroadcast(`تم إسناد اللجان للمراقبين. يرجى فتح صفحة رصد اللجنة وتأكيد المباشرة.`, 'PROCTOR');
+      alert(`تم ربط ${smartPreview.length} مراقب باللجان بنجاح.`);
+      setSmartPreview([]);
+    } catch (err: any) {
+      alert(err.message || 'تعذر ربط المراقبين باللجان.');
+    } finally {
+      setIsCommittingSmart(false);
+    }
+  };
+
+  const printSmartReport = () => {
+    if (smartPreview.length === 0) {
+      alert('ولّد التوزيع أولاً حتى تتم طباعة التقرير.');
+      return;
+    }
+    window.print();
+  };
 
   const handleStartNewDay = async () => {
     const today = new Date().toISOString().split('T')[0];
@@ -139,6 +378,210 @@ const ControlManager: React.FC<ControlManagerProps> = ({
       {/* Proctor Management Tab - Enhanced with Replacement System */}
       {activeTab === 'proctors-mgmt' && (
         <div className="space-y-8 animate-slide-up">
+           <div className="bg-white p-8 rounded-[3.5rem] border-2 border-blue-50 shadow-2xl no-print">
+              <div className="flex flex-col xl:flex-row justify-between gap-8">
+                 <div className="space-y-3 max-w-2xl">
+                    <div className="flex items-center gap-4">
+                       <div className="p-4 bg-blue-600 text-white rounded-2xl shadow-xl"><Zap size={28}/></div>
+                       <div>
+                          <h3 className="text-2xl font-black text-slate-900">التوزيع الذكي للمراقبين</h3>
+                          <p className="text-sm font-bold text-slate-400">يوزع اللجان على الأقل دخولاً أولاً، ويمنع تكرار المراقب في نفس اليوم قدر الإمكان.</p>
+                       </div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                       <div className="bg-slate-50 p-4 rounded-2xl">
+                          <p className="text-[10px] font-black text-slate-400">اللجان</p>
+                          <p className="text-2xl font-black text-slate-900">{committeeStatus.length}</p>
+                       </div>
+                       <div className="bg-slate-50 p-4 rounded-2xl">
+                          <p className="text-[10px] font-black text-slate-400">غير مرتبطة</p>
+                          <p className="text-2xl font-black text-blue-600">{committeeStatus.filter(com => !com.proctor).length}</p>
+                       </div>
+                       <div className="bg-slate-50 p-4 rounded-2xl">
+                          <p className="text-[10px] font-black text-slate-400">المتاحون</p>
+                          <p className="text-2xl font-black text-emerald-600">{proctors.length - excludedProctorIds.length}</p>
+                       </div>
+                       <div className="bg-slate-50 p-4 rounded-2xl">
+                          <p className="text-[10px] font-black text-slate-400">فرق العدالة</p>
+                          <p className="text-2xl font-black text-indigo-600">{Math.max(0, smartStats.max - smartStats.min)}</p>
+                       </div>
+                    </div>
+                 </div>
+
+                 <div className="w-full xl:w-[28rem] space-y-4">
+                    <button
+                      onClick={() => setReplaceExistingSmart(prev => !prev)}
+                      className={`w-full p-4 rounded-2xl border-2 font-black text-sm flex items-center justify-between transition-all ${replaceExistingSmart ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-slate-50 border-slate-100 text-slate-500'}`}
+                    >
+                       <span>إعادة توزيع اللجان المرتبطة</span>
+                       {replaceExistingSmart ? <ToggleRight/> : <ToggleLeft/>}
+                    </button>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                       <button onClick={generateSmartAssignments} className="bg-blue-600 text-white py-4 rounded-2xl font-black text-sm shadow-xl hover:bg-blue-700 flex items-center justify-center gap-2">
+                          <Zap size={18}/> توليد
+                       </button>
+                       <button onClick={commitSmartAssignments} disabled={smartPreview.length === 0 || isCommittingSmart} className="bg-slate-950 text-white py-4 rounded-2xl font-black text-sm shadow-xl hover:bg-black disabled:opacity-40 flex items-center justify-center gap-2">
+                          <CheckCircle2 size={18}/> ربط
+                       </button>
+                       <button onClick={printSmartReport} disabled={smartPreview.length === 0} className="bg-emerald-600 text-white py-4 rounded-2xl font-black text-sm shadow-xl hover:bg-emerald-700 disabled:opacity-40 flex items-center justify-center gap-2">
+                          <FileText size={18}/> طباعة
+                       </button>
+                    </div>
+                 </div>
+              </div>
+
+              <div className="mt-8 bg-blue-50/60 p-5 rounded-[2rem] border border-blue-100">
+                 <div className="flex flex-col md:flex-row justify-between gap-4 mb-4">
+                    <div>
+                       <h4 className="font-black text-slate-900 flex items-center gap-2"><CalendarPlus size={18} className="text-blue-600"/> أيام وفترات الاختبار</h4>
+                       <p className="text-xs font-bold text-slate-500 mt-1">أضف الأيام الباقية وحدد المادة والفترة، ثم ولّد التوزيع لها دفعة واحدة.</p>
+                    </div>
+                    <button onClick={addScheduleRow} className="bg-blue-600 text-white px-5 py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg">
+                      <Plus size={18}/> إضافة يوم/فترة
+                    </button>
+                 </div>
+                 <div className="space-y-3">
+                    {examSchedule.map(row => (
+                      <div key={row.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_8rem_3rem] gap-3 bg-white p-3 rounded-2xl border border-blue-100">
+                         <input type="date" value={row.date} onChange={e => updateScheduleRow(row.id, { date: e.target.value })} className="bg-slate-50 rounded-xl px-4 py-3 font-bold outline-none border border-slate-100 focus:border-blue-400" />
+                         <input type="text" value={row.subject} onChange={e => updateScheduleRow(row.id, { subject: e.target.value })} placeholder="المادة" className="bg-slate-50 rounded-xl px-4 py-3 font-bold outline-none border border-slate-100 focus:border-blue-400" />
+                         <select value={row.period} onChange={e => updateScheduleRow(row.id, { period: Number(e.target.value) })} className="bg-slate-50 rounded-xl px-4 py-3 font-bold outline-none border border-slate-100 focus:border-blue-400">
+                            {[1, 2, 3, 4].map(period => <option key={period} value={period}>الفترة {period}</option>)}
+                         </select>
+                         <button onClick={() => removeScheduleRow(row.id)} className="bg-red-50 text-red-500 rounded-xl flex items-center justify-center hover:bg-red-100">
+                            <X size={18}/>
+                         </button>
+                      </div>
+                    ))}
+                 </div>
+              </div>
+
+              <div className="mt-8 grid grid-cols-1 xl:grid-cols-2 gap-6">
+                 <div className="bg-slate-50 p-5 rounded-[2rem] border border-slate-100">
+                    <h4 className="font-black text-slate-800 mb-4 flex items-center gap-2"><UserMinus size={18} className="text-red-500"/> استثناء مراقبين لهذا اليوم</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto custom-scrollbar">
+                       {proctors.map(proctor => {
+                         const isExcluded = excludedProctorIds.includes(proctor.id);
+                         const load = smartStats.counts.find(item => item.id === proctor.id)?.count || 0;
+                         return (
+                           <button
+                             key={proctor.id}
+                             onClick={() => setExcludedProctorIds(prev => isExcluded ? prev.filter(id => id !== proctor.id) : [...prev, proctor.id])}
+                             className={`p-3 rounded-2xl text-right border-2 transition-all ${isExcluded ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-white text-slate-700 hover:border-blue-200'}`}
+                           >
+                              <p className="font-black text-sm truncate">{proctor.full_name}</p>
+                              <p className="text-[10px] font-bold opacity-60">دخول سابق: {load}</p>
+                           </button>
+                         );
+                       })}
+                    </div>
+                 </div>
+
+                 <div className="bg-slate-950 p-5 rounded-[2rem] text-white">
+                    <h4 className="font-black mb-4 flex items-center gap-2"><Filter size={18} className="text-blue-400"/> معاينة التوزيع قبل الاعتماد</h4>
+                    <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+                       {smartPreview.map(item => (
+                         <div
+                           key={item.key}
+                           draggable
+                           onDragStart={() => setDraggedPreviewKey(item.key)}
+                           onDragOver={e => e.preventDefault()}
+                           onDrop={() => {
+                             if (draggedPreviewKey) swapPreviewAssignments(draggedPreviewKey, item.key);
+                             setDraggedPreviewKey(null);
+                           }}
+                           className="bg-white/5 border border-white/10 rounded-2xl p-3 flex items-center justify-between gap-3 cursor-move"
+                         >
+                            <div>
+                               <p className="font-black text-sm">{item.teacherName}</p>
+                               <p className="text-[10px] text-slate-400">{item.date} - فترة {item.period} - {item.subject}</p>
+                               <p className="text-[10px] text-slate-400">دخول سابق: {item.loadBefore}{item.repeatedToday ? ' - تكرار اضطراري' : ''}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => replacePreviewProctor(item.key)} className="bg-white/10 hover:bg-white/20 text-white px-3 py-1 rounded-xl font-black text-[10px] flex items-center gap-1">
+                                <ArrowRightLeft size={12}/> استبدال
+                              </button>
+                              <span className="bg-blue-600 text-white px-3 py-1 rounded-xl font-black text-xs">لجنة {item.committeeNumber}</span>
+                            </div>
+                          </div>
+                        ))}
+                       {smartPreview.length === 0 && (
+                         <div className="h-40 flex items-center justify-center text-slate-500 font-black text-sm border border-dashed border-white/10 rounded-2xl">
+                            لم يتم توليد توزيع بعد
+                         </div>
+                       )}
+                    </div>
+                 </div>
+              </div>
+           </div>
+
+           <div className="print-only smart-assignment-report" dir="rtl">
+              <style>{`
+                .smart-assignment-report { display: none; }
+                @media print {
+                  .no-print { display: none !important; }
+                  .smart-assignment-report {
+                    display: block !important;
+                    font-family: Tajawal, Arial, sans-serif;
+                    color: #111827;
+                    padding: 14mm;
+                  }
+                  .smart-assignment-report table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 8mm;
+                    font-size: 11pt;
+                  }
+                  .smart-assignment-report th,
+                  .smart-assignment-report td {
+                    border: 1px solid #111827;
+                    padding: 7px;
+                    text-align: center;
+                  }
+                  .smart-assignment-report th { background: #f1f5f9; }
+                }
+              `}</style>
+              <div className="text-center">
+                 <h1 style={{ fontSize: '20pt', fontWeight: 900 }}>تقرير توزيع المراقبين على اللجان</h1>
+                 <p style={{ marginTop: '4mm', fontWeight: 700 }}>توزيع متعدد الأيام والفترات</p>
+              </div>
+              <table>
+                 <thead>
+                   <tr>
+                     <th>م</th>
+                     <th>رقم اللجنة</th>
+                     <th>التاريخ</th>
+                     <th>المادة</th>
+                     <th>الفترة</th>
+                     <th>اسم المراقب</th>
+                     <th>عدد مرات الدخول السابقة</th>
+                     <th>توقيع المراقب</th>
+                     <th>ملاحظات</th>
+                   </tr>
+                 </thead>
+                 <tbody>
+                   {smartPreview.map((item, index) => (
+                     <tr key={item.key}>
+                       <td>{index + 1}</td>
+                       <td>{item.committeeNumber}</td>
+                       <td>{item.date}</td>
+                       <td>{item.subject}</td>
+                       <td>{item.period}</td>
+                       <td>{item.teacherName}</td>
+                       <td>{item.loadBefore}</td>
+                       <td style={{ height: '12mm' }}></td>
+                       <td>{item.repeatedToday ? 'تكرار اضطراري لنقص العدد' : ''}</td>
+                     </tr>
+                   ))}
+                 </tbody>
+              </table>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '18mm', fontWeight: 800 }}>
+                 <span>مسؤول الكنترول: ....................</span>
+                 <span>التوقيع: ....................</span>
+                 <span>التاريخ: ....................</span>
+              </div>
+           </div>
+
            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
               <div className="lg:col-span-1 bg-slate-950 p-8 rounded-[3.5rem] text-white shadow-2xl border-b-8 border-emerald-500 overflow-hidden relative">
                  <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-3xl"></div>

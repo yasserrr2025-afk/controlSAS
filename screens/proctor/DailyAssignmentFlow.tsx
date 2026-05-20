@@ -92,6 +92,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   const [isVerifying, setIsVerifying] = useState(false);
   const [countError, setCountError] = useState<string | null>(null);
   const [isCountingLocked, setIsCountingLocked] = useState(false);
+  const [isAssignmentConfirmed, setIsAssignmentConfirmed] = useState(false);
 
   // نافذة البلاغات المتطورة
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -143,6 +144,21 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   );
 
   const activeCommittee = activeAssignment?.committee_number || null;
+
+  useEffect(() => {
+    if (!activeAssignment?.id) {
+      setIsAssignmentConfirmed(false);
+      return;
+    }
+    setIsAssignmentConfirmed(localStorage.getItem(`confirmed_supervision_${activeAssignment.id}`) === '1');
+  }, [activeAssignment?.id]);
+
+  const confirmAssignedCommittee = () => {
+    if (!activeAssignment?.id) return;
+    localStorage.setItem(`confirmed_supervision_${activeAssignment.id}`, '1');
+    setIsAssignmentConfirmed(true);
+    onAlert(`تم تأكيد مباشرة اللجنة رقم ${activeCommittee}`, 'success');
+  };
 
   const myActiveRequests = useMemo(
     () =>
@@ -302,14 +318,17 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     try {
       await db.supervision.deleteByCommittee(cleanedNum);
       await db.supervision.deleteByTeacherId(user.id);
+      const assignmentId = crypto.randomUUID();
       await db.supervision.insert({
-        id: crypto.randomUUID(),
+        id: assignmentId,
         teacher_id: user.id,
         committee_number: cleanedNum,
         date: `${activeDate}T${new Date().toTimeString().slice(0, 8)}`,
         period: 1,
         subject: "اختبار",
       });
+      localStorage.setItem(`confirmed_supervision_${assignmentId}`, '1');
+      setIsAssignmentConfirmed(true);
       await setSupervisions();
       onAlert(`تمت المباشرة في اللجنة ${cleanedNum}`, "success");
     } catch (err: any) {
@@ -941,6 +960,31 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   // واجهة الرصد النشط
   return (
     <div className="space-y-8 animate-fade-in max-w-7xl mx-auto text-right pb-48 px-4 md:px-0">
+      {activeAssignment && !isAssignmentConfirmed && (
+        <div className="fixed inset-0 z-[700] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-4 no-print">
+          <div className="bg-slate-950 text-white rounded-[4rem] p-10 shadow-2xl border-b-[10px] border-blue-600 relative overflow-hidden max-w-3xl w-full text-center">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/20 blur-[100px] rounded-full -mr-24 -mt-24"></div>
+            <div className="relative z-10 space-y-8">
+              <div className="w-24 h-24 bg-blue-600 rounded-[2rem] mx-auto flex items-center justify-center shadow-2xl">
+                <Bell size={52} />
+              </div>
+              <div className="space-y-3">
+                <p className="text-blue-300 font-black text-sm tracking-[0.3em] uppercase">إسناد لجنة جديد</p>
+                <h2 className="text-4xl md:text-5xl font-black tracking-tight">تم إسناد اللجنة رقم {activeCommittee}</h2>
+                <p className="text-slate-300 font-bold text-lg leading-relaxed">
+                  أستاذ {user.full_name}، تم ربطك بهذه اللجنة من الكنترول. اضغط تأكيد للبدء وعرض بيانات الطلاب والرصد.
+                </p>
+              </div>
+              <button
+                onClick={confirmAssignedCommittee}
+                className="w-full bg-emerald-600 text-white py-6 rounded-[2rem] font-black text-2xl shadow-2xl hover:bg-emerald-700 active:scale-95 transition-all flex items-center justify-center gap-4"
+              >
+                <CheckCircle2 size={32}/> تأكيد المباشرة
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── بانر عدم الاتصال ── */}
       {isOffline && (
