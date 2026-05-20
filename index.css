@@ -42,28 +42,35 @@
 
 @media screen and (max-width: 768px) {
   .login-screen {
+    direction: ltr !important;
     justify-content: flex-start !important;
     align-items: center !important;
     gap: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
-    margin-inline: auto !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  .login-content,
+  .login-hero,
+  .login-card-shell {
+    direction: rtl !important;
+    width: 100% !important;
+    max-width: min(100%, 40rem) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
   }
 
   .login-hero {
     margin-bottom: 0.75rem !important;
-    width: min(100%, 38rem) !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
   }
 
   .login-card-shell {
     left: auto !important;
     right: auto !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
     transform: none !important;
-    max-width: calc(100vw - 2rem) !important;
+    max-width: 24rem !important;
     animation: none !important;
     opacity: 1 !important;
     overflow: hidden !important;
@@ -174,7 +181,7 @@
 }
 
 @media screen and (max-width: 480px) {
-  .login-card-shell {
+  .login-content {
     transform: translateX(-8vw) !important;
   }
 }

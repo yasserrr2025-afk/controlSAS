@@ -150,6 +150,23 @@ const App: React.FC = () => {
     localStorage.setItem('activeTab', defaultTab);
   };
 
+  const upsertUsersOptimistically = async (input: any) => {
+    const previous = users;
+    const next = typeof input === 'function' ? input(users) : input;
+    const nextList = Array.isArray(next) ? next : [next];
+    const previousById = new Map(previous.map(user => [user.id, user]));
+    const changedUsers = nextList.filter(user => JSON.stringify(previousById.get(user.id)) !== JSON.stringify(user));
+
+    setUsers(nextList);
+    try {
+      if (changedUsers.length > 0) await db.users.upsert(changedUsers);
+      await fetchData();
+    } catch (err) {
+      setUsers(previous);
+      throw err;
+    }
+  };
+
   const renderContent = () => {
     if (!currentUser) return null;
 
@@ -188,7 +205,7 @@ const App: React.FC = () => {
       case 'proctor-excellence': return <AdminProctorPerformance users={users} supervisions={supervisions} deliveryLogs={deliveryLogs} absences={absences} systemConfig={systemConfig} />;
       case 'committee-labels': return <CommitteeLabelsPrint students={students} />;
       case 'control-manager': return <ControlManager users={users} deliveryLogs={deliveryLogs} students={students} onBroadcast={(m, t) => db.notifications.broadcast(m, t, currentUser.full_name)} onUpdateUserGrades={async (userId, grades) => { const uMatch = users.find(u => u.id === userId); if (uMatch) { await db.users.upsert([{ ...uMatch, assigned_grades: grades }]); await fetchData(); } }} onUpdateUserCommittees={async (userId, committees) => { const uMatch = users.find(u => u.id === userId); if (uMatch) { await db.users.upsert([{ ...uMatch, assigned_committees: committees }]); await fetchData(); } }} systemConfig={systemConfig} absences={absences} supervisions={supervisions} setDeliveryLogs={async (log) => { await db.deliveryLogs.upsert(log); await fetchData(); }} setSystemConfig={async (cfg) => { await db.config.upsert(cfg); await fetchData(); }} onRemoveSupervision={async (id) => { await db.supervision.deleteByTeacherId(id); await fetchData(); }} onAssignProctor={async (tid, cid) => { await db.supervision.deleteByCommittee(cid); await db.supervision.deleteByTeacherId(tid); await db.supervision.insert({ id: crypto.randomUUID(), teacher_id: tid, committee_number: cid, date: `${systemConfig.active_exam_date || new Date().toISOString().split('T')[0]}T${new Date().toTimeString().slice(0, 8)}`, period: 1, subject: 'اختبار' }); await fetchData(); }} />;
-      case 'teachers': return <AdminUsersManager users={users} setUsers={async (u: any) => { await db.users.upsert(typeof u === 'function' ? u(users) : u); await fetchData(); }} students={students} onDeleteUser={async (id: string) => { if(confirm('حذف؟')) { await db.users.delete(id); await fetchData(); } }} onAlert={addLocalNotification} />;
+      case 'teachers': return <AdminUsersManager users={users} setUsers={upsertUsersOptimistically} students={students} onDeleteUser={async (id: string) => { if(confirm('حذف؟')) { await db.users.delete(id); await fetchData(); } }} onAlert={addLocalNotification} />;
       case 'students': return <AdminStudentsManager students={students} setStudents={async (s: any) => { await db.students.upsert(typeof s === 'function' ? s(students) : s); await fetchData(); }} onDeleteStudent={async (id: string) => { if(confirm('حذف؟')) { await db.students.delete(id); await fetchData(); } }} onAlert={addLocalNotification} />;
       case 'committees': return <AdminSupervisionMonitor supervisions={supervisions} users={users} students={students} absences={absences} deliveryLogs={deliveryLogs} />;
       case 'daily-reports': return <AdminDailyReports supervisions={supervisions} users={users} students={students} deliveryLogs={deliveryLogs} systemConfig={systemConfig} committeeReports={committeeReports} />;

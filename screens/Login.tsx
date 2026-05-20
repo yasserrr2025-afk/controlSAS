@@ -157,7 +157,8 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
         style={{ backgroundImage: 'linear-gradient(#6366f1 1px, transparent 1px), linear-gradient(90deg, #6366f1 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
 
       {/* ── نص ترحيبي علوي ── */}
-      <div className="login-hero relative z-10 text-center mb-3 sm:mb-4 space-y-2 animate-fade-in">
+      <div className="login-content relative z-10 w-full max-w-[40rem] flex flex-col items-center">
+      <div className="login-hero w-full text-center mb-3 sm:mb-4 space-y-2 animate-fade-in">
         <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 text-blue-400 px-4 sm:px-5 py-2 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] mb-3 sm:mb-4">
           <ShieldCheck size={13} />
           بوابة الدخول الآمن
@@ -171,10 +172,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
       </div>
 
       {/* ── الكارت الرئيسي ── */}
-      <div
-        className="login-card-shell relative z-10 mx-auto overflow-hidden animate-slide-up"
-        style={{ width: 'min(88vw, 384px)', maxWidth: 'calc(100vw - 2rem)' }}
-      >
+      <div className="login-card-shell relative w-full max-w-sm mx-auto overflow-hidden animate-slide-up">
 
         {/* إطار ضوئي خارجي */}
         <div className="absolute -inset-px bg-gradient-to-b from-white/10 via-transparent to-blue-500/20 rounded-[3rem] pointer-events-none" />
@@ -505,6 +503,8 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
       <p className="relative z-10 mt-8 text-[10px] text-white/15 font-bold text-center tracking-[0.3em] animate-fade-in">
         نظام كنترول الاختبارات الموحد
       </p>
+
+      </div>
 
       <style>{`
         @keyframes fade-in  { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
