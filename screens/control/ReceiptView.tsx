@@ -8,7 +8,8 @@ import {
   Trophy, Zap, History, UserCircle, UserX, AlertCircle,
   X, Lock, Unlock, Camera, ShieldCheck, UserCheck,
   ClipboardCheck, MapPin, Search, GraduationCap, ArrowRight,
-  Activity, Play, CheckCircle
+  Activity, Play, CheckCircle, AlertTriangle, FileText, ShieldAlert,
+  Timer, Inbox, SlidersHorizontal
 } from 'lucide-react';
 import { db } from '../../supabase';
 
@@ -33,6 +34,9 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
   const [isSuccessState, setIsSuccessState] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [isScanning, setIsScanning] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'READY' | 'WAITING' | 'RECEIVED'>('ALL');
+  const [receiptNote, setReceiptNote] = useState('');
+  const [listSearch, setListSearch] = useState('');
   const qrScannerRef = useRef<Html5Qrcode | null>(null);
 
   const todayDate = systemConfig?.active_exam_date || new Date().toISOString().split('T')[0];
@@ -71,7 +75,7 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
 
   const myGrades = useMemo(() => {
     const all = Array.from(new Set(students.map(s => s.grade))).filter(Boolean);
-    if (user.role === 'ADMIN') return all;
+    if (user.role === 'ADMIN' || user.role === 'CONTROL_MANAGER') return all;
     return all.filter(g => user.assigned_grades?.includes(g));
   }, [students, user]);
 
@@ -107,16 +111,68 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
 
   const recentLogs = useMemo(() => {
     return deliveryLogs
-      .filter(l => l.type === 'RECEIVE' && l.status === 'CONFIRMED' && matchDate(l.time, todayDate))
+      .filter(l => l.type === 'RECEIVE' && l.status === 'CONFIRMED' && matchDate(l.time, todayDate) && l.teacher_name === user.full_name)
       .sort((a,b) => b.time.localeCompare(a.time))
       .slice(0, 5);
-  }, [deliveryLogs, todayDate]);
+  }, [deliveryLogs, todayDate, user.full_name]);
 
   const progressPercentage = useMemo(() => {
     const total = Object.keys(myTotalScope).length;
     if (total === 0) return 0;
-    return Math.round((receivedKeys.size / total) * 100);
+    const scopedReceived = Object.keys(myTotalScope).filter(k => receivedKeys.has(k)).length;
+    return Math.round((scopedReceived / total) * 100);
   }, [myTotalScope, receivedKeys]);
+
+  const scopeCards = useMemo(() => {
+    return Object.values(myTotalScope)
+      .map(info => {
+        const isReceived = receivedKeys.has(info.key);
+        const isReady = !isReceived && proctorSubmittedCommittees.has(info.committee);
+        const sv = supervisions.find(s => cleanId(s.committee_number) === info.committee && matchDate(s.date, todayDate));
+        const proctor = users.find(u => u.id === sv?.teacher_id);
+        const confirmedLog = deliveryLogs.find(l => l.status === 'CONFIRMED' && matchDate(l.time, todayDate) && getUniqueKey(l.committee_number, l.grade) === info.key);
+        const pendingLog = deliveryLogs.find(l => l.status === 'PENDING' && matchDate(l.time, todayDate) && getUniqueKey(l.committee_number, l.grade) === info.key);
+        const gradeAbsences = absences.filter(a => a.committee_number === info.committee && a.type === 'ABSENT' && matchDate(a.date, todayDate) && students.find(s => s.national_id === a.student_id)?.grade === info.grade);
+        const gradeLates = absences.filter(a => a.committee_number === info.committee && a.type === 'LATE' && matchDate(a.date, todayDate) && students.find(s => s.national_id === a.student_id)?.grade === info.grade);
+        const openAlerts = controlRequests.filter(r => r.committee === info.committee && r.status !== 'DONE');
+        const status = isReceived ? 'RECEIVED' : isReady ? 'READY' : 'WAITING';
+        return {
+          ...info,
+          status,
+          isReceived,
+          isReady,
+          proctorName: proctor?.full_name || pendingLog?.proctor_name || 'بانتظار المباشرة',
+          receiverName: confirmedLog?.teacher_name || '',
+          receivedAt: confirmedLog?.time || '',
+          closedAt: pendingLog?.time || '',
+          absences: gradeAbsences.length,
+          lates: gradeLates.length,
+          openAlerts,
+        };
+      })
+      .filter(card => {
+        if (statusFilter === 'ALL') return true;
+        return card.status === statusFilter;
+      })
+      .filter(card => {
+        const term = listSearch.trim();
+        if (!term) return true;
+        return card.committee.includes(term) || card.grade.includes(term) || card.proctorName.includes(term);
+      })
+      .sort((a, b) => {
+        const rank = { READY: 0, WAITING: 1, RECEIVED: 2 } as Record<string, number>;
+        return rank[a.status] - rank[b.status] || Number(a.committee) - Number(b.committee) || a.grade.localeCompare(b.grade);
+      });
+  }, [absences, controlRequests, deliveryLogs, listSearch, myTotalScope, proctorSubmittedCommittees, receivedKeys, statusFilter, students, supervisions, todayDate, users]);
+
+  const personalStats = useMemo(() => {
+    const cards = Object.values(myTotalScope);
+    const received = cards.filter(c => receivedKeys.has(c.key)).length;
+    const ready = cards.filter(c => !receivedKeys.has(c.key) && proctorSubmittedCommittees.has(c.committee)).length;
+    const waiting = cards.filter(c => !receivedKeys.has(c.key) && !proctorSubmittedCommittees.has(c.committee)).length;
+    const mineToday = deliveryLogs.filter(l => l.status === 'CONFIRMED' && l.teacher_name === user.full_name && matchDate(l.time, todayDate));
+    return { total: cards.length, received, ready, waiting, mineToday: mineToday.length };
+  }, [deliveryLogs, myTotalScope, proctorSubmittedCommittees, receivedKeys, todayDate, user.full_name]);
 
   // دالة المعالجة الذكية (تقبل رقم لجنة أو رقم هوية مراقب)
   const handleStartProcess = (val: string) => {
@@ -194,6 +250,10 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
     setIsSaving(true);
     try {
       await setDeliveryLogs(newLog);
+      if (receiptNote.trim()) {
+        onAlert(`تم حفظ الاستلام مع ملاحظة: ${receiptNote.trim()}`, 'info');
+      }
+      setReceiptNote('');
       setIsSuccessState(true);
       setTimeout(() => {
         setIsSuccessState(false);
@@ -213,129 +273,129 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
   return (
     <div className="space-y-8 animate-fade-in text-right pb-32 px-4 md:px-0 max-w-7xl mx-auto">
       
-      <div className="flex flex-col md:flex-row justify-between items-end gap-6 border-b pb-8">
-        <div className="space-y-2">
-          <div className="bg-blue-600 text-white px-4 py-1 rounded-lg text-[10px] font-black w-fit shadow-lg uppercase tracking-widest flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
-            غرفة العمليات - التوثيق المركزي
-          </div>
-          <h2 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter uppercase leading-none">مطابقة واستلام المظاريف</h2>
-          <p className="text-slate-400 font-bold italic flex items-center gap-2 tracking-tight mt-2">التاريخ النشط حالياً: {todayDate}</p>
-        </div>
-        
-        {/* Circular Progress */}
-        <div className="flex items-center gap-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
-           <div className="text-right">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">معدل الإنجاز</p>
-              <p className="text-2xl font-black text-slate-900 tabular-nums">{progressPercentage}%</p>
-           </div>
-           <div className="relative w-16 h-16 flex items-center justify-center">
-              <svg className="w-full h-full transform -rotate-90">
-                <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="none" className="text-slate-100" />
-                <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="none" 
-                        className="text-blue-600 transition-all duration-1000 ease-out" 
-                        strokeDasharray="175" 
-                        strokeDashoffset={175 - (175 * progressPercentage) / 100} />
-              </svg>
-              <Activity size={20} className="absolute text-blue-600" />
-           </div>
-        </div>
-      </div>
-
-      {/* Action Ticker */}
-      {recentLogs.length > 0 && (
-        <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-xl flex items-center gap-4 overflow-hidden border border-slate-800">
-           <div className="bg-emerald-500/20 text-emerald-400 p-2 rounded-xl shrink-0"><CheckCircle size={20} className="animate-pulse" /></div>
-           <div className="flex-1 whitespace-nowrap overflow-hidden relative">
-              <div className="animate-ticker inline-flex gap-8 items-center h-full">
-                {recentLogs.map(log => (
-                  <span key={log.id} className="text-sm font-bold flex items-center gap-2">
-                    <span className="text-emerald-400">تم الاستلام:</span> 
-                    لجنة {log.committee_number} - {log.grade}
-                    <span className="text-slate-500 text-[10px] mr-2">
-                      ({new Date(log.time).toLocaleTimeString('ar-SA', {hour: '2-digit', minute:'2-digit'})})
-                    </span>
+      <div className="relative overflow-hidden rounded-[3.5rem] bg-slate-950 text-white shadow-2xl border border-slate-800">
+        <div className="absolute -top-28 -right-28 h-72 w-72 rounded-full bg-blue-600/25 blur-[90px]" />
+        <div className="absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-emerald-500/15 blur-[100px]" />
+        <div className="relative z-10 p-7 md:p-10 space-y-8">
+          <div className="flex flex-col xl:flex-row justify-between gap-8">
+            <div className="space-y-4">
+              <div className="inline-flex items-center gap-2 bg-blue-500/15 border border-blue-400/20 text-blue-200 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                استلام الكنترول الذكي
+              </div>
+              <div>
+                <h2 className="text-4xl md:text-6xl font-black tracking-tight leading-tight">مطابقة واستلام المظاريف</h2>
+                <p className="text-slate-400 font-bold mt-2">شاشة مخصصة لـ {user.full_name} حسب الصفوف المسندة له فقط.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(myGrades.length ? myGrades : ['لا توجد صفوف مسندة']).map(grade => (
+                  <span key={grade} className={`px-4 py-2 rounded-2xl text-[11px] font-black border ${myGrades.length ? 'bg-white/10 border-white/10 text-white' : 'bg-red-500/15 border-red-400/20 text-red-200'}`}>
+                    {grade}
                   </span>
                 ))}
               </div>
-           </div>
-        </div>
-      )}
+            </div>
 
-      {/* كارت المسح الداكن */}
-      <div className="bg-slate-950 rounded-3xl shadow-xl border-b-[5px] border-blue-600 p-5 space-y-4">
-
-        {/* رأس */}
-        <div className="text-center">
-          <div className="inline-flex items-center gap-2 bg-blue-600/20 border border-blue-500/30 text-blue-300 px-3 py-1 rounded-full text-xs font-black mb-2">
-            <Scan size={11} /> وحدة الاستلام السريع
-          </div>
-          <h3 className="text-lg font-black text-white">مسح رقم اللجنة أو كود الموظف</h3>
-          <p className="text-slate-500 text-xs font-bold mt-0.5">امسح بطاقة المراقب أو أدخل الرقم يدوياً</p>
-        </div>
-
-        {/* زر المسح */}
-        <button
-          onClick={() => {
-            setIsScanning(true);
-            setTimeout(async () => {
-              try {
-                const scanner = new Html5Qrcode("receipt-qr-v15");
-                qrScannerRef.current = scanner;
-                await scanner.start(
-                  { facingMode: "environment" },
-                  { fps: 20, qrbox: { width: 260, height: 260 } },
-                  (text) => { handleStartProcess(text); },
-                  () => {}
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-3 min-w-0 xl:min-w-[680px]">
+              {[
+                { label: 'نطاقي', value: personalStats.total, icon: LayoutGrid, cls: 'text-blue-300 bg-blue-500/10 border-blue-400/20' },
+                { label: 'جاهز', value: personalStats.ready, icon: Inbox, cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-400/20' },
+                { label: 'بانتظار', value: personalStats.waiting, icon: Timer, cls: 'text-orange-300 bg-orange-500/10 border-orange-400/20' },
+                { label: 'مستلم', value: personalStats.received, icon: PackageCheck, cls: 'text-teal-300 bg-teal-500/10 border-teal-400/20' },
+                { label: 'إنجازي', value: `${progressPercentage}%`, icon: Activity, cls: 'text-white bg-white/10 border-white/10' },
+              ].map(item => {
+                const Icon = item.icon;
+                return (
+                  <div key={item.label} className={`rounded-[2rem] border p-4 ${item.cls}`}>
+                    <Icon size={24} />
+                    <p className="mt-4 text-3xl font-black tabular-nums">{item.value}</p>
+                    <p className="text-[10px] font-black opacity-70">{item.label}</p>
+                  </div>
                 );
-              } catch { setIsScanning(false); }
-            }, 300);
-          }}
-          className="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white py-5 px-5 rounded-2xl font-black flex items-center justify-center gap-4 shadow-lg transition-all"
-        >
-          <div className="bg-white/20 p-2.5 rounded-xl shrink-0">
-            <Scan size={26} />
+              })}
+            </div>
           </div>
-          <div className="text-right">
-            <p className="font-black text-base leading-tight">مسح باركود اللجنة</p>
-            <p className="text-blue-200 text-xs font-bold opacity-80">بطاقة المراقب أو QR اللجنة</p>
+
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-5">
+            <div className="rounded-[2.5rem] bg-white/[0.04] border border-white/10 p-5 space-y-4">
+              <div className="flex items-center gap-3">
+                <Scan size={22} className="text-blue-300" />
+                <h3 className="font-black text-xl">وحدة الاستلام السريع</h3>
+              </div>
+              <button
+                onClick={() => {
+                  setIsScanning(true);
+                  setTimeout(async () => {
+                    try {
+                      const scanner = new Html5Qrcode("receipt-qr-v15");
+                      qrScannerRef.current = scanner;
+                      await scanner.start(
+                        { facingMode: "environment" },
+                        { fps: 20, qrbox: { width: 260, height: 260 } },
+                        (text) => { handleStartProcess(text); },
+                        () => {}
+                      );
+                    } catch { setIsScanning(false); }
+                  }, 300);
+                }}
+                className="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white py-5 px-5 rounded-2xl font-black flex items-center justify-center gap-4 shadow-lg transition-all"
+              >
+                <Camera size={26} />
+                مسح باركود اللجنة أو بطاقة المراقب
+              </button>
+              <div className="grid grid-cols-[1fr_auto] gap-3">
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={searchInput}
+                  onChange={e => setSearchInput(e.target.value.replace(/\D/g, ''))}
+                  onKeyDown={e => e.key === 'Enter' && searchInput.trim() && handleStartProcess(searchInput)}
+                  placeholder="رقم اللجنة أو هوية المراقب"
+                  className="w-full bg-white/10 border border-white/10 focus:border-blue-400 rounded-2xl px-5 py-4 font-black text-xl text-white outline-none placeholder:text-slate-500"
+                />
+                <button
+                  onClick={() => handleStartProcess(searchInput)}
+                  disabled={!searchInput.trim()}
+                  className="bg-white text-slate-950 disabled:opacity-30 px-6 rounded-2xl font-black transition-all"
+                >
+                  بحث
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-[2.5rem] bg-white/[0.04] border border-white/10 p-5">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-3">
+                  <History size={22} className="text-emerald-300" />
+                  <h3 className="font-black text-xl">سجل استلامي اليوم</h3>
+                </div>
+                <span className="text-[10px] font-black text-slate-400">{todayDate}</span>
+              </div>
+              {recentLogs.length > 0 ? (
+                <div className="space-y-2 max-h-44 overflow-y-auto custom-scrollbar">
+                  {recentLogs.map(log => (
+                    <div key={log.id} className="flex items-center justify-between gap-3 rounded-2xl bg-emerald-500/10 border border-emerald-400/10 p-3">
+                      <div>
+                        <p className="font-black text-sm">لجنة {log.committee_number} · {log.grade}</p>
+                        <p className="text-[10px] font-bold text-emerald-200/80">{log.proctor_name}</p>
+                      </div>
+                      <span className="font-mono text-xs font-black text-emerald-200">{new Date(log.time).toLocaleTimeString('ar-SA', {hour:'2-digit', minute:'2-digit'})}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="h-44 grid place-items-center text-center text-slate-500 font-bold">
+                  <div>
+                    <PackageCheck size={42} className="mx-auto mb-3 opacity-40" />
+                    لم تسجل أي عملية استلام باسمك حتى الآن.
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        </button>
+        </div>
       </div>
-
-      {/* فاصل */}
-      <div className="flex items-center gap-3 px-2">
-        <div className="flex-1 h-px bg-slate-200" />
-        <span className="text-slate-400 text-xs font-black">أو أدخل يدوياً</span>
-        <div className="flex-1 h-px bg-slate-200" />
-      </div>
-
-      {/* كارت الإدخال — أبيض منفصل */}
-      <div className="bg-white rounded-3xl shadow border border-slate-100 p-5 space-y-3">
-        <p className="text-slate-500 text-xs font-black text-center">رقم اللجنة أو رقم هوية الموظف</p>
-        {/* حقل الإدخال */}
-        <input
-          type="tel"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          value={searchInput}
-          onChange={e => setSearchInput(e.target.value.replace(/\D/g, ''))}
-          onKeyDown={e => e.key === 'Enter' && searchInput.trim() && handleStartProcess(searchInput)}
-          placeholder="اكتب الرقم هنا"
-          className="w-full bg-slate-50 border-2 border-slate-200 focus:border-blue-500 rounded-2xl px-5 py-4 font-black text-3xl text-center text-slate-900 outline-none transition-all placeholder:text-slate-300 placeholder:text-base placeholder:font-bold"
-          style={{ letterSpacing: '0.1em' }}
-        />
-        {/* زر التأكيد — عرض كامل وواضح */}
-        <button
-          onClick={() => handleStartProcess(searchInput)}
-          disabled={!searchInput.trim()}
-          className="w-full bg-slate-900 text-white hover:bg-blue-600 active:scale-[0.98] disabled:opacity-30 disabled:cursor-not-allowed py-4 rounded-2xl font-black text-base transition-all flex items-center justify-center gap-3 shadow"
-        >
-          <Play className="fill-current" size={20} />
-          تأكيد البحث
-        </button>
-      </div>
-
 
       {/* شاشة المسح الكامل */}
       {isScanning && (
@@ -445,15 +505,40 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
                           </div>
                         </div>
 
+                        {controlRequests.some(r => r.committee === activeCommitteeId && r.status !== 'DONE') && (
+                          <div className="bg-red-50 border border-red-100 rounded-[2rem] p-5 flex items-start gap-4">
+                            <ShieldAlert size={24} className="text-red-600 shrink-0 mt-1" />
+                            <div className="text-right">
+                              <p className="font-black text-red-900">تنبيه بلاغات مفتوحة</p>
+                              <p className="text-sm font-bold text-red-700 mt-1">
+                                توجد بلاغات لم تغلق لهذه اللجنة. يمكنك الاستلام إذا تمت المطابقة فعلياً، وسيبقى البلاغ ظاهرًا في المتابعة.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="bg-slate-50 p-5 rounded-[2rem] border border-slate-100">
+                          <label className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">
+                            <FileText size={16} />
+                            ملاحظات الاستلام
+                          </label>
+                          <textarea
+                            value={receiptNote}
+                            onChange={e => setReceiptNote(e.target.value)}
+                            placeholder="مثال: تأخر المراقب، نقص ورقة، استلام يدوي..."
+                            className="w-full h-24 bg-white border border-slate-200 rounded-2xl p-4 outline-none focus:border-blue-500 font-bold text-slate-800 resize-none"
+                          />
+                        </div>
+
                        <div className="pt-4">
                          <button 
                            onClick={confirmReceipt} 
                            disabled={isSaving}
-                           className="w-full py-6 bg-emerald-600 text-white rounded-[2rem] font-black text-2xl flex items-center justify-center gap-4 shadow-[0_10px_30px_rgba(16,185,129,0.3)] hover:bg-emerald-700 transition-all active:scale-95 relative overflow-hidden group"
+                           className="w-full py-6 bg-emerald-600 text-white rounded-[2rem] font-black text-xl flex items-center justify-center gap-4 shadow-[0_10px_30px_rgba(16,185,129,0.3)] hover:bg-emerald-700 transition-all active:scale-95 relative overflow-hidden group"
                          >
                             <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                            <Save size={32}/> 
-                            <span>مطابقة وتوثيق الاستلام النهائي</span>
+                            <Save size={28}/> 
+                            <span>استلام هذا الصف</span>
                          </button>
                          <p className="text-center text-[11px] font-bold text-slate-400 mt-4">بالضغط أنت تقر بأنك طابقت الأعداد الفعلية في المظروف مع المسجلة أعلاه.</p>
                        </div>
@@ -464,64 +549,120 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
          </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-         {stats.remainingKeys.length === 0 ? (
-           <div className="col-span-full py-24 bg-emerald-50 rounded-[4rem] border-2 border-dashed border-emerald-200 text-center flex flex-col items-center gap-6">
+      <div className="bg-white rounded-[3rem] border border-slate-100 shadow-xl overflow-hidden">
+        <div className="p-5 md:p-6 border-b border-slate-100 bg-slate-50/60 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <SlidersHorizontal size={22} className="text-blue-600" />
+            <div>
+              <h3 className="text-2xl font-black text-slate-900">قائمة الاستلام المخصصة</h3>
+              <p className="text-xs font-bold text-slate-400 mt-1">تعرض فقط اللجان والصفوف داخل نطاق صلاحيتك.</p>
+            </div>
+          </div>
+          <div className="flex flex-col md:flex-row gap-3">
+            <div className="relative">
+              <Search size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={listSearch}
+                onChange={e => setListSearch(e.target.value)}
+                placeholder="بحث: لجنة، صف، مراقب..."
+                className="w-full md:w-72 pr-10 py-3 bg-white border border-slate-200 rounded-2xl outline-none focus:border-blue-500 font-bold text-sm"
+              />
+            </div>
+            <div className="flex gap-2 overflow-x-auto">
+              {[
+                ['ALL', 'الكل'],
+                ['READY', 'جاهز'],
+                ['WAITING', 'في الطريق/انتظار'],
+                ['RECEIVED', 'مستلم'],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  onClick={() => setStatusFilter(id as any)}
+                  className={`px-4 py-3 rounded-2xl text-xs font-black whitespace-nowrap transition-all ${statusFilter === id ? 'bg-slate-900 text-white shadow-lg' : 'bg-white border border-slate-200 text-slate-500 hover:border-blue-200'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5 md:p-6">
+          {myGrades.length === 0 && user.role === 'CONTROL' ? (
+            <div className="py-24 bg-red-50 rounded-[3rem] border-2 border-dashed border-red-100 text-center flex flex-col items-center gap-5">
+              <ShieldAlert size={70} className="text-red-400" />
+              <h3 className="text-2xl font-black text-red-800">لم تسند لك صفوف استلام بعد</h3>
+              <p className="text-red-500 font-bold">اطلب من رئيس الكنترول تحديد الصفوف الخاصة بك من الصلاحيات.</p>
+            </div>
+          ) : scopeCards.length === 0 ? (
+            <div className="py-24 bg-emerald-50 rounded-[3rem] border-2 border-dashed border-emerald-200 text-center flex flex-col items-center gap-6">
               <Trophy size={80} className="text-emerald-500 animate-bounce" />
-              <h3 className="text-3xl font-black text-emerald-800">اكتمل استلام جميع مظاريف اليوم بنجاح</h3>
-           </div>
-         ) : (
-           stats.remainingKeys.map(key => {
-             const info = myTotalScope[key];
-             const isReady = proctorSubmittedCommittees.has(info.committee);
-              const sv = supervisions.find(s => cleanId(s.committee_number) === info.committee && matchDate(s.date, todayDate));
-             const proctor = users.find(u => u.id === sv?.teacher_id);
-             
-             return (
-               <div key={key} className={`bg-white p-8 rounded-[3.5rem] border-2 shadow-xl transition-all relative overflow-hidden group flex flex-col justify-between ${isReady ? 'border-emerald-400 bg-emerald-50/30 shadow-emerald-500/10 hover:shadow-emerald-500/20' : 'border-slate-50 opacity-80'}`}>
-                  {isReady && (
-                    <>
-                      <div className="absolute top-0 right-0 bg-emerald-500 text-white px-6 py-2 rounded-bl-[1.5rem] font-black text-[9px] uppercase tracking-widest flex items-center gap-2 shadow-md z-10">
-                        <div className="w-2 h-2 rounded-full bg-white animate-pulse"></div> جاهزة للمطابقة
+              <h3 className="text-3xl font-black text-emerald-800">لا توجد عناصر مطابقة لهذا العرض</h3>
+              <p className="text-emerald-600 font-bold">جرّب تغيير الفلتر أو البحث.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {scopeCards.map(card => {
+                const isReady = card.status === 'READY';
+                const isReceived = card.status === 'RECEIVED';
+                const statusClasses = isReceived
+                  ? 'border-emerald-200 bg-emerald-50/50 shadow-emerald-100'
+                  : isReady
+                    ? 'border-blue-300 bg-blue-50/40 shadow-blue-100'
+                    : 'border-orange-100 bg-orange-50/30 shadow-orange-50';
+                return (
+                  <div key={card.key} className={`p-6 rounded-[3rem] border-2 shadow-xl transition-all relative overflow-hidden group flex flex-col min-h-[420px] ${statusClasses}`}>
+                    <div className="absolute -top-16 -right-16 w-40 h-40 bg-white/70 blur-3xl rounded-full pointer-events-none" />
+                    <div className="relative z-10 flex justify-between items-start gap-4">
+                      <div>
+                        <p className="text-[10px] font-black text-slate-400 mb-1">لجنة</p>
+                        <p className="text-7xl font-black leading-none tabular-nums text-slate-950">{card.committee}</p>
                       </div>
-                      <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-400/20 blur-3xl rounded-full pointer-events-none"></div>
-                    </>
-                  )}
+                      <div className="text-left space-y-2">
+                        <span className={`inline-flex px-4 py-2 rounded-2xl text-[10px] font-black ${isReceived ? 'bg-emerald-600 text-white' : isReady ? 'bg-blue-600 text-white' : 'bg-orange-500 text-white'}`}>
+                          {isReceived ? 'تم الاستلام' : isReady ? 'جاهز للاستلام' : 'بانتظار الإغلاق'}
+                        </span>
+                        {card.openAlerts.length > 0 && <span className="block bg-red-600 text-white px-3 py-1 rounded-xl text-[9px] font-black">بلاغ مفتوح</span>}
+                      </div>
+                    </div>
 
-                  <div className="flex justify-between items-start mb-6 relative z-10 mt-2">
-                     <div className="flex flex-col">
-                        <div className="flex items-baseline gap-2">
-                          <span className={`text-6xl font-black leading-none tracking-tighter tabular-nums ${isReady ? 'text-slate-900' : 'text-slate-300'}`}>{info.committee}</span>
+                    <div className="relative z-10 mt-5 space-y-3 flex-1">
+                      <div className="bg-white/80 rounded-2xl border border-white p-4">
+                        <p className="text-[9px] font-black text-slate-400 mb-1">الصف</p>
+                        <p className="font-black text-slate-900 text-xl">{card.grade}</p>
+                      </div>
+                      <div className="bg-white/80 rounded-2xl border border-white p-4">
+                        <p className="text-[9px] font-black text-slate-400 mb-1">المراقب</p>
+                        <p className="font-black text-slate-800 leading-6">{card.proctorName}</p>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-white rounded-2xl p-3 text-center border border-slate-100"><p className="text-[8px] font-black text-slate-400">طلاب</p><p className="font-black text-xl">{card.count}</p></div>
+                        <div className="bg-white rounded-2xl p-3 text-center border border-red-100"><p className="text-[8px] font-black text-red-400">غياب</p><p className="font-black text-xl text-red-600">{card.absences}</p></div>
+                        <div className="bg-white rounded-2xl p-3 text-center border border-amber-100"><p className="text-[8px] font-black text-amber-500">تأخير</p><p className="font-black text-xl text-amber-600">{card.lates}</p></div>
+                      </div>
+                      {(card.closedAt || card.receivedAt) && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="bg-white/70 rounded-2xl p-3 border border-slate-100"><p className="text-[8px] font-black text-slate-400">وقت الإغلاق</p><p className="font-black text-sm">{card.closedAt ? new Date(card.closedAt).toLocaleTimeString('ar-SA', {hour:'2-digit', minute:'2-digit'}) : '--:--'}</p></div>
+                          <div className="bg-white/70 rounded-2xl p-3 border border-slate-100"><p className="text-[8px] font-black text-slate-400">وقت الاستلام</p><p className="font-black text-sm">{card.receivedAt ? new Date(card.receivedAt).toLocaleTimeString('ar-SA', {hour:'2-digit', minute:'2-digit'}) : '--:--'}</p></div>
                         </div>
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">لجنة ميدانية</span>
-                     </div>
-                     <div className={`px-4 py-1.5 rounded-xl text-[10px] font-black ${isReady ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-100 text-slate-400'}`}>
-                        {info.grade}
-                     </div>
-                  </div>
+                      )}
+                    </div>
 
-                  <div className="space-y-4 mb-8 mt-auto relative z-10">
-                     <div className="flex items-center gap-3 p-4 bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-100 shadow-sm transition-all group-hover:bg-white">
-                        <UserCircle size={20} className={isReady ? 'text-slate-700' : 'text-slate-300'} />
-                        <div className="min-w-0 flex-1">
-                           <p className="text-[8px] font-black text-slate-400 uppercase leading-none mb-1">المراقب المسؤول</p>
-                           <p className={`text-sm font-black truncate ${isReady ? 'text-slate-800' : 'text-slate-400'}`}>{proctor?.full_name || 'بانتظار المباشرة...'}</p>
-                        </div>
-                     </div>
+                    <button
+                      onClick={() => {
+                        if (isReady) handleStartProcess(card.committee);
+                      }}
+                      disabled={!isReady}
+                      className={`relative z-10 mt-5 w-full py-5 rounded-[2rem] font-black text-lg transition-all flex items-center justify-center gap-3 shadow-sm ${isReady ? 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95' : isReceived ? 'bg-emerald-100 text-emerald-700 cursor-default' : 'bg-white text-orange-400 cursor-not-allowed border border-orange-100'}`}
+                    >
+                      {isReady ? <>تأكيد الاستلام النهائي <ArrowRight size={20} className="rotate-180" /></> : isReceived ? <><CheckCircle2 size={20} /> مستلم بواسطة {card.receiverName || 'الكنترول'}</> : <><Lock size={18} /> لم تغلق اللجنة بعد</>}
+                    </button>
                   </div>
-
-                  <button 
-                    onClick={() => {
-                      if (isReady) handleStartProcess(info.committee);
-                    }}
-                    className={`w-full py-5 rounded-[2rem] font-black text-lg transition-all flex items-center justify-center gap-3 shadow-sm relative z-10 ${isReady ? 'bg-emerald-500 hover:bg-emerald-600 text-white active:scale-95' : 'bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100'}`}
-                  >
-                     {isReady ? <>استلام سريع <ArrowRight size={20} className="rotate-180" /></> : <><Lock size={18} /> قيد الرصد الميداني</>}
-                  </button>
-               </div>
-             );
-           })
-         )}
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       <style>{`

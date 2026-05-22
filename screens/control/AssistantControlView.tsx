@@ -11,6 +11,7 @@ import {
 import { db } from '../../supabase';
 import TeacherBadgeView from '../proctor/TeacherBadgeView';
 import { useNotificationSound } from '../../hooks/useNotificationSound';
+import { getAbsenceKindLabel, getAbsenceReceipt } from '../../services/absenceReceipt';
 
 interface Props {
   user: User;
@@ -20,6 +21,7 @@ interface Props {
   students?: Student[];
   onAlert: (msg: string, type: string) => void;
   users?: User[];
+  onAcknowledgeAbsence: (absence: Absence) => Promise<void>;
 }
 
 const AssistantControlView: React.FC<Props> = ({ 
@@ -29,12 +31,14 @@ const AssistantControlView: React.FC<Props> = ({
   absences = [], 
   students = [], 
   onAlert, 
-  users = [] 
+  users = [],
+  onAcknowledgeAbsence
 }) => {
   const [activeTab, setActiveTab] = useState<'MISSION_CONTROL' | 'FIELD_LOGS' | 'TEAM_RADAR'>('MISSION_CONTROL');
   const [showBadge, setShowBadge] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [receivingAbsenceId, setReceivingAbsenceId] = useState<string | null>(null);
   const prevUrgentCount = useRef(0);
   const { playAlert } = useNotificationSound();
 
@@ -69,13 +73,23 @@ const AssistantControlView: React.FC<Props> = ({
     if (!soundEnabled) return;
     if (urgentCount > prevUrgentCount.current) {
       playAlert('alert');
+      onAlert(`بلاغ جديد في نطاق عملك: ${urgentCount} بلاغ معلق`, 'warning');
     }
     prevUrgentCount.current = urgentCount;
-  }, [urgentCount, soundEnabled]);
+  }, [urgentCount, soundEnabled, onAlert, playAlert]);
 
   const myCommitteeAbsences = useMemo(() => {
     return absences.filter(a => user.assigned_committees?.includes(a.committee_number));
   }, [absences, user]);
+
+  const acknowledgeAbsence = async (absence: Absence) => {
+    setReceivingAbsenceId(absence.id);
+    try {
+      await onAcknowledgeAbsence(absence);
+    } finally {
+      setReceivingAbsenceId(null);
+    }
+  };
 
   const updateRequestStatus = async (requestId: string, newStatus: 'IN_PROGRESS' | 'DONE', committee: string) => {
     try {
@@ -251,6 +265,7 @@ const AssistantControlView: React.FC<Props> = ({
                 ) : (
                   myCommitteeAbsences.map(a => {
                     const student = students.find(s => s.national_id === a.student_id);
+                    const receipt = getAbsenceReceipt(a);
                     return (
                       <div key={a.id} className="bg-white rounded-[3.5rem] border-2 border-slate-50 p-8 shadow-xl flex flex-col justify-between hover:shadow-2xl transition-all group">
                          <div className="flex justify-between items-start mb-8">
@@ -267,10 +282,30 @@ const AssistantControlView: React.FC<Props> = ({
                                {student?.section && <span className="bg-slate-50 text-slate-500 px-3 py-1 rounded-xl text-[10px] font-black border border-slate-100">فصل {student.section}</span>}
                             </div>
                          </div>
+                         <div className={`mb-3 rounded-2xl border p-4 ${receipt ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+                           <p className="text-xs font-black flex items-center gap-2">
+                             {receipt ? <CheckCircle size={16} /> : <Clock size={16} />}
+                             {receipt ? `تم استلام ${getAbsenceKindLabel(a.type)}` : `بانتظار تأكيد استلام ${getAbsenceKindLabel(a.type)} قبل الاتصال`}
+                           </p>
+                           {receipt && (
+                             <p className="mt-1 text-[10px] font-bold">
+                               {receipt.role}: {receipt.by} - {new Date(receipt.at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+                             </p>
+                           )}
+                         </div>
+                         {!receipt && (
+                           <button
+                             onClick={() => acknowledgeAbsence(a)}
+                             disabled={receivingAbsenceId === a.id}
+                             className="mb-3 w-full py-5 rounded-2xl font-black text-xs flex items-center justify-center gap-3 shadow-xl transition-all bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                           >
+                             <Check size={18} /> {receivingAbsenceId === a.id ? 'جاري تأكيد الاستلام...' : `تأكيد استلام ${getAbsenceKindLabel(a.type)}`}
+                           </button>
+                         )}
                          <button
-                           disabled={!student?.parent_phone}
-                           onClick={() => student?.parent_phone && window.open(`tel:${student.parent_phone}`)}
-                           className={`w-full py-5 rounded-2xl font-black text-xs flex items-center justify-center gap-3 shadow-xl transition-all ${student?.parent_phone ? 'bg-slate-950 text-white hover:bg-black' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
+                           disabled={!receipt || !student?.parent_phone}
+                           onClick={() => receipt && student?.parent_phone && window.open(`tel:${student.parent_phone}`)}
+                           className={`w-full py-5 rounded-2xl font-black text-xs flex items-center justify-center gap-3 shadow-xl transition-all ${receipt && student?.parent_phone ? 'bg-slate-950 text-white hover:bg-black' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
                          >
                            <Phone size={18} /> اتصال بولي الأمر
                          </button>

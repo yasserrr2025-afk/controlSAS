@@ -12,6 +12,7 @@ const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/index.css',
 ];
 
 // ── التثبيت: كاش الأصول الأساسية ──
@@ -48,7 +49,8 @@ self.addEventListener('fetch', (event) => {
   if (
     url.hostname.includes('supabase.co') ||
     url.hostname.includes('esm.sh') ||
-    url.hostname.includes('fonts.googleapis.com')
+    url.hostname.includes('fonts.googleapis.com') ||
+    url.hostname.includes('cdn.tailwindcss.com')
   ) {
     return; // دع المتصفح يتعامل معها مباشرة
   }
@@ -78,4 +80,27 @@ self.addEventListener('message', (event) => {
   if (event.data === 'clearCache') {
     caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))));
   }
+  if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+    self.registration.showNotification(event.data.title || 'كنترول الاختبارات', {
+      body: event.data.body || '',
+      icon: 'https://www.raed.net/img?id=1488645',
+      badge: 'https://www.raed.net/img?id=1488645',
+      dir: 'rtl',
+      lang: 'ar',
+      tag: event.data.tag || 'control-notification',
+    });
+  }
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) return client.focus();
+      }
+      if (clients.openWindow) return clients.openWindow('/');
+      return undefined;
+    })
+  );
 });

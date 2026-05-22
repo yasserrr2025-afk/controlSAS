@@ -7,38 +7,20 @@ import {
   Target, Filter, Zap, MessageSquare, Briefcase,
   MonitorPlay, Fingerprint, Award, TrendingUp,
   Mail, BellRing, UserCheck, ShieldAlert, Info,
-  Timer, Gauge, FileSpreadsheet, FileText, History,
+  Timer, Gauge, FileSpreadsheet, History,
   ArrowRightLeft, UserMinus, UserX, CheckCircle,
   PackageSearch, Unlock, ShieldX, Ghost, Scan,
   UserCog, LogOut, ToggleLeft, ToggleRight,
   Radio, CalendarPlus, AlertOctagon, RefreshCw,
   Plus, X, Check, Navigation, Megaphone,
-  Bell, Command, Shield, RefreshCcw, ArrowRight, UserCircle
+  Bell, Command, Shield, RefreshCcw, ArrowRight, UserCircle,
+  Copy, ExternalLink, Link2, Archive, FileDown, ClipboardList, Siren,
+  WifiOff, DatabaseBackup, MessageCircle, Wand2
 } from 'lucide-react';
-import { User, DeliveryLog, Student, UserRole, SystemConfig, Absence, Supervision } from '../../types';
+import { User, DeliveryLog, Student, UserRole, SystemConfig, Absence, Supervision, ControlRequest } from '../../types';
 import { ROLES_ARABIC } from '../../constants';
-import { APP_CONFIG } from '../../constants';
-import { supabase, db, getActiveTenantId } from '../../supabase';
-
-type ExamScheduleRow = {
-  id: string;
-  date: string;
-  subject: string;
-  period: number;
-};
-
-type SmartPreviewItem = {
-  key: string;
-  scheduleId: string;
-  date: string;
-  subject: string;
-  period: number;
-  committeeNumber: string;
-  teacherId: string;
-  teacherName: string;
-  loadBefore: number;
-  repeatedToday: boolean;
-};
+import { supabase, db, getActiveTenantSlug } from '../../supabase';
+import SmartProctorDistribution, { SmartDistributionItem } from './SmartProctorDistribution';
 
 interface ControlManagerProps {
   users: User[];
@@ -46,44 +28,33 @@ interface ControlManagerProps {
   students: Student[];
   onBroadcast: (msg: string, target: UserRole | 'ALL') => void;
   onUpdateUserGrades: (userId: string, grades: string[]) => void;
-  onUpdateUserCommittees: (userId: string, committees: string[]) => void;
   systemConfig: SystemConfig & { allow_manual_join?: boolean, active_exam_date?: string };
   absences: Absence[];
   supervisions: Supervision[];
+  smartSupervisions?: Supervision[];
+  requests?: ControlRequest[];
   setDeliveryLogs: (log: DeliveryLog) => Promise<void>;
   setSystemConfig: (cfg: any) => Promise<void>;
   onRemoveSupervision: (teacherId: string) => Promise<void>;
   onAssignProctor: (teacherId: string, committeeNumber: string) => Promise<void>;
-  onSmartAssign: (assignments: { teacherId: string; committeeNumber: string; date: string; period: number; subject: string }[], replaceExisting: boolean) => Promise<void>;
+  onCommitSmartDistribution: (items: SmartDistributionItem[], replaceExisting: boolean) => Promise<void>;
 }
 
 const ControlManager: React.FC<ControlManagerProps> = ({ 
-  users, deliveryLogs, students, onBroadcast, onUpdateUserGrades, onUpdateUserCommittees, systemConfig, absences, supervisions, setDeliveryLogs, setSystemConfig, onRemoveSupervision, onAssignProctor, onSmartAssign
+  users, deliveryLogs, students, onBroadcast, onUpdateUserGrades, systemConfig, absences, supervisions, smartSupervisions, requests = [], setDeliveryLogs, setSystemConfig, onRemoveSupervision, onAssignProctor, onCommitSmartDistribution
 }) => {
-  const [activeTab, setActiveTab] = useState<'cockpit' | 'assignments' | 'emergency-receipt' | 'comms' | 'proctors-mgmt'>('cockpit');
+  const [activeTab, setActiveTab] = useState<'cockpit' | 'ops-center' | 'assignments' | 'emergency-receipt' | 'comms' | 'proctors-mgmt'>('cockpit');
   const [broadcastTarget, setBroadcastTarget] = useState<UserRole | 'ALL'>('ALL');
   const [broadcastMsg, setBroadcastMsg] = useState('');
+  const [broadcastTone, setBroadcastTone] = useState<'INFO' | 'URGENT' | 'REMINDER' | 'THANKS'>('INFO');
   const [isResetting, setIsResetting] = useState(false);
   const [assignmentSearch, setAssignmentSearch] = useState('');
+  const [globalSearch, setGlobalSearch] = useState('');
   
   // States for Assigning/Swapping
   const [isAssigning, setIsAssigning] = useState(false);
   const [targetCommittee, setTargetCommittee] = useState<string | null>(null);
   const [proctorSearchInModal, setProctorSearchInModal] = useState('');
-  const [excludedProctorIds, setExcludedProctorIds] = useState<string[]>([]);
-  const [replaceExistingSmart, setReplaceExistingSmart] = useState(false);
-  const [isCommittingSmart, setIsCommittingSmart] = useState(false);
-  const [assignmentHistory, setAssignmentHistory] = useState<Supervision[]>([]);
-  const [smartPreview, setSmartPreview] = useState<SmartPreviewItem[]>([]);
-  const [draggedPreviewKey, setDraggedPreviewKey] = useState<string | null>(null);
-  const [examSchedule, setExamSchedule] = useState<ExamScheduleRow[]>([
-    {
-      id: crypto.randomUUID(),
-      date: systemConfig.active_exam_date || new Date().toISOString().split('T')[0],
-      subject: 'اختبار',
-      period: 1
-    }
-  ]);
 
   const stats = useMemo(() => {
     const totalComs = new Set(students.map(s => s.committee_number)).size;
@@ -98,240 +69,134 @@ const ControlManager: React.FC<ControlManagerProps> = ({
 
   const committeeStatus = useMemo(() => {
     const comNums = Array.from(new Set(students.map(s => s.committee_number))).filter(Boolean).sort((a,b)=>Number(a)-Number(b));
-    const activeDate = systemConfig.active_exam_date || new Date().toISOString().split('T')[0];
     return comNums.map(num => {
-      const sv = supervisions.find(s => s.committee_number === num && s.date?.startsWith(activeDate));
+      const sv = supervisions.find(s => s.committee_number === num);
       const user = users.find(u => u.id === sv?.teacher_id);
       const gradesInCommittee = Array.from(new Set(students.filter(s => s.committee_number === num).map(s => s.grade)));
       return { num, proctor: user, svId: sv?.id, grades: gradesInCommittee };
     });
-  }, [students, supervisions, users, systemConfig.active_exam_date]);
+  }, [students, supervisions, users]);
 
   const availableProctors = useMemo(() => {
-    const activeDate = systemConfig.active_exam_date || new Date().toISOString().split('T')[0];
-    const activeTeacherIds = supervisions.filter(s => s.date?.startsWith(activeDate)).map(s => s.teacher_id);
+    const activeTeacherIds = supervisions.map(s => s.teacher_id);
     return users.filter(u => u.role === 'PROCTOR' && !activeTeacherIds.includes(u.id));
-  }, [users, supervisions, systemConfig.active_exam_date]);
+  }, [users, supervisions]);
 
   const proctorsListForModal = useMemo(() => {
     return users.filter(u => u.role === 'PROCTOR' && (u.full_name.includes(proctorSearchInModal) || u.national_id.includes(proctorSearchInModal)));
   }, [users, proctorSearchInModal]);
-
-  const proctors = useMemo(() => users.filter(u => u.role === 'PROCTOR'), [users]);
-  const activeDate = systemConfig.active_exam_date || new Date().toISOString().split('T')[0];
-
-  useEffect(() => {
-    db.supervision.getAll()
-      .then(setAssignmentHistory)
-      .catch(() => setAssignmentHistory(supervisions));
-  }, [supervisions]);
-
-  const smartStats = useMemo(() => {
-    const counts = proctors.map(proctor => ({
-      id: proctor.id,
-      name: proctor.full_name,
-      count: assignmentHistory.filter(s => s.teacher_id === proctor.id).length
-    }));
-    return {
-      min: counts.length ? Math.min(...counts.map(item => item.count)) : 0,
-      max: counts.length ? Math.max(...counts.map(item => item.count)) : 0,
-      counts
-    };
-  }, [assignmentHistory, proctors]);
-
-  const addScheduleRow = () => {
-    setExamSchedule(prev => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        date: prev[prev.length - 1]?.date || activeDate,
-        subject: '',
-        period: (prev[prev.length - 1]?.period || 0) + 1
-      }
-    ]);
-  };
-
-  const updateScheduleRow = (id: string, patch: Partial<ExamScheduleRow>) => {
-    setExamSchedule(prev => prev.map(row => row.id === id ? { ...row, ...patch } : row));
-  };
-
-  const removeScheduleRow = (id: string) => {
-    setExamSchedule(prev => prev.length === 1 ? prev : prev.filter(row => row.id !== id));
-  };
-
-  const makePreviewKey = (date: string, period: number, committeeNumber: string) => `${date}|${period}|${committeeNumber}`;
-
-  const getExistingForSlot = (date: string, period: number) => {
-    return supervisions.filter(s => s.date?.startsWith(date) && Number(s.period || 1) === Number(period));
-  };
-
-  const generateSmartAssignments = () => {
-    const excluded = new Set(excludedProctorIds);
-    const validSchedule = examSchedule.filter(row => row.date && row.subject.trim() && Number(row.period) > 0);
-    const eligible = proctors.filter(proctor => !excluded.has(proctor.id));
-
-    if (validSchedule.length === 0) {
-      alert('أضف تاريخ الاختبار والمادة والفترة أولاً.');
-      setSmartPreview([]);
-      return;
-    }
-    if (eligible.length === 0) {
-      alert('لا يوجد مراقبون متاحون بعد الاستثناءات.');
-      setSmartPreview([]);
-      return;
-    }
-
-    const preview: SmartPreviewItem[] = [];
-    const usedByDate = new Map<string, Set<string>>();
-    const workingLoad = new Map<string, number>(eligible.map(proctor => [
-      proctor.id,
-      assignmentHistory.filter(s => s.teacher_id === proctor.id).length
-    ]));
-
-    validSchedule.forEach(schedule => {
-      const existingSlot = getExistingForSlot(schedule.date, schedule.period);
-      const occupiedCommittees = new Set(existingSlot.map(s => s.committee_number));
-      const targetCommittees = committeeStatus
-        .filter(com => replaceExistingSmart || !occupiedCommittees.has(com.num))
-        .map(com => com.num);
-
-      if (!usedByDate.has(schedule.date)) {
-        usedByDate.set(schedule.date, new Set(supervisions.filter(s => s.date?.startsWith(schedule.date)).map(s => s.teacher_id)));
-      }
-      const usedToday = usedByDate.get(schedule.date)!;
-
-      targetCommittees.forEach(committeeNumber => {
-        let candidates = eligible.filter(proctor => !usedToday.has(proctor.id));
-        let repeatedToday = false;
-        if (candidates.length === 0) {
-          candidates = eligible;
-          repeatedToday = true;
-        }
-
-        const selected = [...candidates].sort((a, b) => {
-          const loadDiff = (workingLoad.get(a.id) || 0) - (workingLoad.get(b.id) || 0);
-          if (loadDiff !== 0) return loadDiff;
-          return a.full_name.localeCompare(b.full_name, 'ar');
-        })[0];
-
-        const loadBefore = workingLoad.get(selected.id) || 0;
-        preview.push({
-          key: makePreviewKey(schedule.date, schedule.period, committeeNumber),
-          scheduleId: schedule.id,
-          date: schedule.date,
-          subject: schedule.subject.trim(),
-          period: Number(schedule.period),
-          committeeNumber,
-          teacherId: selected.id,
-          teacherName: selected.full_name,
-          loadBefore,
-          repeatedToday
-        });
-        usedToday.add(selected.id);
-        workingLoad.set(selected.id, loadBefore + 1);
-      });
-    });
-
-    if (preview.length === 0) {
-      alert('كل لجان الفترات المحددة مرتبطة حالياً. فعّل خيار إعادة توزيع اللجان المرتبطة إذا أردت توليد توزيع جديد.');
-      setSmartPreview([]);
-      return;
-    }
-
-    setSmartPreview(preview);
-  };
-
-  const swapPreviewAssignments = (sourceKey: string, targetKey: string) => {
-    if (sourceKey === targetKey) return;
-    setSmartPreview(prev => {
-      const source = prev.find(item => item.key === sourceKey);
-      const target = prev.find(item => item.key === targetKey);
-      if (!source || !target) return prev;
-      return prev.map(item => {
-        if (item.key === sourceKey) {
-          return { ...item, teacherId: target.teacherId, teacherName: target.teacherName, loadBefore: target.loadBefore, repeatedToday: target.repeatedToday };
-        }
-        if (item.key === targetKey) {
-          return { ...item, teacherId: source.teacherId, teacherName: source.teacherName, loadBefore: source.loadBefore, repeatedToday: source.repeatedToday };
-        }
-        return item;
-      });
-    });
-  };
-
-  const replacePreviewProctor = (itemKey: string) => {
-    setSmartPreview(prev => {
-      const target = prev.find(item => item.key === itemKey);
-      if (!target) return prev;
-      const usedInSameDate = new Set(prev.filter(item => item.date === target.date && item.key !== itemKey).map(item => item.teacherId));
-      const candidates = proctors
-        .filter(proctor => !excludedProctorIds.includes(proctor.id) && !usedInSameDate.has(proctor.id))
-        .sort((a, b) => {
-          const aLoad = assignmentHistory.filter(s => s.teacher_id === a.id).length;
-          const bLoad = assignmentHistory.filter(s => s.teacher_id === b.id).length;
-          return aLoad - bLoad || a.full_name.localeCompare(b.full_name, 'ar');
-        });
-      const replacement = candidates.find(proctor => proctor.id !== target.teacherId);
-      if (!replacement) {
-        alert('لا يوجد بديل مناسب لهذه اللجنة بعد الاستثناءات.');
-        return prev;
-      }
-      const loadBefore = assignmentHistory.filter(s => s.teacher_id === replacement.id).length;
-      return prev.map(item => item.key === itemKey ? {
-        ...item,
-        teacherId: replacement.id,
-        teacherName: replacement.full_name,
-        loadBefore,
-        repeatedToday: false
-      } : item);
-    });
-  };
-
-  const commitSmartAssignments = async () => {
-    if (smartPreview.length === 0) return;
-    setIsCommittingSmart(true);
-    try {
-      await onSmartAssign(
-        smartPreview.map(item => ({
-          teacherId: item.teacherId,
-          committeeNumber: item.committeeNumber,
-          date: item.date,
-          period: item.period,
-          subject: item.subject
-        })),
-        replaceExistingSmart
-      );
-      onBroadcast(`تم إسناد اللجان للمراقبين. يرجى فتح صفحة رصد اللجنة وتأكيد المباشرة.`, 'PROCTOR');
-      alert(`تم ربط ${smartPreview.length} مراقب باللجان بنجاح.`);
-      setSmartPreview([]);
-    } catch (err: any) {
-      alert(err.message || 'تعذر ربط المراقبين باللجان.');
-    } finally {
-      setIsCommittingSmart(false);
-    }
-  };
-
-  const printSmartReport = () => {
-    if (smartPreview.length === 0) {
-      alert('ولّد التوزيع أولاً حتى تتم طباعة التقرير.');
-      return;
-    }
-    window.print();
-  };
 
   const handleStartNewDay = async () => {
     const today = new Date().toISOString().split('T')[0];
     if (!confirm(`بدء يوم جديد سيقوم بتصفير اللجان لليوم (${today}). هل أنت متأكد؟`)) return;
     setIsResetting(true);
     try {
-      let resetQuery = supabase.from('supervision').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      const tenantId = getActiveTenantId();
-      if (tenantId) resetQuery = resetQuery.eq('tenant_id', tenantId);
-      await resetQuery;
+      await supabase.from('supervision').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       await setSystemConfig({ ...systemConfig, active_exam_date: today });
       onBroadcast(`تم تفعيل يوم الاختبار الجديد (${today}). يرجى المباشرة فوراً.`, 'ALL');
       window.location.reload();
     } catch (err: any) { alert(err.message); } finally { setIsResetting(false); }
+  };
+
+  const studentInquiryUrl = useMemo(() => {
+    const url = new URL(`${window.location.origin}${window.location.pathname}`);
+    url.searchParams.set('student_inquiry', '1');
+    const tenantSlug = getActiveTenantSlug();
+    if (tenantSlug) url.searchParams.set('tenant', tenantSlug);
+    return url.toString();
+  }, []);
+
+  const handleCopyStudentInquiryLink = async () => {
+    try {
+      await navigator.clipboard.writeText(studentInquiryUrl);
+      alert('تم نسخ رابط استعلام الطلاب عن اللجنة.');
+    } catch {
+      window.prompt('انسخ رابط استعلام الطلاب:', studentInquiryUrl);
+    }
+  };
+
+  const todayLogs = useMemo(() => deliveryLogs.filter(l => !systemConfig.active_exam_date || l.time?.startsWith(systemConfig.active_exam_date)), [deliveryLogs, systemConfig.active_exam_date]);
+  const pendingRequests = useMemo(() => requests.filter(r => r.status !== 'DONE'), [requests]);
+  const unassignedCommittees = useMemo(() => committeeStatus.filter(c => !c.proctor), [committeeStatus]);
+  const closedWaitingReceipt = useMemo(() => {
+    return committeeStatus.filter(c => {
+      const hasPending = todayLogs.some(l => l.committee_number === c.num && l.status === 'PENDING');
+      const hasConfirmed = todayLogs.some(l => l.committee_number === c.num && l.status === 'CONFIRMED');
+      return hasPending && !hasConfirmed;
+    });
+  }, [committeeStatus, todayLogs]);
+
+  const smartAlerts = useMemo(() => {
+    const alerts: {title: string; text: string; level: 'red' | 'amber' | 'blue'}[] = [];
+    if (unassignedCommittees.length) alerts.push({ title: 'لجان غير مسندة', text: `${unassignedCommittees.length} لجنة تحتاج مراقبًا قبل بداية الاختبار.`, level: 'red' });
+    if (pendingRequests.length) alerts.push({ title: 'بلاغات مفتوحة', text: `${pendingRequests.length} بلاغ يحتاج متابعة أو إغلاق.`, level: 'red' });
+    if (closedWaitingReceipt.length) alerts.push({ title: 'لجان في الطريق', text: `${closedWaitingReceipt.length} لجنة أغلقت ميدانيًا وتنتظر الاستلام في الكنترول.`, level: 'amber' });
+    if (!alerts.length) alerts.push({ title: 'الوضع مستقر', text: 'لا توجد مؤشرات حرجة حاليًا.', level: 'blue' });
+    return alerts;
+  }, [unassignedCommittees, pendingRequests, closedWaitingReceipt]);
+
+  const timeline = useMemo(() => {
+    const items = [
+      ...supervisions.map(s => ({ time: s.date, type: 'دخول مراقب', title: `لجنة ${s.committee_number}`, text: users.find(u => u.id === s.teacher_id)?.full_name || 'مراقب غير معروف' })),
+      ...todayLogs.map(l => ({ time: l.time, type: l.status === 'CONFIRMED' ? 'استلام كنترول' : 'إغلاق ميداني', title: `لجنة ${l.committee_number}`, text: `${l.grade} - ${l.teacher_name}` })),
+      ...absences.map(a => ({ time: a.date, type: a.type === 'ABSENT' ? 'غياب' : 'تأخر', title: `لجنة ${a.committee_number}`, text: a.student_name })),
+      ...requests.map(r => ({ time: r.time, type: r.status === 'DONE' ? 'إغلاق بلاغ' : 'بلاغ', title: `لجنة ${r.committee}`, text: r.text })),
+    ];
+    return items
+      .filter(i => i.time)
+      .sort((a, b) => String(b.time).localeCompare(String(a.time)))
+      .slice(0, 16);
+  }, [supervisions, todayLogs, absences, requests, users]);
+
+  const searchResults = useMemo(() => {
+    const q = globalSearch.trim();
+    if (!q) return [];
+    return [
+      ...students.filter(s => [s.name, s.national_id, s.committee_number, s.seating_number].some(v => String(v || '').includes(q))).slice(0, 6).map(s => ({ type: 'طالب', title: s.name, sub: `هوية ${s.national_id} - لجنة ${s.committee_number}` })),
+      ...users.filter(u => [u.full_name, u.national_id, u.role].some(v => String(v || '').includes(q))).slice(0, 6).map(u => ({ type: 'مستخدم', title: u.full_name, sub: ROLES_ARABIC[u.role] || u.role })),
+      ...requests.filter(r => [r.committee, r.text, r.from].some(v => String(v || '').includes(q))).slice(0, 6).map(r => ({ type: 'بلاغ', title: `لجنة ${r.committee}`, sub: r.text })),
+    ].slice(0, 12);
+  }, [globalSearch, students, users, requests]);
+
+  const performanceStats = useMemo(() => {
+    const closed = new Set(todayLogs.filter(l => l.status === 'PENDING').map(l => l.committee_number)).size;
+    const confirmed = new Set(todayLogs.filter(l => l.status === 'CONFIRMED').map(l => l.committee_number)).size;
+    const requestCommittees = new Set(requests.map(r => r.committee)).size;
+    return [
+      { label: 'لجان نشطة', value: supervisions.length, icon: UserCheck, color: 'bg-blue-50 text-blue-600' },
+      { label: 'في الطريق للكنترول', value: closed, icon: PackageSearch, color: 'bg-orange-50 text-orange-600' },
+      { label: 'مستلمة نهائيًا', value: confirmed, icon: CheckCircle2, color: 'bg-emerald-50 text-emerald-600' },
+      { label: 'لجان بها بلاغات', value: requestCommittees, icon: Siren, color: 'bg-red-50 text-red-600' },
+    ];
+  }, [todayLogs, requests, supervisions]);
+
+  const exportTodayBackup = () => {
+    const payload = { date: systemConfig.active_exam_date, students, users, supervisions, absences, deliveryLogs, requests, exported_at: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `control-backup-${systemConfig.active_exam_date || new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const archiveTodayLocally = () => {
+    const key = `control_archive_${systemConfig.active_exam_date || new Date().toISOString().slice(0,10)}`;
+    localStorage.setItem(key, JSON.stringify({ students, users, supervisions, absences, deliveryLogs, requests, archived_at: new Date().toISOString() }));
+    alert('تم حفظ أرشيف اليوم محليًا على هذا الجهاز.');
+  };
+
+  const broadcastTemplates = [
+    { tone: 'INFO', title: 'تعليمات عامة', msg: 'تنبيه من الكنترول: يرجى الالتزام بالتعليمات الرسمية ومتابعة إشعارات النظام أولًا بأول.' },
+    { tone: 'URGENT', title: 'تنبيه عاجل', msg: 'تنبيه عاجل من الكنترول: يرجى مراجعة البلاغ فورًا واتخاذ الإجراء المطلوب دون تأخير.' },
+    { tone: 'REMINDER', title: 'تذكير بالإغلاق', msg: 'تذكير من الكنترول: بعد انتهاء اللجنة يرجى إنهاء الإغلاق الرقمي والتوجه للتسليم مباشرة.' },
+    { tone: 'THANKS', title: 'شكر وتقدير', msg: 'شكرًا لتعاونكم. يقدّر الكنترول سرعة الاستجابة ودقة الرصد في اللجان.' },
+  ];
+
+  const formatBroadcast = (msg: string) => {
+    const prefix = broadcastTone === 'URGENT' ? 'عاجل من الكنترول' : broadcastTone === 'REMINDER' ? 'تذكير من الكنترول' : broadcastTone === 'THANKS' ? 'رسالة شكر من الكنترول' : 'تنبيه من الكنترول';
+    return `${prefix}: ${msg.trim()}`;
   };
 
   return (
@@ -358,11 +223,75 @@ const ControlManager: React.FC<ControlManagerProps> = ({
          </div>
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white rounded-[3rem] p-7 border border-orange-100 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex items-center gap-5">
+            <div className="p-4 bg-orange-50 text-orange-600 rounded-2xl shadow-inner">
+              <Link2 size={30} />
+            </div>
+            <div>
+              <h3 className="text-2xl font-black text-slate-900">رابط استعلام الطلاب عن لجانهم</h3>
+              <p className="text-sm font-bold text-slate-500 mt-1">صفحة عامة للطلاب برقم الهوية، بعنوان: استعلام عن اللجنة.</p>
+              <p className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-xs font-black text-slate-500 break-all" dir="ltr">{studentInquiryUrl}</p>
+            </div>
+          </div>
+          <div className="flex shrink-0 gap-3">
+            <button onClick={handleCopyStudentInquiryLink} className="h-14 w-14 rounded-2xl bg-slate-950 text-white flex items-center justify-center shadow-xl hover:bg-orange-600 transition-all" title="نسخ الرابط">
+              <Copy size={22} />
+            </button>
+            <button onClick={() => window.open(studentInquiryUrl, '_blank')} className="h-14 w-14 rounded-2xl bg-orange-500 text-white flex items-center justify-center shadow-xl hover:bg-orange-600 transition-all" title="فتح الرابط">
+              <ExternalLink size={22} />
+            </button>
+          </div>
+        </div>
+
+        <button onClick={() => { localStorage.setItem('activeTab', 'control-monitor'); window.location.reload(); }} className="bg-slate-950 rounded-[3rem] p-7 text-white border border-white/10 shadow-xl text-right group overflow-hidden relative">
+          <div className="absolute inset-0 bg-orange-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          <div className="relative z-10 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black text-orange-300 uppercase tracking-widest mb-2">TV Display</p>
+              <h3 className="text-2xl font-black">لوحة العرض والتحكم</h3>
+              <p className="text-xs font-bold text-slate-400 mt-2">تغيير التقسيمات وعرض حالة اللجان مباشرة.</p>
+            </div>
+            <MonitorPlay className="text-orange-400 group-hover:scale-110 transition-transform" size={42} />
+          </div>
+        </button>
+      </div>
+
+      <div className="bg-white rounded-[3rem] border border-slate-100 shadow-xl p-6">
+        <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_1fr] gap-6">
+          <div className="space-y-4">
+            <div className="relative">
+              <Search size={22} className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input value={globalSearch} onChange={e => setGlobalSearch(e.target.value)} placeholder="بحث شامل: طالب، هوية، لجنة، مراقب، بلاغ..." className="w-full bg-slate-50 border-2 border-slate-100 rounded-[2rem] py-5 pr-14 pl-5 font-black outline-none focus:border-blue-500" />
+            </div>
+            {globalSearch && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {searchResults.length ? searchResults.map((r, i) => (
+                  <div key={i} className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    <span className="text-[10px] font-black text-blue-600">{r.type}</span>
+                    <p className="font-black text-slate-900 mt-1">{r.title}</p>
+                    <p className="text-xs font-bold text-slate-500 truncate">{r.sub}</p>
+                  </div>
+                )) : <p className="text-center text-slate-400 font-black py-6">لا توجد نتائج مطابقة.</p>}
+              </div>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button onClick={exportTodayBackup} className="p-5 rounded-3xl bg-slate-950 text-white text-right shadow-xl hover:bg-blue-700 transition-all"><DatabaseBackup size={26} className="mb-3 text-orange-300" /><p className="font-black">نسخ احتياطي</p><p className="text-[10px] text-slate-400 font-bold mt-1">JSON لبيانات اليوم</p></button>
+            <button onClick={archiveTodayLocally} className="p-5 rounded-3xl bg-orange-500 text-white text-right shadow-xl hover:bg-orange-600 transition-all"><Archive size={26} className="mb-3" /><p className="font-black">أرشفة اليوم</p><p className="text-[10px] text-orange-100 font-bold mt-1">حفظ محلي سريع</p></button>
+            <button onClick={() => setActiveTab('ops-center')} className="p-5 rounded-3xl bg-blue-600 text-white text-right shadow-xl hover:bg-blue-700 transition-all"><ClipboardList size={26} className="mb-3" /><p className="font-black">مركز البلاغات</p><p className="text-[10px] text-blue-100 font-bold mt-1">الأولوية والسجل</p></button>
+            <button onClick={() => { localStorage.setItem('activeTab', 'daily-reports'); window.location.reload(); }} className="p-5 rounded-3xl bg-emerald-600 text-white text-right shadow-xl hover:bg-emerald-700 transition-all"><FileDown size={26} className="mb-3" /><p className="font-black">تقرير نهاية اليوم</p><p className="text-[10px] text-emerald-100 font-bold mt-1">طباعة وتصدير</p></button>
+          </div>
+        </div>
+      </div>
+
       {/* Tabs */}
       <div className="flex justify-center overflow-x-auto pb-4 custom-scrollbar">
          <div className="bg-white p-2 rounded-[2.5rem] shadow-xl border flex gap-2 w-full max-w-6xl shrink-0">
             {[
               {id: 'cockpit', label: 'الرؤية العامة', icon: MonitorPlay},
+              {id: 'ops-center', label: 'مركز العمليات', icon: ClipboardList},
               {id: 'assignments', label: 'إسناد الصلاحيات', icon: Layers},
               {id: 'proctors-mgmt', label: 'إدارة المراقبين', icon: UserCog},
               {id: 'emergency-receipt', label: 'استلام طوارئ', icon: ShieldAlert},
@@ -379,234 +308,13 @@ const ControlManager: React.FC<ControlManagerProps> = ({
       {/* Proctor Management Tab - Enhanced with Replacement System */}
       {activeTab === 'proctors-mgmt' && (
         <div className="space-y-8 animate-slide-up">
-           <div className="bg-white p-8 rounded-[3.5rem] border-2 border-blue-50 shadow-2xl no-print">
-              <div className="flex flex-col xl:flex-row justify-between gap-8">
-                 <div className="space-y-3 max-w-2xl">
-                    <div className="flex items-center gap-4">
-                       <div className="p-4 bg-blue-600 text-white rounded-2xl shadow-xl"><Zap size={28}/></div>
-                       <div>
-                          <h3 className="text-2xl font-black text-slate-900">التوزيع الذكي للمراقبين</h3>
-                          <p className="text-sm font-bold text-slate-400">يوزع اللجان على الأقل دخولاً أولاً، ويمنع تكرار المراقب في نفس اليوم قدر الإمكان.</p>
-                       </div>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                       <div className="bg-slate-50 p-4 rounded-2xl">
-                          <p className="text-[10px] font-black text-slate-400">اللجان</p>
-                          <p className="text-2xl font-black text-slate-900">{committeeStatus.length}</p>
-                       </div>
-                       <div className="bg-slate-50 p-4 rounded-2xl">
-                          <p className="text-[10px] font-black text-slate-400">غير مرتبطة</p>
-                          <p className="text-2xl font-black text-blue-600">{committeeStatus.filter(com => !com.proctor).length}</p>
-                       </div>
-                       <div className="bg-slate-50 p-4 rounded-2xl">
-                          <p className="text-[10px] font-black text-slate-400">المتاحون</p>
-                          <p className="text-2xl font-black text-emerald-600">{proctors.length - excludedProctorIds.length}</p>
-                       </div>
-                       <div className="bg-slate-50 p-4 rounded-2xl">
-                          <p className="text-[10px] font-black text-slate-400">فرق العدالة</p>
-                          <p className="text-2xl font-black text-indigo-600">{Math.max(0, smartStats.max - smartStats.min)}</p>
-                       </div>
-                    </div>
-                 </div>
-
-                 <div className="w-full xl:w-[28rem] space-y-4">
-                    <button
-                      onClick={() => setReplaceExistingSmart(prev => !prev)}
-                      className={`w-full p-4 rounded-2xl border-2 font-black text-sm flex items-center justify-between transition-all ${replaceExistingSmart ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-slate-50 border-slate-100 text-slate-500'}`}
-                    >
-                       <span>إعادة توزيع اللجان المرتبطة</span>
-                       {replaceExistingSmart ? <ToggleRight/> : <ToggleLeft/>}
-                    </button>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                       <button onClick={generateSmartAssignments} className="bg-blue-600 text-white py-4 rounded-2xl font-black text-sm shadow-xl hover:bg-blue-700 flex items-center justify-center gap-2">
-                          <Zap size={18}/> توليد
-                       </button>
-                       <button onClick={commitSmartAssignments} disabled={smartPreview.length === 0 || isCommittingSmart} className="bg-slate-950 text-white py-4 rounded-2xl font-black text-sm shadow-xl hover:bg-black disabled:opacity-40 flex items-center justify-center gap-2">
-                          <CheckCircle2 size={18}/> ربط
-                       </button>
-                       <button onClick={printSmartReport} disabled={smartPreview.length === 0} className="bg-emerald-600 text-white py-4 rounded-2xl font-black text-sm shadow-xl hover:bg-emerald-700 disabled:opacity-40 flex items-center justify-center gap-2">
-                          <FileText size={18}/> طباعة
-                       </button>
-                    </div>
-                 </div>
-              </div>
-
-              <div className="mt-8 bg-blue-50/60 p-5 rounded-[2rem] border border-blue-100">
-                 <div className="flex flex-col md:flex-row justify-between gap-4 mb-4">
-                    <div>
-                       <h4 className="font-black text-slate-900 flex items-center gap-2"><CalendarPlus size={18} className="text-blue-600"/> أيام وفترات الاختبار</h4>
-                       <p className="text-xs font-bold text-slate-500 mt-1">أضف الأيام الباقية وحدد المادة والفترة، ثم ولّد التوزيع لها دفعة واحدة.</p>
-                    </div>
-                    <button onClick={addScheduleRow} className="bg-blue-600 text-white px-5 py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg">
-                      <Plus size={18}/> إضافة يوم/فترة
-                    </button>
-                 </div>
-                 <div className="space-y-3">
-                    {examSchedule.map(row => (
-                      <div key={row.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_8rem_3rem] gap-3 bg-white p-3 rounded-2xl border border-blue-100">
-                         <input type="date" value={row.date} onChange={e => updateScheduleRow(row.id, { date: e.target.value })} className="bg-slate-50 rounded-xl px-4 py-3 font-bold outline-none border border-slate-100 focus:border-blue-400" />
-                         <input type="text" value={row.subject} onChange={e => updateScheduleRow(row.id, { subject: e.target.value })} placeholder="المادة" className="bg-slate-50 rounded-xl px-4 py-3 font-bold outline-none border border-slate-100 focus:border-blue-400" />
-                         <select value={row.period} onChange={e => updateScheduleRow(row.id, { period: Number(e.target.value) })} className="bg-slate-50 rounded-xl px-4 py-3 font-bold outline-none border border-slate-100 focus:border-blue-400">
-                            {[1, 2, 3, 4].map(period => <option key={period} value={period}>الفترة {period}</option>)}
-                         </select>
-                         <button onClick={() => removeScheduleRow(row.id)} className="bg-red-50 text-red-500 rounded-xl flex items-center justify-center hover:bg-red-100">
-                            <X size={18}/>
-                         </button>
-                      </div>
-                    ))}
-                 </div>
-              </div>
-
-              <div className="mt-8 grid grid-cols-1 xl:grid-cols-2 gap-6">
-                 <div className="bg-slate-50 p-5 rounded-[2rem] border border-slate-100">
-                    <h4 className="font-black text-slate-800 mb-4 flex items-center gap-2"><UserMinus size={18} className="text-red-500"/> استثناء مراقبين لهذا اليوم</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto custom-scrollbar">
-                       {proctors.map(proctor => {
-                         const isExcluded = excludedProctorIds.includes(proctor.id);
-                         const load = smartStats.counts.find(item => item.id === proctor.id)?.count || 0;
-                         return (
-                           <button
-                             key={proctor.id}
-                             onClick={() => setExcludedProctorIds(prev => isExcluded ? prev.filter(id => id !== proctor.id) : [...prev, proctor.id])}
-                             className={`p-3 rounded-2xl text-right border-2 transition-all ${isExcluded ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-white text-slate-700 hover:border-blue-200'}`}
-                           >
-                              <p className="font-black text-sm truncate">{proctor.full_name}</p>
-                              <p className="text-[10px] font-bold opacity-60">دخول سابق: {load}</p>
-                           </button>
-                         );
-                       })}
-                    </div>
-                 </div>
-
-                 <div className="bg-slate-950 p-5 rounded-[2rem] text-white">
-                    <h4 className="font-black mb-4 flex items-center gap-2"><Filter size={18} className="text-blue-400"/> معاينة التوزيع قبل الاعتماد</h4>
-                    <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                       {smartPreview.map(item => (
-                         <div
-                           key={item.key}
-                           draggable
-                           onDragStart={() => setDraggedPreviewKey(item.key)}
-                           onDragOver={e => e.preventDefault()}
-                           onDrop={() => {
-                             if (draggedPreviewKey) swapPreviewAssignments(draggedPreviewKey, item.key);
-                             setDraggedPreviewKey(null);
-                           }}
-                           className="bg-white/5 border border-white/10 rounded-2xl p-3 flex items-center justify-between gap-3 cursor-move"
-                         >
-                            <div>
-                               <p className="font-black text-sm">{item.teacherName}</p>
-                               <p className="text-[10px] text-slate-400">{item.date} - فترة {item.period} - {item.subject}</p>
-                               <p className="text-[10px] text-slate-400">دخول سابق: {item.loadBefore}{item.repeatedToday ? ' - تكرار اضطراري' : ''}</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button onClick={() => replacePreviewProctor(item.key)} className="bg-white/10 hover:bg-white/20 text-white px-3 py-1 rounded-xl font-black text-[10px] flex items-center gap-1">
-                                <ArrowRightLeft size={12}/> استبدال
-                              </button>
-                              <span className="bg-blue-600 text-white px-3 py-1 rounded-xl font-black text-xs">لجنة {item.committeeNumber}</span>
-                            </div>
-                          </div>
-                        ))}
-                       {smartPreview.length === 0 && (
-                         <div className="h-40 flex items-center justify-center text-slate-500 font-black text-sm border border-dashed border-white/10 rounded-2xl">
-                            لم يتم توليد توزيع بعد
-                         </div>
-                       )}
-                    </div>
-                 </div>
-              </div>
-           </div>
-
-           <div className="print-only smart-assignment-report" dir="rtl">
-              <style>{`
-                .smart-assignment-report { display: none; }
-                @media print {
-                  body * { visibility: hidden !important; }
-                  .smart-assignment-report,
-                  .smart-assignment-report * { visibility: visible !important; }
-                  .smart-assignment-report {
-                    display: block !important;
-                    position: absolute;
-                    inset: 0;
-                    font-family: Tajawal, Arial, sans-serif;
-                    color: #111827;
-                    padding: 10mm 12mm;
-                    background: white;
-                  }
-                  .smart-assignment-report table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin-top: 6mm;
-                    font-size: 11pt;
-                  }
-                  .smart-assignment-report th,
-                  .smart-assignment-report td {
-                    border: 1px solid #111827;
-                    padding: 7px;
-                   text-align: center;
-                  }
-                  .smart-assignment-report th { background: #f1f5f9; }
-                  @page { size: A4 portrait; margin: 8mm; }
-                }
-              `}</style>
-              <div style={{ borderBottom: '4px double #111827', paddingBottom: '4mm', marginBottom: '7mm' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 1fr', alignItems: 'center', gap: '8mm' }}>
-                  <div style={{ textAlign: 'right', fontWeight: 900, fontSize: '10pt', lineHeight: 1.8 }}>
-                    <p>المملكة العربية السعودية</p>
-                    <p>{APP_CONFIG.MINISTRY_NAME}</p>
-                    <p>{APP_CONFIG.ADMINISTRATION_NAME}</p>
-                    <p>{APP_CONFIG.SCHOOL_NAME}</p>
-                  </div>
-                  <div style={{ textAlign: 'center' }}>
-                    <img src={APP_CONFIG.LOGO_URL} alt="شعار" style={{ width: '22mm', height: '22mm', objectFit: 'contain', margin: '0 auto' }} />
-                    <p style={{ fontSize: '7pt', fontWeight: 800, color: '#475569', marginTop: '1mm' }}>نظام الكنترول المطور</p>
-                  </div>
-                  <div style={{ textAlign: 'left', fontWeight: 800, fontSize: '10pt', lineHeight: 1.8 }}>
-                    <p>التاريخ: {new Date().toLocaleDateString('ar-SA')}</p>
-                    <p>اليوم: {new Intl.DateTimeFormat('ar-SA', { weekday: 'long' }).format(new Date())}</p>
-                    <p>المرفقات: تقرير توزيع المراقبين</p>
-                  </div>
-                </div>
-              </div>
-              <div className="text-center">
-                 <h1 style={{ fontSize: '18pt', fontWeight: 900 }}>تقرير توزيع المراقبين على اللجان</h1>
-                 <p style={{ marginTop: '2mm', fontWeight: 700 }}>توزيع متعدد الأيام والفترات</p>
-              </div>
-              <table>
-                 <thead>
-                   <tr>
-                     <th>م</th>
-                     <th>رقم اللجنة</th>
-                     <th>التاريخ</th>
-                     <th>المادة</th>
-                     <th>الفترة</th>
-                     <th>اسم المراقب</th>
-                     <th>عدد مرات الدخول السابقة</th>
-                     <th>توقيع المراقب</th>
-                     <th>ملاحظات</th>
-                   </tr>
-                 </thead>
-                 <tbody>
-                   {smartPreview.map((item, index) => (
-                     <tr key={item.key}>
-                       <td>{index + 1}</td>
-                       <td>{item.committeeNumber}</td>
-                       <td>{item.date}</td>
-                       <td>{item.subject}</td>
-                       <td>{item.period}</td>
-                       <td>{item.teacherName}</td>
-                       <td>{item.loadBefore}</td>
-                       <td style={{ height: '12mm' }}></td>
-                       <td>{item.repeatedToday ? 'تكرار اضطراري لنقص العدد' : ''}</td>
-                     </tr>
-                   ))}
-                 </tbody>
-              </table>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '18mm', fontWeight: 800 }}>
-                 <span>مسؤول الكنترول: ....................</span>
-                 <span>التوقيع: ....................</span>
-                 <span>التاريخ: ....................</span>
-              </div>
-           </div>
+           <SmartProctorDistribution
+             users={users}
+             students={students}
+             supervisions={smartSupervisions || supervisions}
+             activeDate={systemConfig.active_exam_date}
+             onCommit={onCommitSmartDistribution}
+           />
 
            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
               <div className="lg:col-span-1 bg-slate-950 p-8 rounded-[3.5rem] text-white shadow-2xl border-b-8 border-emerald-500 overflow-hidden relative">
@@ -749,6 +457,84 @@ const ControlManager: React.FC<ControlManagerProps> = ({
          </div>
       )}
 
+      {activeTab === 'ops-center' && (
+        <div className="space-y-8 animate-slide-up">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+            {performanceStats.map(item => (
+              <div key={item.label} className="bg-white rounded-[2.5rem] p-6 border border-slate-100 shadow-xl flex items-center gap-5">
+                <div className={`p-4 rounded-2xl ${item.color}`}><item.icon size={28} /></div>
+                <div>
+                  <p className="text-4xl font-black text-slate-950 tabular-nums">{item.value}</p>
+                  <p className="text-xs font-black text-slate-500 mt-1">{item.label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+            <div className="xl:col-span-1 space-y-5">
+              <div className="bg-slate-950 text-white rounded-[3rem] p-7 shadow-2xl">
+                <h3 className="text-2xl font-black mb-5 flex items-center gap-3"><Siren className="text-red-400" /> التنبيهات الذكية</h3>
+                <div className="space-y-3">
+                  {smartAlerts.map((a, i) => (
+                    <div key={i} className={`p-4 rounded-2xl border ${a.level === 'red' ? 'bg-red-500/10 border-red-500/20 text-red-100' : a.level === 'amber' ? 'bg-orange-500/10 border-orange-500/20 text-orange-100' : 'bg-blue-500/10 border-blue-500/20 text-blue-100'}`}>
+                      <p className="font-black">{a.title}</p>
+                      <p className="text-xs font-bold opacity-80 mt-1">{a.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-[3rem] p-7 border border-slate-100 shadow-xl">
+                <h3 className="text-xl font-black text-slate-900 mb-5 flex items-center gap-3"><WifiOff className="text-orange-500" /> وضع الطوارئ</h3>
+                <p className="text-sm font-bold text-slate-500 leading-7">عند انقطاع الإنترنت تحفظ شاشة المراقب التغييرات محليًا وتزامنها عند عودة الاتصال. استخدم النسخ الاحتياطي قبل بدء يوم جديد.</p>
+                <button onClick={exportTodayBackup} className="mt-5 w-full bg-slate-950 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2"><FileDown size={18} /> تصدير نسخة الآن</button>
+              </div>
+            </div>
+
+            <div className="xl:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="bg-white rounded-[3rem] p-7 border border-slate-100 shadow-xl min-h-[520px]">
+                <h3 className="text-2xl font-black text-slate-900 mb-6 flex items-center gap-3"><History className="text-blue-600" /> سجل العمليات الزمني</h3>
+                <div className="space-y-4 max-h-[430px] overflow-y-auto custom-scrollbar pr-2">
+                  {timeline.map((item, i) => (
+                    <div key={i} className="flex gap-4">
+                      <div className="w-3 flex flex-col items-center">
+                        <div className="w-3 h-3 rounded-full bg-blue-600 mt-2"></div>
+                        <div className="w-px flex-1 bg-slate-200"></div>
+                      </div>
+                      <div className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[10px] font-black text-blue-600">{item.type}</span>
+                          <span className="text-[10px] font-mono text-slate-400">{new Date(item.time).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <p className="font-black text-slate-900 mt-1">{item.title}</p>
+                        <p className="text-xs font-bold text-slate-500 truncate">{item.text}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-[3rem] p-7 border border-slate-100 shadow-xl min-h-[520px]">
+                <h3 className="text-2xl font-black text-slate-900 mb-6 flex items-center gap-3"><MessageCircle className="text-red-600" /> مركز البلاغات</h3>
+                <div className="space-y-4 max-h-[430px] overflow-y-auto custom-scrollbar pr-2">
+                  {requests.length ? requests.slice(0, 16).map(req => (
+                    <div key={req.id} className={`p-5 rounded-2xl border ${req.status === 'DONE' ? 'bg-emerald-50 border-emerald-100' : req.status === 'IN_PROGRESS' ? 'bg-blue-50 border-blue-100' : 'bg-red-50 border-red-100'}`}>
+                      <div className="flex items-center justify-between">
+                        <span className="bg-slate-950 text-white px-3 py-1 rounded-xl text-xs font-black">لجنة {req.committee}</span>
+                        <span className="text-[10px] font-black text-slate-500">{req.status === 'DONE' ? 'مغلق' : req.status === 'IN_PROGRESS' ? 'قيد المتابعة' : 'عاجل'}</span>
+                      </div>
+                      <p className="font-black text-slate-900 mt-3 leading-7">{req.text}</p>
+                      <p className="text-xs font-bold text-slate-500 mt-2">{req.from} - {new Date(req.time).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</p>
+                    </div>
+                  )) : <p className="text-center text-slate-300 font-black py-20">لا توجد بلاغات مسجلة.</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Cockpit - Overview */}
       {activeTab === 'cockpit' && (
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-slide-up">
@@ -871,7 +657,7 @@ const ControlManager: React.FC<ControlManagerProps> = ({
                                return (
                                  <button key={com} onClick={async () => {
                                     const updated = isActive ? user.assigned_committees!.filter(c => c !== com) : [...(user.assigned_committees || []), com];
-                                    await onUpdateUserCommittees(user.id, updated);
+                                    await supabase.from('users').update({ assigned_committees: updated }).eq('id', user.id);
                                  }} className={`px-5 py-2.5 rounded-2xl font-black text-xs transition-all border-2 flex items-center gap-2 ${isActive ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-400 hover:border-indigo-200'}`}>
                                     {isActive ? <Check size={14}/> : <Plus size={14}/>}
                                     لجنة {com}
@@ -890,6 +676,33 @@ const ControlManager: React.FC<ControlManagerProps> = ({
       {/* Comms Tab */}
       {activeTab === 'comms' && (
         <div className="space-y-8 animate-slide-up">
+           <div className="bg-slate-950 text-white p-8 rounded-[3rem] shadow-2xl border border-white/10">
+             <h3 className="text-3xl font-black mb-6 flex items-center gap-3"><Wand2 className="text-orange-300" /> قوالب بث إعلامي محسّنة</h3>
+             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
+               {broadcastTemplates.map(t => (
+                 <button key={t.title} onClick={() => { setBroadcastTone(t.tone as any); setBroadcastMsg(t.msg); }} className="p-4 rounded-2xl bg-white/5 border border-white/10 text-right hover:bg-white/10 transition-all">
+                   <p className="font-black">{t.title}</p>
+                   <p className="text-[10px] font-bold text-slate-400 mt-1 line-clamp-2">{t.msg}</p>
+                 </button>
+               ))}
+             </div>
+             <div className="flex flex-wrap gap-2 mb-6">
+               {[
+                 { id: 'INFO', label: 'معلومة' },
+                 { id: 'URGENT', label: 'عاجل' },
+                 { id: 'REMINDER', label: 'تذكير' },
+                 { id: 'THANKS', label: 'شكر' },
+               ].map(t => (
+                 <button key={t.id} onClick={() => setBroadcastTone(t.id as any)} className={`px-5 py-3 rounded-2xl text-xs font-black border transition-all ${broadcastTone === t.id ? 'bg-orange-500 border-orange-500 text-white' : 'border-white/10 text-slate-400 hover:bg-white/5'}`}>{t.label}</button>
+               ))}
+             </div>
+             {broadcastMsg.trim() && (
+               <div className="p-5 rounded-2xl bg-white/5 border border-white/10">
+                 <p className="text-[10px] font-black text-orange-300 mb-1">معاينة صياغة الرسالة قبل البث</p>
+                 <p className="font-black leading-7">{formatBroadcast(broadcastMsg)}</p>
+               </div>
+             )}
+           </div>
            <div className="bg-white p-12 rounded-[4rem] border shadow-2xl relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/5 blur-3xl rounded-full"></div>
               <h3 className="text-3xl font-black text-slate-900 mb-10 flex items-center gap-4"><Megaphone size={32} className="text-blue-600" /> بث التعليمات والبلاغات</h3>
@@ -909,7 +722,7 @@ const ControlManager: React.FC<ControlManagerProps> = ({
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">نص البلاغ / التعليمات</label>
                     <textarea value={broadcastMsg} onChange={e => setBroadcastMsg(e.target.value)} placeholder="اكتب التعليمات هنا بوضوح..." className="w-full bg-slate-50 border-2 border-slate-100 rounded-[2.5rem] p-8 font-bold text-lg h-48 outline-none focus:border-blue-600 transition-all shadow-inner resize-none" />
                  </div>
-                 <button onClick={() => { if(broadcastMsg.trim()) { onBroadcast(broadcastMsg, broadcastTarget); setBroadcastMsg(''); alert('تم بث البلاغ'); } }} disabled={!broadcastMsg.trim()} className="w-full py-8 bg-blue-600 text-white rounded-[2.5rem] font-black text-2xl flex items-center justify-center gap-6 shadow-2xl hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50">
+                 <button onClick={() => { if(broadcastMsg.trim()) { onBroadcast(formatBroadcast(broadcastMsg), broadcastTarget); setBroadcastMsg(''); alert('تم بث الرسالة بنجاح'); } }} disabled={!broadcastMsg.trim()} className="w-full py-8 bg-blue-600 text-white rounded-[2.5rem] font-black text-2xl flex items-center justify-center gap-6 shadow-2xl hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50">
                     <Send size={32}/> بث التعليمات الآن
                  </button>
               </div>

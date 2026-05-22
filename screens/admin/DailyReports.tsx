@@ -1,10 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Supervision, User, Student, DeliveryLog, SystemConfig, CommitteeReport } from '../../types';
+import { Supervision, User, Student, DeliveryLog, SystemConfig, CommitteeReport, Absence, ControlRequest } from '../../types';
 import {
   Printer, FileSpreadsheet, Search, CheckCircle2, Download,
-  ClipboardList, Package, AlertTriangle, PenLine
+  ClipboardList, Package, AlertTriangle, Trophy, Timer, BellRing, UserRoundCheck
 } from 'lucide-react';
 import { APP_CONFIG } from '../../constants';
 
@@ -15,6 +15,8 @@ interface Props {
   deliveryLogs?: DeliveryLog[];
   systemConfig: SystemConfig;
   committeeReports?: CommitteeReport[];
+  absences?: Absence[];
+  controlRequests?: ControlRequest[];
 }
 
 /* ── تصدير CSV ── */
@@ -35,14 +37,6 @@ function safeTime(isoStr?: string) {
     if (isNaN(d.getTime())) return '---';
     return d.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
   } catch { return '---'; }
-}
-
-function firstTime(logs: DeliveryLog[]) {
-  return logs.map(l => l.time).filter(Boolean).sort((a, b) => a.localeCompare(b))[0];
-}
-
-function lastTime(logs: DeliveryLog[]) {
-  return logs.map(l => l.time).filter(Boolean).sort((a, b) => b.localeCompare(a))[0];
 }
 
 /* ── مطابقة التاريخ بمرونة ── */
@@ -199,7 +193,8 @@ const PrintableMonitorSheet: React.FC<{
 ══════════════════════════════════════════════ */
 const AdminDailyReports: React.FC<Props> = ({
   supervisions = [], users = [], students = [],
-  deliveryLogs = [], systemConfig, committeeReports = []
+  deliveryLogs = [], systemConfig, committeeReports = [],
+  absences = [], controlRequests = []
 }) => {
   const [reportDate, setReportDate] = useState(systemConfig.active_exam_date || new Date().toISOString().split('T')[0]);
   const [subject, setSubject] = useState('');
@@ -216,27 +211,23 @@ const AdminDailyReports: React.FC<Props> = ({
     return committees.map(num => {
       const sv = supervisions.find(s => String(s?.committee_number) === String(num) && matchesDate(s?.date, reportDate));
       const proctor = users.find(u => u?.id === sv?.teacher_id);
-      const committeeLogs = deliveryLogs.filter(l => String(l?.committee_number) === String(num) && matchesDate(l?.time, reportDate) && l?.type === 'RECEIVE');
-      const pendingLogs = committeeLogs.filter(l => l.status === 'PENDING');
-      const confirmedLogs = committeeLogs.filter(l => l.status === 'CONFIRMED');
-      const closeTime = firstTime(pendingLogs) || firstTime(confirmedLogs);
-      const receiptTime = lastTime(confirmedLogs);
-      const receiverNames = Array.from(new Set(confirmedLogs.map(l => l.teacher_name).filter(Boolean)));
-      const closeLog = pendingLogs[0] || confirmedLogs[0];
-      const receiptLog = confirmedLogs[0];
+      const closeLog = deliveryLogs.find(l => String(l?.committee_number) === String(num) && matchesDate(l?.time, reportDate) && l?.type === 'RECEIVE');
+      const receiptLog = deliveryLogs.find(l => String(l?.committee_number) === String(num) && matchesDate(l?.time, reportDate) && l?.status === 'CONFIRMED');
       const detailedReport = committeeReports.find(r => String(r?.committee_number) === String(num) && r?.date === reportDate);
       const committeeStudents = students.filter(s => String(s.committee_number) === String(num));
       const gradeSet = Array.from(new Set(committeeStudents.map(s => s.grade)));
-      const isFullyReceived = confirmedLogs.length >= gradeSet.length && gradeSet.length > 0;
 
       return {
         committee: String(num),
         proctorName: proctor?.full_name || '—',
         joinTime: safeTime(sv?.date),
-        closeTime: safeTime(closeTime),
-        receiptTime: safeTime(receiptTime),
+        closeTime: safeTime(closeLog?.time),
+        receiptTime: safeTime(receiptLog?.time),
         receiverName: receiptLog?.teacher_name || '—',
-        status: isFullyReceived ? 'CONFIRMED' : closeLog ? 'CLOSED' : sv ? 'ACTIVE' : 'NOT_STARTED',
+        joinAt: sv?.date || '',
+        closeAt: closeLog?.time || '',
+        receiptAt: receiptLog?.time || '',
+        status: receiptLog ? 'CONFIRMED' : closeLog ? 'CLOSED' : sv ? 'ACTIVE' : 'NOT_STARTED',
         totalStudents: committeeStudents.length,
         grades: gradeSet.length,
         observations: detailedReport?.observations || '',
@@ -256,6 +247,88 @@ const AdminDailyReports: React.FC<Props> = ({
     active: reportData.filter(r => r.status === 'ACTIVE').length,
     notStarted: reportData.filter(r => r.status === 'NOT_STARTED').length,
   }), [reportData]);
+
+  const endOfDayInsights = useMemo(() => {
+    const minutesBetween = (start?: string, end?: string) => {
+      if (!start || !end) return null;
+      const diff = new Date(end).getTime() - new Date(start).getTime();
+      return Number.isFinite(diff) && diff >= 0 ? Math.round(diff / 60000) : null;
+    };
+
+    const completedRows = reportData.filter(r => r.status === 'CONFIRMED');
+    const rowsWithReceiptDelay = completedRows
+      .map(r => ({
+        ...r,
+        receiptDelay: minutesBetween(r.closeAt || r.joinAt, r.receiptAt),
+        totalDuration: minutesBetween(r.joinAt, r.receiptAt),
+      }))
+      .filter(r => r.receiptDelay !== null) as Array<any>;
+
+    const fastestReceipt = [...rowsWithReceiptDelay].sort((a, b) => a.receiptDelay - b.receiptDelay)[0];
+    const delayedCommittees = [
+      ...rowsWithReceiptDelay.filter(r => r.receiptDelay > 10).sort((a, b) => b.receiptDelay - a.receiptDelay).slice(0, 3),
+      ...reportData.filter(r => r.status === 'CLOSED').map(r => ({ ...r, receiptDelay: null })).slice(0, 3),
+    ].slice(0, 3);
+
+    const alertsByCommittee = controlRequests
+      .filter(r => matchesDate(r.time, reportDate))
+      .reduce((acc, req) => {
+        const key = String(req.committee || 'غير محدد');
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+    const topAlertCommittee = Object.entries(alertsByCommittee)
+      .sort((a, b) => b[1] - a[1])
+      .map(([committee, count]) => ({ committee, count }))[0];
+
+    const absencesByCommittee = absences
+      .filter(a => matchesDate(a.date, reportDate))
+      .reduce((acc, item) => {
+        const key = String(item.committee_number || 'غير محدد');
+        if (!acc[key]) acc[key] = { absent: 0, late: 0 };
+        if (item.type === 'ABSENT') acc[key].absent += 1;
+        if (item.type === 'LATE') acc[key].late += 1;
+        return acc;
+      }, {} as Record<string, { absent: number; late: number }>);
+
+    const topAttendanceIssue = Object.entries(absencesByCommittee)
+      .map(([committee, v]) => ({ committee, total: v.absent + v.late, ...v }))
+      .sort((a, b) => b.total - a.total)[0];
+
+    const proctorScores = Object.values(reportData.reduce((acc, row) => {
+      if (!row.proctorName || row.proctorName === '—') return acc;
+      if (!acc[row.proctorName]) {
+        acc[row.proctorName] = { name: row.proctorName, committees: 0, confirmed: 0, totalReceiptDelay: 0, delaySamples: 0, score: 0 };
+      }
+      const item = acc[row.proctorName];
+      item.committees += 1;
+      if (row.status === 'CONFIRMED') item.confirmed += 1;
+      const delay = minutesBetween(row.closeAt || row.joinAt, row.receiptAt);
+      if (delay !== null) {
+        item.totalReceiptDelay += delay;
+        item.delaySamples += 1;
+      }
+      item.score = item.confirmed * 30 + Math.max(0, 30 - (item.delaySamples ? item.totalReceiptDelay / item.delaySamples : 30));
+      return acc;
+    }, {} as Record<string, any>)).sort((a: any, b: any) => b.score - a.score)[0] as any;
+
+    const followUps = [
+      ...reportData.filter(r => r.status === 'CLOSED').map(r => `لجنة ${r.committee} أغلقت ولم تستلم نهائياً.`),
+      ...reportData.filter(r => r.status === 'NOT_STARTED').map(r => `لجنة ${r.committee} لم تبدأ أو لا يوجد لها إسناد.`),
+      ...(topAlertCommittee ? [`لجنة ${topAlertCommittee.committee} لديها أعلى عدد بلاغات (${topAlertCommittee.count}).`] : []),
+      ...(topAttendanceIssue ? [`لجنة ${topAttendanceIssue.committee} لديها أكثر حالات حضور تحتاج مراجعة (${topAttendanceIssue.total}).`] : []),
+    ].slice(0, 4);
+
+    return {
+      fastestReceipt,
+      delayedCommittees,
+      topAlertCommittee,
+      topAttendanceIssue,
+      bestProctor: proctorScores,
+      followUps,
+    };
+  }, [absences, controlRequests, reportData, reportDate]);
 
   const handlePrint = () => {
     setIsPrinting(true);
@@ -342,6 +415,104 @@ const AdminDailyReports: React.FC<Props> = ({
             <p className="text-[10px] font-black uppercase tracking-wider opacity-70 mt-1">{s.label}</p>
           </div>
         ))}
+      </div>
+
+      {/* ── إحصاءات نهاية اليوم ── */}
+      <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden no-print">
+        <div className="p-6 md:p-8 border-b border-slate-100 bg-slate-50/60 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <h4 className="text-2xl font-black text-slate-900 flex items-center gap-3">
+              <Trophy size={24} className="text-amber-500" />
+              إحصاءات نهاية اليوم
+            </h4>
+            <p className="text-slate-400 font-bold text-xs mt-1">قراءة سريعة تساعد الإدارة على معرفة نقاط التميز والمتابعة.</p>
+          </div>
+          <span className="bg-slate-900 text-white px-4 py-2 rounded-2xl text-[10px] font-black tabular-nums">{reportDate}</span>
+        </div>
+
+        <div className="p-6 md:p-8 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="p-5 rounded-[2rem] bg-amber-50 border border-amber-100">
+              <UserRoundCheck size={26} className="text-amber-600 mb-4" />
+              <p className="text-[10px] font-black text-amber-700 mb-1">أفضل مراقب</p>
+              <p className="text-lg font-black text-slate-900 leading-tight">{endOfDayInsights.bestProctor?.name || 'لا توجد بيانات كافية'}</p>
+              <p className="text-[11px] font-bold text-slate-500 mt-2">
+                {endOfDayInsights.bestProctor ? `${endOfDayInsights.bestProctor.confirmed} لجنة مستلمة` : 'يظهر بعد اكتمال الاستلامات'}
+              </p>
+            </div>
+
+            <div className="p-5 rounded-[2rem] bg-emerald-50 border border-emerald-100">
+              <Timer size={26} className="text-emerald-600 mb-4" />
+              <p className="text-[10px] font-black text-emerald-700 mb-1">أسرع استلام</p>
+              <p className="text-lg font-black text-slate-900 leading-tight">
+                {endOfDayInsights.fastestReceipt ? `لجنة ${endOfDayInsights.fastestReceipt.committee}` : 'لا توجد بيانات'}
+              </p>
+              <p className="text-[11px] font-bold text-slate-500 mt-2">
+                {endOfDayInsights.fastestReceipt ? `${endOfDayInsights.fastestReceipt.receiptDelay} دقيقة من الإغلاق للاستلام` : 'بانتظار سجلات الاستلام'}
+              </p>
+            </div>
+
+            <div className="p-5 rounded-[2rem] bg-red-50 border border-red-100">
+              <BellRing size={26} className="text-red-600 mb-4" />
+              <p className="text-[10px] font-black text-red-700 mb-1">أكثر لجنة بلاغات</p>
+              <p className="text-lg font-black text-slate-900 leading-tight">
+                {endOfDayInsights.topAlertCommittee ? `لجنة ${endOfDayInsights.topAlertCommittee.committee}` : 'لا توجد بلاغات'}
+              </p>
+              <p className="text-[11px] font-bold text-slate-500 mt-2">
+                {endOfDayInsights.topAlertCommittee ? `${endOfDayInsights.topAlertCommittee.count} بلاغ` : 'الوضع مستقر'}
+              </p>
+            </div>
+
+            <div className="p-5 rounded-[2rem] bg-blue-50 border border-blue-100">
+              <AlertTriangle size={26} className="text-blue-600 mb-4" />
+              <p className="text-[10px] font-black text-blue-700 mb-1">أعلى حالات حضور</p>
+              <p className="text-lg font-black text-slate-900 leading-tight">
+                {endOfDayInsights.topAttendanceIssue ? `لجنة ${endOfDayInsights.topAttendanceIssue.committee}` : 'لا توجد حالات'}
+              </p>
+              <p className="text-[11px] font-bold text-slate-500 mt-2">
+                {endOfDayInsights.topAttendanceIssue ? `${endOfDayInsights.topAttendanceIssue.absent} غياب · ${endOfDayInsights.topAttendanceIssue.late} تأخير` : 'لا يوجد غياب أو تأخير'}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="rounded-[2rem] border border-slate-100 bg-slate-50/60 p-6">
+              <h5 className="font-black text-slate-900 mb-4 flex items-center gap-2"><Package size={18} className="text-orange-500" /> اللجان المتأخرة في الاستلام</h5>
+              {endOfDayInsights.delayedCommittees.length ? (
+                <div className="space-y-3">
+                  {endOfDayInsights.delayedCommittees.map((row: any) => (
+                    <div key={`${row.committee}-${row.grade || row.proctorName}`} className="flex items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100">
+                      <div>
+                        <p className="font-black text-slate-900">لجنة {row.committee}</p>
+                        <p className="text-[11px] font-bold text-slate-400">{row.proctorName}</p>
+                      </div>
+                      <span className="bg-orange-100 text-orange-700 px-3 py-1.5 rounded-xl text-[10px] font-black">
+                        {row.receiptDelay === null ? 'بانتظار الاستلام' : `${row.receiptDelay} دقيقة`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-slate-400 font-bold text-sm">لا توجد لجان متأخرة حسب بيانات اليوم.</p>
+              )}
+            </div>
+
+            <div className="rounded-[2rem] border border-slate-100 bg-slate-50/60 p-6">
+              <h5 className="font-black text-slate-900 mb-4 flex items-center gap-2"><ClipboardList size={18} className="text-blue-600" /> نقاط تحتاج متابعة</h5>
+              {endOfDayInsights.followUps.length ? (
+                <div className="space-y-3">
+                  {endOfDayInsights.followUps.map((text, idx) => (
+                    <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-100 text-sm font-bold text-slate-700 leading-7">
+                      {text}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-emerald-600 font-black text-sm">لا توجد نقاط حرجة مسجلة لهذا اليوم.</p>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* ── جدول الشاشة ── */}

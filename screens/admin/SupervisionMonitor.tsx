@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Supervision, User, Student, Absence, DeliveryLog } from '../../types';
 import OfficialHeader from '../../components/OfficialHeader';
 import { Printer, Calendar, BookOpen, CheckCircle2, Clock, FileText } from 'lucide-react';
+import { getActiveTenantSlug } from '../../supabase';
 
 interface Props {
   supervisions: Supervision[];
@@ -24,6 +25,23 @@ const AdminSupervisionMonitor: React.FC<Props> = ({ supervisions, users, student
     return manager?.full_name || '....................................';
   }, [users]);
 
+  const schoolPrincipalName = useMemo(() => {
+    const admin = users.find(u => u.role === 'ADMIN');
+    return admin?.full_name || '....................................';
+  }, [users]);
+
+  const buildVerificationUrl = (type: 'receiver' | 'proctor', stat: any) => {
+    const url = new URL(window.location.origin + window.location.pathname);
+    url.searchParams.set('sv', '1');
+    url.searchParams.set('c', String(stat.committee_number));
+    url.searchParams.set('g', String(stat.grade));
+    url.searchParams.set('d', reportInfo.date);
+    url.searchParams.set('t', type === 'receiver' ? 'r' : 'p');
+    const tenantSlug = getActiveTenantSlug();
+    if (tenantSlug) url.searchParams.set('tenant', tenantSlug);
+    return url.toString();
+  };
+
   const detailedStats = useMemo(() => {
     const committeeNums = Array.from(new Set(students.map(s => s.committee_number))).filter(Boolean).sort((a,b)=>Number(a)-Number(b));
     
@@ -38,6 +56,13 @@ const AdminSupervisionMonitor: React.FC<Props> = ({ supervisions, users, student
         const gradeAbsences = absences.filter(a => a.date.startsWith(reportInfo.date) && a.committee_number === num && a.type === 'ABSENT' && gradeStudents.some(s => s.national_id === a.student_id));
         const gradeLates = absences.filter(a => a.date.startsWith(reportInfo.date) && a.committee_number === num && a.type === 'LATE' && gradeStudents.some(s => s.national_id === a.student_id));
         
+        const closeLog = deliveryLogs.find(l => 
+          l.time.startsWith(reportInfo.date) && 
+          l.committee_number === num && 
+          l.status === 'PENDING' && 
+          (l.grade === grade || l.grade.includes(grade))
+        );
+
         const delivery = deliveryLogs.find(l => 
           l.time.startsWith(reportInfo.date) && 
           l.committee_number === num && 
@@ -54,6 +79,9 @@ const AdminSupervisionMonitor: React.FC<Props> = ({ supervisions, users, student
           absent: gradeAbsences.length,
           late: gradeLates.length,
           receiver: delivery?.teacher_name || '................',
+          startTime: sv?.date || '',
+          closeTime: closeLog?.time || '',
+          receiptTime: delivery?.time || '',
           isDone: !!delivery
         };
       });
@@ -163,11 +191,57 @@ const AdminSupervisionMonitor: React.FC<Props> = ({ supervisions, users, student
               display: table-footer-group;
             }
             .cell-border {
-              border: 1pt solid black !important;
-              padding: 3pt 2pt;
+              border: 0.8pt solid #111827 !important;
+              padding: 3.5pt 2.5pt;
               font-size: 7.5pt; /* تصغير الخط لمحتوى الجدول */
               word-wrap: break-word;
               text-align: center;
+            }
+            .print-title {
+              font-size: 14pt;
+              font-weight: 900;
+              border-bottom: 2pt solid #111827;
+              padding-bottom: 3pt;
+              display: inline-block;
+              padding-inline: 18mm;
+            }
+            .print-meta {
+              display: inline-flex;
+              gap: 7mm;
+              border: 0.8pt solid #111827;
+              border-radius: 4pt;
+              padding: 3pt 7pt;
+              margin-top: 5pt;
+              background: #f8fafc;
+              font-size: 8.5pt;
+              font-weight: 900;
+            }
+            .print-head-row th {
+              background: #e5e7eb !important;
+              color: #111827;
+              font-size: 7pt;
+              line-height: 1.4;
+            }
+            .print-table tbody tr:nth-child(even) td {
+              background: #f8fafc !important;
+            }
+            .qr-box {
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              gap: 1pt;
+              height: 100%;
+            }
+            .qr-box img {
+              width: 10.5mm;
+              height: 10.5mm;
+            }
+            .qr-box span {
+              font-size: 4.8pt;
+              color: #334155;
+              font-weight: 900;
+              line-height: 1;
             }
             .header-content {
               padding-top: 0mm;
@@ -187,8 +261,8 @@ const AdminSupervisionMonitor: React.FC<Props> = ({ supervisions, users, student
                 <div className="header-content w-full mb-3">
                   <OfficialHeader />
                   <div className="text-center mt-2">
-                    <h2 className="text-[12pt] font-black border-b-[2pt] border-black pb-1 inline-block px-10 leading-none">مسير المراقبة ورصد حضور واستلام المظاريف</h2>
-                    <div className="flex justify-center gap-10 text-[9pt] font-black mt-2 text-black">
+                    <h2 className="print-title leading-none">مسير المراقبة ورصد حضور واستلام المظاريف</h2>
+                    <div className="print-meta text-black">
                       <span>اليوم/التاريخ: {new Intl.DateTimeFormat('ar-SA', {weekday:'long', day:'numeric', month:'long', year:'numeric'}).format(new Date(reportInfo.date))}</span>
                       <span>المادة: <span className="border-b border-black px-6">{reportInfo.subject || '................'}</span></span>
                     </div>
@@ -196,7 +270,7 @@ const AdminSupervisionMonitor: React.FC<Props> = ({ supervisions, users, student
                 </div>
               </th>
             </tr>
-            <tr className="bg-slate-50 font-black text-[7.5pt]">
+            <tr className="print-head-row bg-slate-50 font-black text-[7.5pt]">
               <th className="cell-border" style={{ width: '8mm' }}>م</th>
               <th className="cell-border" style={{ width: '13mm' }}>اللجنة</th>
               <th className="cell-border text-right px-2" style={{ width: '45mm' }}>اسم المعلم (المراقب)</th>
@@ -212,7 +286,7 @@ const AdminSupervisionMonitor: React.FC<Props> = ({ supervisions, users, student
           
           <tbody>
             {detailedStats.map((stat, i) => (
-              <tr key={i} className="h-[28pt]">
+              <tr key={i} className="h-[36pt]">
                 <td className="cell-border tabular-nums" style={{ width: '8mm' }}>{i + 1}</td>
                 <td className="cell-border font-black tabular-nums text-[9pt]" style={{ width: '13mm' }}>{stat.committee_number}</td>
                 <td className="cell-border text-right font-black px-2 leading-tight" style={{ width: '45mm' }}>{stat.proctor_name}</td>
@@ -223,15 +297,17 @@ const AdminSupervisionMonitor: React.FC<Props> = ({ supervisions, users, student
                 <td className="cell-border text-right px-2 font-bold" style={{ width: '33mm' }}>{stat.isDone ? stat.receiver : ''}</td>
                 <td className="cell-border p-0" style={{ width: '22mm', textAlign: 'center', height: '18pt' }}>
                    {stat.isDone && stat.receiver && (
-                     <div className="flex justify-center items-center w-full h-full">
-                       <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent('SIG|RECEIVER|' + stat.committee_number)}&color=000000`} alt="QR" className="w-[6mm] h-[6mm]" crossOrigin="anonymous" style={{ imageRendering: 'pixelated' }} />
+                     <div className="qr-box">
+                       <img src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(buildVerificationUrl('receiver', stat))}&color=000000`} alt="QR" crossOrigin="anonymous" style={{ imageRendering: 'pixelated' }} />
+                       <span>تحقق</span>
                      </div>
                    )}
                 </td>
                 <td className="cell-border p-0" style={{ width: '22mm', textAlign: 'center', height: '18pt' }}>
                    {stat.isDone && stat.proctor_name && (
-                     <div className="flex justify-center items-center w-full h-full">
-                       <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent('SIG|PROCTOR|' + stat.committee_number)}&color=000000`} alt="QR" className="w-[6mm] h-[6mm]" crossOrigin="anonymous" style={{ imageRendering: 'pixelated' }} />
+                     <div className="qr-box">
+                       <img src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(buildVerificationUrl('proctor', stat))}&color=000000`} alt="QR" crossOrigin="anonymous" style={{ imageRendering: 'pixelated' }} />
+                       <span>تحقق</span>
                      </div>
                    )}
                 </td>
@@ -247,13 +323,12 @@ const AdminSupervisionMonitor: React.FC<Props> = ({ supervisions, users, student
                       <p className="underline underline-offset-[4pt]">رئيس الكنترول</p>
                       <div className="space-y-1">
                         <p className="text-slate-900">{controlManagerName}</p>
-                        <p className="text-slate-300">....................................</p>
                       </div>
                    </div>
                    <div className="space-y-8">
                       <p className="underline underline-offset-[4pt]">مدير المدرسة</p>
                       <div className="space-y-1">
-                        <p className="text-slate-300">....................................</p>
+                        <p className="text-slate-900">{schoolPrincipalName}</p>
                         <p className="text-slate-300">....................................</p>
                       </div>
                    </div>

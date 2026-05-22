@@ -43,6 +43,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'head-dash', label: 'غرفة العمليات', icon: LayoutPanelTop },
     { id: 'dashboard', label: 'الإحصائيات العامة', icon: LayoutDashboard },
     { id: 'control-monitor', label: 'لوحة العرض (TV)', icon: MonitorPlay },
+    { id: 'control-monitor-2', label: 'لوحة العرض (TV2)', icon: Monitor },
     { id: 'control-manager', label: 'مركز القيادة', icon: ShieldHalf },
     { id: 'proctor-excellence', label: 'سجل التميز', icon: Award },
     { id: 'committee-labels', label: 'ملصقات اللجان (QR)', icon: QrCode },
@@ -53,6 +54,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'daily-reports', label: 'التقارير اليومية', icon: FileSpreadsheet },
     { id: 'official-forms', label: 'النماذج (الغياب والتأخير)', icon: FileText },
     { id: 'envelope-opening', label: 'فتح المظاريف', icon: Inbox },
+    { id: 'paper-logs', label: 'استلام المظاريف', icon: Inbox },
     { id: 'envelope-labels', label: 'ملصقات المظاريف', icon: QrCode },
     { id: 'settings', label: 'إعدادات النظام', icon: Settings },
   ];
@@ -60,9 +62,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   const controlManagerLinks: SidebarLink[] = [
     { id: 'head-dash', label: 'غرفة العمليات', icon: LayoutPanelTop },
     { id: 'control-manager', label: 'مركز القيادة', icon: ShieldHalf },
-    { id: 'committees', label: 'كشف المراقبة', icon: ClipboardList },
-    { id: 'daily-reports', label: 'التقارير اليومية', icon: FileSpreadsheet },
-    { id: 'official-forms', label: 'النماذج الرسمية', icon: FileText },
     { id: 'envelope-opening', label: 'فتح المظاريف', icon: Inbox },
     { id: 'paper-logs', label: 'استلام المظاريف', icon: Inbox },
     { id: 'receipt-history', label: 'سجل العمليات', icon: History },
@@ -103,7 +102,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       <div
         style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
-        className={`fixed right-0 top-0 h-full bg-[#020617] text-white shadow-2xl z-[110] flex flex-col transition-all duration-300 ${isOpen ? 'translate-x-0 w-[min(20rem,calc(100vw-1.25rem))]' : 'translate-x-full lg:translate-x-0'} ${!isOpen && isCollapsed ? 'lg:w-24' : 'lg:w-80'}`}
+        className={`fixed right-0 top-0 h-full bg-[#020617] text-white shadow-2xl z-[110] flex flex-col transition-all duration-300 ${isOpen ? 'translate-x-0 w-80' : 'translate-x-full lg:translate-x-0'} ${!isOpen && isCollapsed ? 'lg:w-24' : 'lg:w-80'}`}
       >
         <div className="p-6 border-b border-white/5 flex items-center justify-between">
           <div className="flex items-center gap-3 overflow-hidden">

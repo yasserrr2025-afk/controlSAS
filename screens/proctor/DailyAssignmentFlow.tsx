@@ -46,8 +46,9 @@ import {
   Bell,
   Package,
 } from "lucide-react";
-import { db } from "../../supabase";
+import { db, supabase } from "../../supabase";
 import { APP_CONFIG, ROLES_ARABIC } from "../../constants";
+import { getAbsenceKindLabel, getAbsenceReceipt } from "../../services/absenceReceipt";
 
 interface Props {
   user: User;
@@ -92,7 +93,6 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   const [isVerifying, setIsVerifying] = useState(false);
   const [countError, setCountError] = useState<string | null>(null);
   const [isCountingLocked, setIsCountingLocked] = useState(false);
-  const [isAssignmentConfirmed, setIsAssignmentConfirmed] = useState(false);
 
   // نافذة البلاغات المتطورة
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -111,7 +111,6 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   const [elapsedTime, setElapsedTime] = useState('00:00');
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [localPendingCount, setLocalPendingCount] = useState(0);
-  const [localAbsenceDrafts, setLocalAbsenceDrafts] = useState<any[]>([]);
 
   const qrScannerRef = useRef<Html5Qrcode | null>(null);
   const activeDate = useMemo(
@@ -119,20 +118,6 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       systemConfig?.active_exam_date || new Date().toISOString().split("T")[0],
     [systemConfig],
   );
-
-  const refreshLocalAbsenceDrafts = () => {
-    try {
-      const raw = localStorage.getItem(`offline_absences_${user.id}`);
-      const list = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(list)) {
-        setLocalAbsenceDrafts(list);
-        setLocalPendingCount(list.length);
-      }
-    } catch {
-      setLocalAbsenceDrafts([]);
-      setLocalPendingCount(0);
-    }
-  };
 
   const activeAssignment = useMemo(
     () =>
@@ -144,20 +129,50 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   );
 
   const activeCommittee = activeAssignment?.committee_number || null;
-
-  useEffect(() => {
-    if (!activeAssignment?.id) {
-      setIsAssignmentConfirmed(false);
-      return;
+  const [confirmedAssignments, setConfirmedAssignments] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`confirmed_assignments_${user.id}`) || '[]');
+    } catch {
+      return [];
     }
-    setIsAssignmentConfirmed(localStorage.getItem(`confirmed_supervision_${activeAssignment.id}`) === '1');
-  }, [activeAssignment?.id]);
+  });
+  const [assignmentStartTimes, setAssignmentStartTimes] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`assignment_start_times_${user.id}`) || '{}');
+    } catch {
+      return {};
+    }
+  });
+  const activeAssignmentConfirmed = !!activeAssignment && confirmedAssignments.includes(activeAssignment.id);
+  const activeAssignmentStartTime = activeAssignment
+    ? assignmentStartTimes[activeAssignment.id] || activeAssignment.date
+    : null;
 
-  const confirmAssignedCommittee = () => {
-    if (!activeAssignment?.id) return;
-    localStorage.setItem(`confirmed_supervision_${activeAssignment.id}`, '1');
-    setIsAssignmentConfirmed(true);
-    onAlert(`تم تأكيد مباشرة اللجنة رقم ${activeCommittee}`, 'success');
+  const markAssignmentStarted = (assignmentId: string, startedAt: string) => {
+    const nextConfirmed = Array.from(new Set([...confirmedAssignments, assignmentId]));
+    const nextStartTimes = { ...assignmentStartTimes, [assignmentId]: startedAt };
+    setConfirmedAssignments(nextConfirmed);
+    setAssignmentStartTimes(nextStartTimes);
+    localStorage.setItem(`confirmed_assignments_${user.id}`, JSON.stringify(nextConfirmed));
+    localStorage.setItem(`assignment_start_times_${user.id}`, JSON.stringify(nextStartTimes));
+  };
+
+  const confirmActiveAssignment = async () => {
+    if (!activeAssignment) return;
+    const startedAt = new Date().toISOString();
+    try {
+      const { error } = await supabase
+        .from('supervision')
+        .update({ date: startedAt })
+        .eq('id', activeAssignment.id);
+      if (error) throw new Error(error.message);
+      markAssignmentStarted(activeAssignment.id, startedAt);
+      setElapsedTime('00:00');
+      await setSupervisions();
+      onAlert(`تم تأكيد المباشرة في اللجنة رقم ${activeAssignment.committee_number}`, 'success');
+    } catch (err: any) {
+      onAlert(err.message || 'تعذر تأكيد المباشرة', 'error');
+    }
   };
 
   const myActiveRequests = useMemo(
@@ -174,8 +189,8 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   );
 
   useEffect(() => {
-    if (!activeAssignment?.date) return;
-    const startTime = new Date(activeAssignment.date).getTime();
+    if (!activeAssignmentStartTime) return;
+    const startTime = new Date(activeAssignmentStartTime).getTime();
     
     const updateTimer = () => {
       const now = new Date().getTime();
@@ -195,7 +210,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, [activeAssignment?.date]);
+  }, [activeAssignmentStartTime]);
 
   /* ── مراقبة الاتصال بالإنترنت ── */
   useEffect(() => {
@@ -216,7 +231,6 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
           }
         }
         localStorage.removeItem(localKey);
-        setLocalAbsenceDrafts([]);
         setLocalPendingCount(0);
         await setAbsences();
         onAlert(`✅ تمت مزامنة ${pending.length} تغيير محفوظ محلياً`, 'success');
@@ -226,7 +240,8 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     window.addEventListener('online',  goOnline);
     window.addEventListener('offline', goOffline);
     // حساب عدد السجلات المحلية المعلقة
-    refreshLocalAbsenceDrafts();
+    const raw = localStorage.getItem(`offline_absences_${user.id}`);
+    if (raw) { try { setLocalPendingCount(JSON.parse(raw).length); } catch {} }
     return () => {
       window.removeEventListener('online',  goOnline);
       window.removeEventListener('offline', goOffline);
@@ -270,25 +285,15 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     () => Array.from(new Set(myStudents.map((s) => s.grade))).sort(),
     [myStudents],
   );
-  const myAbsences = useMemo(() => {
-    const localForCommittee = localAbsenceDrafts.filter(
-      (a) =>
-        a.committee_number === activeCommittee &&
-        a.date?.startsWith(activeDate),
-    );
-    const deletedStudentIds = new Set(
-      localForCommittee.filter((a) => a._delete).map((a) => a.student_id),
-    );
-    const localUpserts = localForCommittee.filter((a) => !a._delete);
-    const baseAbsences = absences.filter(
-      (a) =>
-        a.committee_number === activeCommittee &&
-        a.date.startsWith(activeDate) &&
-        !deletedStudentIds.has(a.student_id) &&
-        !localUpserts.some((local) => local.student_id === a.student_id),
-    );
-    return [...baseAbsences, ...localUpserts];
-  }, [absences, activeCommittee, activeDate, localAbsenceDrafts]);
+  const myAbsences = useMemo(
+    () =>
+      absences.filter(
+        (a) =>
+          a.committee_number === activeCommittee &&
+          a.date.startsWith(activeDate),
+      ),
+    [absences, activeCommittee, activeDate],
+  );
 
   const stats = useMemo(() => {
     const total = myStudents.length;
@@ -296,9 +301,6 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     const late = myAbsences.filter((a) => a.type === "LATE").length;
     return { total, present: total - abs, absent: abs, late };
   }, [myStudents, myAbsences]);
-
-  const attendanceProgress =
-    stats.total > 0 ? Math.round((stats.present / stats.total) * 100) : 0;
 
   const filteredStudents = useMemo(() => {
     if (filter === 'ALL') return myStudents;
@@ -316,19 +318,19 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     if (!cleanedNum || isJoining) return;
     setIsJoining(true);
     try {
-      await db.supervision.deleteByCommittee(cleanedNum);
-      await db.supervision.deleteByTeacherId(user.id);
       const assignmentId = crypto.randomUUID();
+      const startedAt = new Date().toISOString();
+      await db.supervision.deleteByTeacherId(user.id);
       await db.supervision.insert({
         id: assignmentId,
         teacher_id: user.id,
         committee_number: cleanedNum,
-        date: `${activeDate}T${new Date().toTimeString().slice(0, 8)}`,
+        date: startedAt,
         period: 1,
         subject: "اختبار",
       });
-      localStorage.setItem(`confirmed_supervision_${assignmentId}`, '1');
-      setIsAssignmentConfirmed(true);
+      markAssignmentStarted(assignmentId, startedAt);
+      setElapsedTime('00:00');
       await setSupervisions();
       onAlert(`تمت المباشرة في اللجنة ${cleanedNum}`, "success");
     } catch (err: any) {
@@ -355,11 +357,8 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     type: "ABSENT" | "LATE",
   ) => {
     if (isCommitteeFinished) return;
-    const existing = myAbsences.find(
-      (a) =>
-        a.student_id === student.national_id &&
-        a.committee_number === activeCommittee &&
-        a.date.startsWith(activeDate),
+    const existing = absences.find(
+      (a) => a.student_id === student.national_id && a.date.startsWith(activeDate),
     );
     const isRemoving = existing && existing.type === type;
 
@@ -372,7 +371,6 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
         const idx = list.findIndex(r => r.student_id === rec.student_id);
         if (idx >= 0) list[idx] = rec; else list.push(rec);
         localStorage.setItem(localKey, JSON.stringify(list));
-        setLocalAbsenceDrafts(list);
         setLocalPendingCount(list.length);
       } catch {}
     };
@@ -382,7 +380,6 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
         if (!raw) return;
         const list: any[] = JSON.parse(raw).filter((r: any) => r.student_id !== studentId);
         localStorage.setItem(localKey, JSON.stringify(list));
-        setLocalAbsenceDrafts(list);
         setLocalPendingCount(list.length);
       } catch {}
     };
@@ -390,20 +387,6 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     // ── ثانياً: رفع للسيرفر (مع fallback محلي) ──
     try {
       if (isRemoving) {
-        if (isOffline) {
-          addToLocal({
-            id: existing.id,
-            student_id: student.national_id,
-            student_name: student.name,
-            committee_number: activeCommittee!,
-            period: 1,
-            proctor_id: user.id,
-            date: existing.date || new Date().toISOString(),
-            _delete: true,
-          });
-          onAlert('تم حفظ إلغاء الرصد محليًا وسيُزامن عند عودة الاتصال', 'warning');
-          return;
-        }
         removeFromLocal(student.national_id);
         await db.absences.delete(student.national_id);
       } else {
@@ -443,17 +426,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
         addToLocal(rec);
         onAlert('⚠️ فشل الاتصال — حُفظ التغيير محلياً', 'warning');
       } else {
-        addToLocal({
-          id: existing?.id || crypto.randomUUID(),
-          student_id: student.national_id,
-          student_name: student.name,
-          committee_number: activeCommittee!,
-          period: 1,
-          proctor_id: user.id,
-          date: existing?.date || new Date().toISOString(),
-          _delete: true,
-        });
-        onAlert('تم حفظ إلغاء الرصد محليًا بسبب فشل الاتصال', 'warning');
+        onAlert(err.message || String(err), 'error');
       }
     }
   };
@@ -566,6 +539,50 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   }
 
   // واجهة النجاح والقفل (وثيقة الإنجاز + سجل المطابقة)
+  if (activeAssignment && !activeAssignmentConfirmed) {
+    return (
+      <div className="max-w-4xl mx-auto py-10 px-4 space-y-8 animate-fade-in text-center">
+        <div className="bg-slate-950 p-10 rounded-[4rem] text-white shadow-2xl relative overflow-hidden border-b-[10px] border-emerald-500">
+          <div className="absolute inset-0 bg-emerald-500/10"></div>
+          <div className="relative z-10 flex flex-col items-center gap-8">
+            <div className="w-28 h-28 bg-emerald-500 text-white rounded-[2.5rem] flex flex-col items-center justify-center font-black shadow-2xl">
+              <span className="text-[10px] opacity-70 mb-1">اللجنة</span>
+              <span className="text-6xl leading-none">{activeAssignment.committee_number}</span>
+            </div>
+            <div>
+              <h2 className="text-4xl md:text-5xl font-black tracking-tighter">تم إسناد اللجنة رقم {activeAssignment.committee_number}</h2>
+              <p className="text-emerald-100 font-bold text-lg mt-4">يرجى تأكيد المباشرة قبل الدخول إلى شاشة الرصد.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-10 rounded-[3.5rem] shadow-2xl border border-slate-100">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-right mb-8">
+            <div className="p-5 rounded-2xl bg-slate-50">
+              <p className="text-[10px] font-black text-slate-400">اسم المراقب</p>
+              <p className="font-black text-slate-900 mt-1">{user.full_name}</p>
+            </div>
+            <div className="p-5 rounded-2xl bg-slate-50">
+              <p className="text-[10px] font-black text-slate-400">المادة</p>
+              <p className="font-black text-slate-900 mt-1">{activeAssignment.subject || 'اختبار'}</p>
+            </div>
+            <div className="p-5 rounded-2xl bg-slate-50">
+              <p className="text-[10px] font-black text-slate-400">الفترة</p>
+              <p className="font-black text-slate-900 mt-1">{activeAssignment.period || 1}</p>
+            </div>
+          </div>
+          <button
+            onClick={confirmActiveAssignment}
+            className="w-full p-8 bg-emerald-600 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl hover:bg-emerald-700 transition-all flex items-center justify-center gap-4 active:scale-95"
+          >
+            <UserCheck size={32} />
+            تأكيد المباشرة
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (isCommitteeFinished) {
     const committeeLogs = deliveryLogs.filter(
       (l) =>
@@ -960,31 +977,6 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   // واجهة الرصد النشط
   return (
     <div className="space-y-8 animate-fade-in max-w-7xl mx-auto text-right pb-48 px-4 md:px-0">
-      {activeAssignment && !isAssignmentConfirmed && (
-        <div className="fixed inset-0 z-[700] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-4 no-print">
-          <div className="bg-slate-950 text-white rounded-[4rem] p-10 shadow-2xl border-b-[10px] border-blue-600 relative overflow-hidden max-w-3xl w-full text-center">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/20 blur-[100px] rounded-full -mr-24 -mt-24"></div>
-            <div className="relative z-10 space-y-8">
-              <div className="w-24 h-24 bg-blue-600 rounded-[2rem] mx-auto flex items-center justify-center shadow-2xl">
-                <Bell size={52} />
-              </div>
-              <div className="space-y-3">
-                <p className="text-blue-300 font-black text-sm tracking-[0.3em] uppercase">إسناد لجنة جديد</p>
-                <h2 className="text-4xl md:text-5xl font-black tracking-tight">تم إسناد اللجنة رقم {activeCommittee}</h2>
-                <p className="text-slate-300 font-bold text-lg leading-relaxed">
-                  أستاذ {user.full_name}، تم ربطك بهذه اللجنة من الكنترول. اضغط تأكيد للبدء وعرض بيانات الطلاب والرصد.
-                </p>
-              </div>
-              <button
-                onClick={confirmAssignedCommittee}
-                className="w-full bg-emerald-600 text-white py-6 rounded-[2rem] font-black text-2xl shadow-2xl hover:bg-emerald-700 active:scale-95 transition-all flex items-center justify-center gap-4"
-              >
-                <CheckCircle2 size={32}/> تأكيد المباشرة
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── بانر عدم الاتصال ── */}
       {isOffline && (
@@ -1031,18 +1023,6 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
                 <span className="bg-white/10 text-slate-300 px-3 py-1.5 rounded-lg font-black text-sm tabular-nums flex items-center gap-2 shadow-inner font-mono tracking-widest border border-white/5">
                   <Timer size={14} className="text-blue-400" /> {elapsedTime}
                 </span>
-              </div>
-              <div className="mt-5 w-full max-w-md">
-                <div className="flex justify-between text-[10px] font-black text-slate-500 mb-2">
-                  <span>مؤشر الحضور</span>
-                  <span className="tabular-nums">{attendanceProgress}%</span>
-                </div>
-                <div className="h-3 bg-white/10 rounded-full overflow-hidden p-0.5">
-                  <div
-                    className="h-full bg-gradient-to-l from-emerald-400 to-blue-500 rounded-full transition-all duration-700"
-                    style={{ width: `${attendanceProgress}%` }}
-                  />
-                </div>
               </div>
             </div>
           </div>
@@ -1139,19 +1119,13 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
         </button>
         <button
           onClick={() => {
-            if (myStudents.length === 0) return;
             setClosingStep(0);
             setCurrentGradeIdx(0);
             setIsClosingWizardOpen(true);
             setCountError(null);
             setIsCountingLocked(false);
           }}
-          disabled={myStudents.length === 0}
-          className={`p-8 rounded-[2.5rem] font-black text-2xl flex items-center justify-center gap-6 transition-all border-b-[8px] ${
-            myStudents.length === 0
-              ? "bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed"
-              : "bg-slate-900 text-white shadow-xl hover:bg-slate-800 border-black"
-          }`}
+          className="p-8 bg-slate-900 text-white rounded-[2.5rem] font-black text-2xl flex items-center justify-center gap-6 shadow-xl hover:bg-slate-800 transition-all border-b-[8px] border-black"
         >
           <PackageCheck size={36} /> إنهاء وإغلاق اللجنة
         </button>
@@ -1182,41 +1156,60 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
           const status = myAbsences.find((a) => a.student_id === s.national_id);
           const isAbsent = status?.type === "ABSENT";
           const isLate = status?.type === "LATE";
+          const receipt = getAbsenceReceipt(status);
+          const isReceivedStatus = Boolean(status && receipt);
+          const receivedTone = status?.type === "LATE" ? "late" : "absent";
           return (
             <div
               key={s.id}
               className={`p-6 md:p-8 rounded-[3.5rem] border transition-all duration-300 relative flex flex-col justify-between min-h-[300px] overflow-hidden group 
-                ${isAbsent ? "bg-slate-50 opacity-60 grayscale-[0.5] border-transparent shadow-none scale-95" : 
+                ${isReceivedStatus ? (receivedTone === "late" ? "bg-gradient-to-br from-amber-50 via-white to-amber-50 border-amber-200 shadow-2xl shadow-amber-500/15 scale-100" : "bg-gradient-to-br from-red-50 via-white to-red-50 border-red-200 shadow-2xl shadow-red-500/15 scale-100") :
+                  isAbsent ? "bg-slate-50 opacity-60 grayscale-[0.5] border-transparent shadow-none scale-95" : 
                   isLate ? "bg-gradient-to-br from-amber-50 to-white shadow-xl shadow-amber-500/10 border-amber-100" : 
                   "bg-white/80 backdrop-blur-3xl shadow-2xl border-white hover:border-blue-100"}`}
             >
+              {isReceivedStatus && <div className={`absolute inset-x-0 top-0 h-2 ${receivedTone === "late" ? "bg-amber-500" : "bg-red-600"}`}></div>}
               {isLate && <div className="absolute top-0 right-0 w-32 h-32 bg-amber-400/10 blur-3xl rounded-full"></div>}
+              {isReceivedStatus && <div className={`absolute top-0 right-0 w-44 h-44 ${receivedTone === "late" ? "bg-amber-500/10" : "bg-red-500/10"} blur-3xl rounded-full`}></div>}
               {(!isAbsent && !isLate) && <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/5 blur-3xl rounded-full"></div>}
 
               <div className="relative z-10 flex justify-between items-start mb-6">
                 <div
-                  className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-transform ${isAbsent ? "bg-slate-300 text-slate-500 shadow-none" : isLate ? "bg-amber-500 text-white shadow-amber-500/30" : "bg-emerald-500 text-white shadow-emerald-500/30"}`}
+                  className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-transform ${isReceivedStatus ? (receivedTone === "late" ? "bg-amber-500 text-white shadow-amber-500/30" : "bg-red-600 text-white shadow-red-500/30") : isAbsent ? "bg-slate-300 text-slate-500 shadow-none" : isLate ? "bg-amber-500 text-white shadow-amber-500/30" : "bg-emerald-500 text-white shadow-emerald-500/30"}`}
                 >
                   <GraduationCap size={28} />
                 </div>
                 <span
-                  className={`px-4 py-1.5 rounded-xl font-black text-[10px] shadow-lg uppercase tracking-widest ${isAbsent ? "bg-slate-300 text-slate-600 shadow-none" : isLate ? "bg-amber-500 text-white shadow-amber-500/20" : "bg-emerald-100 text-emerald-700 shadow-none border border-emerald-200"}`}
+                  className={`px-4 py-1.5 rounded-xl font-black text-[10px] shadow-lg uppercase tracking-widest ${isReceivedStatus ? (receivedTone === "late" ? "bg-amber-500 text-white shadow-amber-500/20" : "bg-red-600 text-white shadow-red-500/20") : isAbsent ? "bg-slate-300 text-slate-600 shadow-none" : isLate ? "bg-amber-500 text-white shadow-amber-500/20" : "bg-emerald-100 text-emerald-700 shadow-none border border-emerald-200"}`}
                 >
-                  {status ? (isAbsent ? "تم طي القيد - غائب" : "متأخر") : "حاضر"}
+                  {status ? (receipt ? `مستلم - ${getAbsenceKindLabel(status.type)}` : isAbsent ? "تم طي القيد - غائب" : "متأخر") : "حاضر"}
                 </span>
               </div>
               <div className="relative z-10 flex-1 text-right space-y-3 px-2">
-                <h4 className={`text-2xl font-black break-words leading-tight ${isAbsent ? "text-slate-500 line-through decoration-slate-300 decoration-2" : "text-slate-900"}`}>
+                <h4 className={`text-2xl font-black break-words leading-tight ${isReceivedStatus ? (receivedTone === "late" ? "text-amber-950" : "text-red-950") : isAbsent ? "text-slate-500 line-through decoration-slate-300 decoration-2" : "text-slate-900"}`}>
                   {s.name}
                 </h4>
                 <div className="flex items-center gap-2">
-                  <span className={`px-3 py-1 rounded-lg text-[9px] font-black ${isAbsent ? "bg-slate-200 text-slate-400" : "bg-slate-100 text-slate-500"}`}>
+                  <span className={`px-3 py-1 rounded-lg text-[9px] font-black ${isReceivedStatus ? (receivedTone === "late" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700") : isAbsent ? "bg-slate-200 text-slate-400" : "bg-slate-100 text-slate-500"}`}>
                     {s.grade} - فصل {s.section}
                   </span>
-                  <span className={`px-3 py-1 rounded-lg text-[9px] font-black tabular-nums border ${isAbsent ? "bg-slate-200 text-slate-400 border-transparent" : "bg-white text-slate-600 border-slate-200"}`}>
+                  <span className={`px-3 py-1 rounded-lg text-[9px] font-black tabular-nums border ${isReceivedStatus ? (receivedTone === "late" ? "bg-white text-amber-700 border-amber-100" : "bg-white text-red-700 border-red-100") : isAbsent ? "bg-slate-200 text-slate-400 border-transparent" : "bg-white text-slate-600 border-slate-200"}`}>
                     جلوس: {s.seating_number || '-'}
                   </span>
                 </div>
+                {status && (
+                  receipt ? (
+                    <div className={`rounded-3xl border-2 px-5 py-4 text-white shadow-xl ${receivedTone === "late" ? "border-amber-200 bg-amber-500 shadow-amber-500/20" : "border-red-200 bg-red-600 shadow-red-500/20"}`}>
+                      <p className="text-xs font-black">تم استلام {getAbsenceKindLabel(status.type)}</p>
+                      <p className="mt-2 text-sm font-black leading-6">المستلم: {receipt.role} - {receipt.by}</p>
+                      <p className={`mt-1 text-xs font-bold ${receivedTone === "late" ? "text-amber-50" : "text-red-100"}`}>الوقت: {new Date(receipt.at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border px-4 py-3 text-[10px] font-black bg-orange-50 text-orange-700 border-orange-100">
+                      بانتظار استلام {getAbsenceKindLabel(status?.type)} من الموجه/مساعد الكنترول
+                    </div>
+                  )
+                )}
               </div>
               <div className="relative z-10 grid grid-cols-2 gap-3 mt-8">
                 <button
@@ -1238,15 +1231,6 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
             </div>
           );
         })}
-        {filteredStudents.length === 0 && (
-          <div className="md:col-span-2 lg:col-span-3 bg-white border-2 border-dashed border-slate-200 rounded-[3rem] p-12 text-center text-slate-400">
-            <Users size={48} className="mx-auto mb-4 opacity-40" />
-            <p className="font-black text-xl">لا توجد نتائج لهذا الفلتر</p>
-            <p className="font-bold text-sm mt-2">
-              غيّر الفلتر في الشريط العلوي لعرض الطلاب.
-            </p>
-          </div>
-        )}
       </div>
 
       {/* نافذة البلاغات المتطورة */}

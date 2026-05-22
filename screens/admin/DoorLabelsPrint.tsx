@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Student } from '../../types';
 import { APP_CONFIG } from '../../constants';
+import { getActiveTenantSlug } from '../../supabase';
 
 interface Props {
   students: Student[];
@@ -23,7 +24,13 @@ const DoorLabelsPrint: React.FC<Props> = ({ students }) => {
     });
   }, [students]);
 
-  const siteUrl = window.location.origin;
+  const buildCommitteePublicUrl = (committeeNumber: string) => {
+    const url = new URL(window.location.origin + window.location.pathname);
+    url.searchParams.set('public_committee', committeeNumber);
+    const tenantSlug = getActiveTenantSlug();
+    if (tenantSlug) url.searchParams.set('tenant', tenantSlug);
+    return url.toString();
+  };
 
   return (
     <div className="bg-slate-100 min-h-screen p-8 print:p-0 print:bg-white text-right font-['Tajawal']" dir="rtl">
@@ -91,7 +98,7 @@ const DoorLabelsPrint: React.FC<Props> = ({ students }) => {
         {createPortal(
           <div id="door-labels-print-root" dir="rtl" className="font-['Tajawal'] hidden print:block bg-white z-[9999]">
             {committees.map((committee, idx) => {
-          const publicUrl = `${siteUrl}?public_committee=${committee.num}`;
+          const publicUrl = buildCommitteePublicUrl(committee.num);
           return (
             <div key={idx} className="door-label-page bg-white">
               <div className="w-full flex border-4 border-slate-900 rounded-[3rem] p-10 bg-white shadow-2xl overflow-hidden relative">
