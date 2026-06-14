@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { User, Student, Absence, DeliveryLog, ControlRequest, Supervision, SystemConfig } from '../../types';
 import { ROLES_ARABIC } from '../../constants';
+import { cleanControlRequestText, isInternalSignatureRecord, isSignatureRequest } from '../../services/signatures';
 
 interface Props {
   users?: User[];
@@ -49,7 +50,8 @@ const ControlHeadDashboard: React.FC<Props> = ({
     const activeComs = (supervisions || []).length;
     const readiness = committeeNums.size > 0 ? Math.round((activeComs / committeeNums.size) * 100) : 0;
 
-    const pendingRequests = (requests || []).filter(r => r.status === 'PENDING');
+    const visibleRequests = (requests || []).filter(r => !isInternalSignatureRecord(r) && !isSignatureRequest(r));
+    const pendingRequests = visibleRequests.filter(r => r.status === 'PENDING');
     const urgentRequests = (requests || []).filter(r => r.status === 'PENDING' && (r.text.includes('صحية') || r.text.includes('نقص')));
 
     return {
@@ -65,7 +67,8 @@ const ControlHeadDashboard: React.FC<Props> = ({
 
   return (
     <div className="space-y-8 animate-fade-in text-right pb-32">
-      <div className="bg-[#020617] rounded-[4rem] p-10 md:p-14 text-white relative overflow-hidden border-b-[12px] border-blue-600 shadow-2xl">
+      <div className="bg-gradient-to-br from-[#020817] via-[#0a1628] to-[#050d1a] rounded-[3rem] p-8 md:p-12 text-white relative overflow-hidden border border-blue-900/30 shadow-[0_0_80px_rgba(37,99,235,0.12)]">
+        <div className="absolute inset-0 bg-grid-dark opacity-50 pointer-events-none" />
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-600/10 blur-[150px] rounded-full -mr-64 -mt-64"></div>
         <div className="relative z-10 flex flex-col xl:flex-row justify-between items-center gap-12">
           <div className="flex items-center gap-8">
@@ -103,7 +106,7 @@ const ControlHeadDashboard: React.FC<Props> = ({
            { label: 'المراقبين المباشرين', val: metrics.activeProctors, icon: UserCheck, color: 'text-indigo-500', bg: 'bg-indigo-50' },
            { label: 'البلاغات العاجلة', val: metrics.urgentCount, icon: Zap, color: 'text-red-500', bg: 'bg-red-50', animate: metrics.urgentCount > 0 }
          ].map((m, i) => (
-           <div key={i} className="bg-white p-8 rounded-[3rem] shadow-xl border-2 border-slate-50 flex items-center justify-between group transition-all">
+           <div key={i} className="bg-white p-7 rounded-[2rem] shadow-md border border-slate-100/80 flex items-center justify-between group hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
               <div className="text-right">
                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{m.label}</p>
                  <p className={`text-4xl font-black ${m.color} tabular-nums`}>{m.val}</p>
@@ -117,7 +120,7 @@ const ControlHeadDashboard: React.FC<Props> = ({
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
          <div className="xl:col-span-4 space-y-6">
-            <div className="bg-slate-950 rounded-[3.5rem] p-10 text-white shadow-2xl relative overflow-hidden flex flex-col h-[600px] border-b-8 border-red-600">
+            <div className="bg-gradient-to-br from-[#120810] to-[#1a0d1a] rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden flex flex-col h-[520px] border border-red-900/20">
                <h3 className="text-2xl font-black mb-8 border-b border-white/5 pb-6 text-red-500 flex items-center gap-3">
                  <Signal className="animate-pulse" /> البلاغات النشطة
                </h3>
@@ -127,13 +130,13 @@ const ControlHeadDashboard: React.FC<Props> = ({
                        <p className="font-black text-xl italic">لا توجد بلاغات حالياً</p>
                     </div>
                   ) : (
-                    requests.filter(r => r.status !== 'DONE').map(req => (
-                      <div key={req.id} className="p-6 rounded-[2.5rem] border-2 bg-red-600/10 border-red-500/30">
+                    requests.filter(r => r.status !== 'DONE' && !isInternalSignatureRecord(r) && !isSignatureRequest(r)).map(req => (
+                      <div key={req.id} className="p-5 rounded-[1.5rem] border bg-red-500/[0.08] border-red-500/20 hover:border-red-500/40 transition-all">
                          <div className="flex justify-between items-start mb-3">
                             <span className="bg-slate-900 text-white px-3 py-1 rounded-lg font-black text-xs">لجنة {req.committee}</span>
                             <span className="text-[10px] text-slate-500">{new Date(req.time).toLocaleTimeString('ar-SA')}</span>
                          </div>
-                         <p className="text-lg font-black text-white">{req.text}</p>
+                         <p className="text-lg font-black text-white">{cleanControlRequestText(req.text)}</p>
                       </div>
                     ))
                   )}
@@ -142,7 +145,7 @@ const ControlHeadDashboard: React.FC<Props> = ({
          </div>
 
          <div className="xl:col-span-8">
-            <div className="bg-white rounded-[4rem] p-10 shadow-2xl border-2 border-slate-50 flex flex-col min-h-[500px]">
+             <div className="bg-white rounded-[2.5rem] p-8 shadow-md border border-slate-100 flex flex-col min-h-[440px]">
                <h3 className="text-3xl font-black text-slate-900 mb-10 text-right">خريطة الانتشار الميداني</h3>
                <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-10 gap-3 flex-1">
                   {Array.from(new Set(students.map(s => s.committee_number))).filter(Boolean).sort((a,b)=>Number(a)-Number(b)).map(num => {
@@ -150,7 +153,7 @@ const ControlHeadDashboard: React.FC<Props> = ({
                     const isFinished = deliveryLogs.some(l => l.committee_number === num && l.status === 'CONFIRMED');
                     const hasPendingReq = requests.some(r => r.committee === num && r.status === 'PENDING');
                     return (
-                      <div key={num} className={`aspect-square rounded-2xl border-2 flex flex-col items-center justify-center transition-all ${isFinished ? 'bg-emerald-600 border-emerald-400 text-white' : hasPendingReq ? 'bg-red-600 border-red-400 text-white animate-pulse' : isOccupied ? 'bg-blue-600 border-blue-500 text-white' : 'bg-slate-50 border-slate-100 opacity-30'}`}>
+                      <div key={num} className={`aspect-square border-2 flex flex-col items-center justify-center transition-all ${isFinished ? 'bg-gradient-to-br from-emerald-500 to-emerald-600 border-emerald-400/50 text-white rounded-xl' : hasPendingReq ? 'bg-gradient-to-br from-red-500 to-red-600 border-red-400/50 text-white animate-pulse rounded-xl' : isOccupied ? 'bg-gradient-to-br from-blue-500 to-blue-600 border-blue-400/50 text-white rounded-xl' : 'bg-slate-50 border-slate-100 opacity-25 rounded-xl'}`}>
                          <span className="text-xl font-black tabular-nums">{num}</span>
                       </div>
                     );

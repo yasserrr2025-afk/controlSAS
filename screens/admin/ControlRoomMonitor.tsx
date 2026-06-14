@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Supervision, Absence, DeliveryLog, User, Student, ControlRequest } from '../../types';
 import { getAbsenceKindLabel, getAbsenceReceipt } from '../../services/absenceReceipt';
+import { cleanControlRequestText, isInternalSignatureRecord, isSignatureRequest } from '../../services/signatures';
 
 interface Props {
   absences: Absence[];
@@ -66,7 +67,7 @@ const ControlRoomMonitor: React.FC<Props> = ({ absences, supervisions, users, de
     const completed = new Set(deliveryLogs.filter(l => l.status === 'CONFIRMED').map(l => l.committee_number)).size;
     const absents = absences.filter(a => a.type === 'ABSENT').length;
     const lates = absences.filter(a => a.type === 'LATE').length;
-    const activeReqs = requests.filter(r => r.status !== 'DONE').length;
+    const activeReqs = requests.filter(r => r.status !== 'DONE' && !isInternalSignatureRecord(r) && !isSignatureRequest(r)).length;
     
     return {
       totalComs,
@@ -200,6 +201,7 @@ const ControlRoomMonitor: React.FC<Props> = ({ absences, supervisions, users, de
 
   const sortedRequests = useMemo(() => {
     return requests
+      .filter(req => !isInternalSignatureRecord(req) && !isSignatureRequest(req))
       .filter(req => req.status === 'DONE' || !submittedCommittees.has(req.committee))
       .sort((a, b) => b.time.localeCompare(a.time));
   }, [requests, submittedCommittees]);
@@ -349,7 +351,7 @@ const ControlRoomMonitor: React.FC<Props> = ({ absences, supervisions, users, de
                     <div className="bg-slate-900 text-white px-4 py-2 rounded-xl font-black text-lg">لجنة {req.committee}</div>
                     <span className="text-[10px] font-mono text-slate-500">{new Date(req.time).toLocaleTimeString('ar-SA')}</span>
                  </div>
-                 <p className={`${isFull ? 'text-3xl' : 'text-lg'} font-black text-white leading-relaxed`}>{req.text}</p>
+                 <p className={`${isFull ? 'text-3xl' : 'text-lg'} font-black text-white leading-relaxed`}>{cleanControlRequestText(req.text)}</p>
                  <p className="text-[10px] font-black text-slate-500 mt-3 uppercase tracking-widest">{req.from}</p>
               </div>
             ))

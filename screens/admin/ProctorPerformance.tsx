@@ -7,6 +7,7 @@ import {
   Download, FileBadge, CheckCircle, UserCheck, X
 } from 'lucide-react';
 import OfficialHeader from '../../components/OfficialHeader';
+import { isPlaceholderProctorStart } from '../../utils/proctorTime';
 
 interface Props {
   users: User[];
@@ -28,7 +29,7 @@ const ProctorPerformance: React.FC<Props> = ({ users, supervisions, deliveryLogs
     examStartTime.setHours(startH, startM, 0);
 
     return proctors.map(u => {
-      const sv = supervisions.find(s => s.teacher_id === u.id && s.date.startsWith(examDate));
+      const sv = supervisions.find(s => s.teacher_id === u.id && s.date.startsWith(examDate) && !isPlaceholderProctorStart(s.date));
       const logs = deliveryLogs.filter(l => l.proctor_name === u.full_name && l.time.startsWith(examDate));
       
       let startDiff = -1;

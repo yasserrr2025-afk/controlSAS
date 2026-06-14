@@ -12,6 +12,8 @@ alter table public.committee_reports enable row level security;
 alter table public.system_config enable row level security;
 alter table public.notifications enable row level security;
 alter table public.envelope_openings enable row level security;
+alter table public.exam_schedule enable row level security;
+alter table public.archive_boxes enable row level security;
 
 create policy "tenant can read own tenant"
 on public.tenants for select
@@ -64,5 +66,15 @@ with check (tenant_id = public.current_tenant_id());
 
 create policy "tenant isolated envelope openings"
 on public.envelope_openings for all
+using (tenant_id = public.current_tenant_id())
+with check (tenant_id = public.current_tenant_id());
+
+create policy "tenant isolated exam schedule"
+on public.exam_schedule for all
+using (tenant_id = public.current_tenant_id())
+with check (tenant_id = public.current_tenant_id());
+
+create policy "tenant isolated archive boxes"
+on public.archive_boxes for all
 using (tenant_id = public.current_tenant_id())
 with check (tenant_id = public.current_tenant_id());

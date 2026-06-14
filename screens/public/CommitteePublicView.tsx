@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Student, Supervision, Absence, User } from '../../types';
 import { User as UserIcon, Clock, CheckCircle2, XCircle, AlertCircle, Calendar } from 'lucide-react';
 import { APP_CONFIG } from '../../constants';
+import { formatActualProctorStart, isPlaceholderProctorStart } from '../../utils/proctorTime';
 
 interface Props {
   committeeNumber: string;
@@ -38,12 +39,7 @@ const CommitteePublicView: React.FC<Props> = ({
   }, [supervision, users]);
 
   const joinTime = useMemo(() => {
-    if (!supervision?.date) return '---';
-    try {
-      return new Date(supervision.date).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return '---';
-    }
+    return formatActualProctorStart(supervision?.date);
   }, [supervision]);
 
   const stats = useMemo(() => {
@@ -95,8 +91,8 @@ const CommitteePublicView: React.FC<Props> = ({
            </div>
            <div className="flex-1 space-y-1">
              <p className="text-[10px] font-black tracking-widest text-slate-400 uppercase">المعلم المراقب</p>
-             <h3 className="text-lg font-black text-slate-800 leading-tight">{proctor?.full_name || 'لم يقم بتسجيل الدخول بعد'}</h3>
-             {proctor && (
+             <h3 className="text-lg font-black text-slate-800 leading-tight">{proctor && !isPlaceholderProctorStart(supervision?.date) ? proctor.full_name : 'لم يقم بتسجيل الدخول بعد'}</h3>
+             {proctor && !isPlaceholderProctorStart(supervision?.date) && (
                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 mt-2 bg-emerald-50 px-2 py-1 rounded-lg w-fit">
                  <Clock size={14} />
                  <span>وقت الدخول: {joinTime}</span>

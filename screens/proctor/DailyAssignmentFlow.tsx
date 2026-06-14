@@ -46,9 +46,11 @@ import {
   Bell,
   Package,
 } from "lucide-react";
-import { db, supabase } from "../../supabase";
+import { db, getActiveTenantId, supabase } from "../../supabase";
 import { APP_CONFIG, ROLES_ARABIC } from "../../constants";
 import { getAbsenceKindLabel, getAbsenceReceipt } from "../../services/absenceReceipt";
+import { isPlaceholderProctorStart } from "../../utils/proctorTime";
+import { ALL_GRADES_SIGNATURE, buildSignatureText, cleanSignatureRequestText, findStoredSignature, isSignatureRequest } from "../../services/signatures";
 
 interface Props {
   user: User;
@@ -111,24 +113,37 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   const [elapsedTime, setElapsedTime] = useState('00:00');
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [localPendingCount, setLocalPendingCount] = useState(0);
+  const [gateNow, setGateNow] = useState(new Date());
 
   const qrScannerRef = useRef<Html5Qrcode | null>(null);
+  const proctorSignatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const proctorSignatureDrawingRef = useRef(false);
   const activeDate = useMemo(
     () =>
       systemConfig?.active_exam_date || new Date().toISOString().split("T")[0],
     [systemConfig],
   );
+  const [optimisticAssignment, setOptimisticAssignment] = useState<Supervision | null>(null);
 
   const activeAssignment = useMemo(
-    () =>
-      supervisions.find(
+    () => {
+      const fromServer = supervisions.find(
         (s: any) =>
-          s.teacher_id === user.id && s.date && s.date.startsWith(activeDate),
-      ),
-    [supervisions, user.id, activeDate],
+          s.teacher_id === user.id && matchesActiveDate(s.date),
+      );
+      if (fromServer) return fromServer;
+      if (optimisticAssignment?.teacher_id === user.id && matchesActiveDate(optimisticAssignment.date)) {
+        return optimisticAssignment;
+      }
+      return undefined;
+    },
+    [supervisions, user.id, activeDate, optimisticAssignment],
   );
 
   const activeCommittee = activeAssignment?.committee_number || null;
+  const isAssignmentStarted = (value?: string | null) => {
+    return !isPlaceholderProctorStart(value);
+  };
   const [confirmedAssignments, setConfirmedAssignments] = useState<string[]>(() => {
     try {
       return JSON.parse(localStorage.getItem(`confirmed_assignments_${user.id}`) || '[]');
@@ -143,10 +158,56 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       return {};
     }
   });
-  const activeAssignmentConfirmed = !!activeAssignment && confirmedAssignments.includes(activeAssignment.id);
+  const activeAssignmentConfirmed = !!activeAssignment && (confirmedAssignments.includes(activeAssignment.id) || isAssignmentStarted(activeAssignment.date));
   const activeAssignmentStartTime = activeAssignment
     ? assignmentStartTimes[activeAssignment.id] || activeAssignment.date
     : null;
+  const isEmergencyAssignment = !!activeAssignment && /بديل|طوارئ|احتياط|\[RESERVE\]/.test(String(activeAssignment.subject || ''));
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setGateNow(new Date()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const assignmentGate = useMemo(() => {
+    const [hours, minutes] = String(systemConfig?.exam_start_time || '08:00').split(':').map(Number);
+    const examStart = new Date(`${activeDate}T00:00:00`);
+    examStart.setHours(Number.isFinite(hours) ? hours : 8, Number.isFinite(minutes) ? minutes : 0, 0, 0);
+    const opensAt = new Date(examStart.getTime() - 15 * 60 * 1000);
+    return {
+      examStart,
+      opensAt,
+      canConfirm: gateNow.getTime() >= opensAt.getTime(),
+    };
+  }, [activeDate, systemConfig?.exam_start_time, gateNow]);
+
+  const gateTimeLabel = assignmentGate.opensAt.toLocaleTimeString('ar-SA', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const buildActiveDateTimestamp = () => {
+    const now = new Date();
+    return now.toISOString();
+  };
+
+  function getRiyadhDateKeyFromValue(value?: string | null) {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Riyadh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(d);
+    const get = (type: string) => parts.find(part => part.type === type)?.value || '';
+    return `${get('year')}-${get('month')}-${get('day')}`;
+  }
+
+  function matchesActiveDate(value?: string | null) {
+    return !!value && (String(value).startsWith(activeDate) || getRiyadhDateKeyFromValue(value) === activeDate);
+  }
 
   const markAssignmentStarted = (assignmentId: string, startedAt: string) => {
     const nextConfirmed = Array.from(new Set([...confirmedAssignments, assignmentId]));
@@ -157,15 +218,40 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     localStorage.setItem(`assignment_start_times_${user.id}`, JSON.stringify(nextStartTimes));
   };
 
+  useEffect(() => {
+    if (!activeAssignment || !isEmergencyAssignment || !isAssignmentStarted(activeAssignment.date)) return;
+    if (confirmedAssignments.includes(activeAssignment.id)) return;
+    const startedAt = buildActiveDateTimestamp();
+    const tenantId = getActiveTenantId();
+    let query = supabase.from('supervision').update({ date: startedAt }).eq('id', activeAssignment.id);
+    if (tenantId) query = query.eq('tenant_id', tenantId);
+    query
+      .then(({ error }) => {
+        if (error) {
+          onAlert(error.message || 'تعذر تحديث وقت مباشرة الطوارئ', 'error');
+          return;
+        }
+        setSupervisions();
+      });
+    markAssignmentStarted(activeAssignment.id, startedAt);
+    setOptimisticAssignment({ ...activeAssignment, date: startedAt });
+    onAlert(`تمت مباشرة اللجنة رقم ${activeAssignment.committee_number} كاحتياط / بديل طارئ.`, 'success');
+  }, [activeAssignment?.id, activeAssignment?.date, isEmergencyAssignment, confirmedAssignments]);
+
   const confirmActiveAssignment = async () => {
     if (!activeAssignment) return;
-    const startedAt = new Date().toISOString();
+    if (!assignmentGate.canConfirm) {
+      onAlert(`يفتح اعتماد اللجنة قبل بداية الاختبار بـ 15 دقيقة، عند ${gateTimeLabel}`, 'warning');
+      return;
+    }
+    const startedAt = buildActiveDateTimestamp();
     try {
-      const { error } = await supabase
-        .from('supervision')
-        .update({ date: startedAt })
-        .eq('id', activeAssignment.id);
+      const tenantId = getActiveTenantId();
+      let query = supabase.from('supervision').update({ date: startedAt }).eq('id', activeAssignment.id);
+      if (tenantId) query = query.eq('tenant_id', tenantId);
+      const { error } = await query;
       if (error) throw new Error(error.message);
+      setOptimisticAssignment({ ...activeAssignment, date: startedAt });
       markAssignmentStarted(activeAssignment.id, startedAt);
       setElapsedTime('00:00');
       await setSupervisions();
@@ -180,13 +266,106 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       controlRequests
         .filter(
           (r) =>
-            r.from === user.full_name &&
             r.committee === activeCommittee &&
-            r.status !== "DONE",
+            r.status !== "DONE" &&
+            (r.from === user.full_name || r.text?.startsWith('[CALL_RECEIVER]') || isSignatureRequest(r)),
         )
         .sort((a, b) => b.time.localeCompare(a.time)),
     [controlRequests, user.full_name, activeCommittee],
   );
+
+  const isReceiverSummon = (request: ControlRequest) => request.text?.startsWith('[CALL_RECEIVER]');
+  const cleanRequestText = (text?: string) => cleanSignatureRequestText(String(text || '').replace('[CALL_RECEIVER]', '').trim());
+
+  const acknowledgeReceiverSummon = async (request: ControlRequest) => {
+    if (!isReceiverSummon(request) || request.status !== 'PENDING') return;
+    try {
+      await db.controlRequests.updateStatus(request.id, 'IN_PROGRESS', user.full_name);
+      await setSupervisions();
+      onAlert('تم استلام استدعاء المستلم. يرجى مراجعة نقطة الاستلام.', 'success');
+    } catch (error: any) {
+      onAlert(error.message || 'تعذر استلام الاستدعاء.', 'error');
+    }
+  };
+
+  const getSignaturePoint = (canvas: HTMLCanvasElement, event: React.PointerEvent<HTMLCanvasElement>) => {
+    const rect = canvas.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  };
+
+  const startProctorSignature = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = proctorSignatureCanvasRef.current;
+    if (!canvas) return;
+    proctorSignatureDrawingRef.current = true;
+    canvas.setPointerCapture(event.pointerId);
+    const ctx = canvas.getContext("2d");
+    const point = getSignaturePoint(canvas, event);
+    if (!ctx) return;
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+  };
+
+  const drawProctorSignature = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = proctorSignatureCanvasRef.current;
+    if (!canvas || !proctorSignatureDrawingRef.current) return;
+    const ctx = canvas.getContext("2d");
+    const point = getSignaturePoint(canvas, event);
+    if (!ctx) return;
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+  };
+
+  const finishProctorSignature = () => {
+    proctorSignatureDrawingRef.current = false;
+    const data = proctorSignatureCanvasRef.current?.toDataURL("image/png");
+    if (data) localStorage.setItem(`proctor_signature_${user.id}`, data);
+  };
+
+  const clearProctorSignature = () => {
+    const canvas = proctorSignatureCanvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    localStorage.removeItem(`proctor_signature_${user.id}`);
+  };
+
+  const saveProctorSignature = async () => {
+    if (!activeCommittee) return;
+    const signature = proctorSignatureCanvasRef.current?.toDataURL("image/png");
+    if (!signature) {
+      onAlert("يرجى توقيع المراقب قبل اعتماد الشكر النهائي.", "warning");
+      return;
+    }
+    try {
+      await db.controlRequests.insert({
+        from: user.full_name,
+        committee: activeCommittee,
+        text: buildSignatureText({
+          role: "proctor",
+          committee: activeCommittee,
+          grade: ALL_GRADES_SIGNATURE,
+          name: user.full_name,
+          time: new Date().toISOString(),
+          signature,
+        }),
+        time: new Date().toISOString(),
+        status: "DONE",
+      });
+      const pendingSignatureRequests = controlRequests.filter(
+        request => request.committee === activeCommittee && request.status !== 'DONE' && isSignatureRequest(request)
+      );
+      for (const request of pendingSignatureRequests) {
+        await db.controlRequests.updateStatus(request.id, 'DONE', user.full_name);
+      }
+      await setSupervisions();
+      onAlert("تم حفظ توقيع المراقب واعتماد إتمام التسليم.", "success");
+    } catch (error: any) {
+      onAlert(error.message || "تعذر حفظ توقيع المراقب.", "error");
+    }
+  };
 
   useEffect(() => {
     if (!activeAssignmentStartTime) return;
@@ -262,7 +441,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       .filter(
         (l) =>
           l.committee_number === activeCommittee &&
-          l.time.startsWith(activeDate),
+          matchesActiveDate(l.time),
       )
       .map((l) => l.grade);
 
@@ -290,7 +469,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       absences.filter(
         (a) =>
           a.committee_number === activeCommittee &&
-          a.date.startsWith(activeDate),
+          matchesActiveDate(a.date),
       ),
     [absences, activeCommittee, activeDate],
   );
@@ -319,9 +498,23 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     setIsJoining(true);
     try {
       const assignmentId = crypto.randomUUID();
-      const startedAt = new Date().toISOString();
-      await db.supervision.deleteByTeacherId(user.id);
+      const startedAt = buildActiveDateTimestamp();
+      const tenantId = getActiveTenantId();
+      let deleteQuery = supabase.from('supervision').delete()
+        .eq('teacher_id', user.id)
+        .gte('date', `${activeDate}T00:00:00`)
+        .lt('date', `${activeDate}T23:59:59.999Z`);
+      if (tenantId) deleteQuery = deleteQuery.eq('tenant_id', tenantId);
+      await deleteQuery;
       await db.supervision.insert({
+        id: assignmentId,
+        teacher_id: user.id,
+        committee_number: cleanedNum,
+        date: startedAt,
+        period: 1,
+        subject: "اختبار",
+      });
+      setOptimisticAssignment({
         id: assignmentId,
         teacher_id: user.id,
         committee_number: cleanedNum,
@@ -358,7 +551,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   ) => {
     if (isCommitteeFinished) return;
     const existing = absences.find(
-      (a) => a.student_id === student.national_id && a.date.startsWith(activeDate),
+      (a) => a.student_id === student.national_id && matchesActiveDate(a.date),
     );
     const isRemoving = existing && existing.type === type;
 
@@ -542,7 +735,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   if (activeAssignment && !activeAssignmentConfirmed) {
     return (
       <div className="max-w-4xl mx-auto py-10 px-4 space-y-8 animate-fade-in text-center">
-        <div className="bg-slate-950 p-10 rounded-[4rem] text-white shadow-2xl relative overflow-hidden border-b-[10px] border-emerald-500">
+        <div className="bg-gradient-to-br from-[#020817] via-[#0a1628] to-[#020617] p-10 rounded-[4rem] text-white shadow-2xl relative overflow-hidden border-b-[10px] border-emerald-500">
           <div className="absolute inset-0 bg-emerald-500/10"></div>
           <div className="relative z-10 flex flex-col items-center gap-8">
             <div className="w-28 h-28 bg-emerald-500 text-white rounded-[2.5rem] flex flex-col items-center justify-center font-black shadow-2xl">
@@ -573,11 +766,15 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
           </div>
           <button
             onClick={confirmActiveAssignment}
-            className="w-full p-8 bg-emerald-600 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl hover:bg-emerald-700 transition-all flex items-center justify-center gap-4 active:scale-95"
+            disabled={!assignmentGate.canConfirm}
+            className="w-full p-8 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-[2.5rem] font-black text-2xl shadow-xl shadow-emerald-500/20 hover:from-emerald-500 hover:to-emerald-400 transition-all flex items-center justify-center gap-4 active:scale-[0.97] disabled:bg-none disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed"
           >
             <UserCheck size={32} />
-            تأكيد المباشرة
+            {assignmentGate.canConfirm ? 'تأكيد اعتماد اللجنة' : `يفتح الاعتماد عند ${gateTimeLabel}`}
           </button>
+          <p className="mt-4 text-xs font-black text-slate-400">
+            اعتماد اللجنة يظهر قبل بداية الاختبار بـ 15 دقيقة حسب وقت بداية الجلسة في إعدادات النظام.
+          </p>
         </div>
       </div>
     );
@@ -586,7 +783,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   if (isCommitteeFinished) {
     const committeeLogs = deliveryLogs.filter(
       (l) =>
-        l.committee_number === activeCommittee && l.time.startsWith(activeDate),
+        l.committee_number === activeCommittee && matchesActiveDate(l.time),
     );
     
     // منع التكرار: نحتفظ بسجل واحد لكل صف، مع أولوية السجل المؤكد (CONFIRMED)
@@ -598,6 +795,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     }, {} as Record<string, DeliveryLog>)) as DeliveryLog[];
 
     const isFullyConfirmed = myLogs.length > 0 && myLogs.every(l => l.status === 'CONFIRMED');
+    const proctorSignature = findStoredSignature(controlRequests, 'proctor', activeCommittee, ALL_GRADES_SIGNATURE);
 
     return (
       <div className="max-w-4xl mx-auto py-10 px-4 animate-fade-in pb-48 space-y-10">
@@ -605,7 +803,45 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
         {/* ══════════════════════════════════════════════
             بطاقة الإنجاز الملكية
         ══════════════════════════════════════════════ */}
-        {isFullyConfirmed ? (
+        {isFullyConfirmed && !proctorSignature ? (
+          <div className="bg-white rounded-[4rem] border-2 border-blue-100 p-8 shadow-2xl text-center space-y-6">
+            <div className="mx-auto grid h-20 w-20 place-items-center rounded-[2rem] bg-blue-600 text-white shadow-xl shadow-blue-500/20">
+              <Pencil size={34} />
+            </div>
+            <div>
+              <h2 className="text-3xl font-black text-slate-950">توقيع مراقب اللجنة</h2>
+              <p className="mt-2 text-sm font-bold text-slate-500">
+                اكتمل استلام الكنترول. يلزم توقيعك لاعتماد أثر التسليم في التقارير.
+              </p>
+            </div>
+            <div className="rounded-[2rem] border-2 border-dashed border-slate-200 bg-slate-50 p-3">
+              <canvas
+                ref={proctorSignatureCanvasRef}
+                width={760}
+                height={260}
+                onPointerDown={startProctorSignature}
+                onPointerMove={drawProctorSignature}
+                onPointerUp={finishProctorSignature}
+                onPointerCancel={finishProctorSignature}
+                className="h-44 w-full touch-none rounded-[1.5rem] bg-white shadow-inner"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={clearProctorSignature}
+                className="rounded-2xl border border-slate-200 bg-white py-4 text-sm font-black text-slate-600"
+              >
+                مسح التوقيع
+              </button>
+              <button
+                onClick={saveProctorSignature}
+                className="rounded-2xl bg-blue-600 py-4 text-sm font-black text-white shadow-lg shadow-blue-500/20"
+              >
+                حفظ التوقيع وإظهار رسالة الشكر
+              </button>
+            </div>
+          </div>
+        ) : isFullyConfirmed ? (
           /* ── حالة مكتملة ومستلمة: بطاقة فاخرة ── */
           <div className="relative">
             {/* توهج خارجي ذهبي */}
@@ -801,7 +1037,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
               const comAbsences = absences.filter(
                 (a) =>
                   a.committee_number === activeCommittee &&
-                  a.date.startsWith(activeDate) &&
+                  matchesActiveDate(a.date) &&
                   students.find((s) => s.national_id === a.student_id)
                     ?.grade === log.grade,
               );
@@ -886,7 +1122,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
 
         <button
           onClick={() => window.location.reload()}
-          className="w-full bg-slate-900 text-white py-8 rounded-[2.5rem] font-black text-2xl shadow-2xl flex items-center justify-center gap-4 active:scale-95 transition-all"
+          className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-white py-8 rounded-[2.5rem] font-black text-2xl shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-4 active:scale-[0.97] hover:from-emerald-500 hover:to-emerald-400 transition-all"
         >
           <RefreshCcw size={32} /> تحديث الحالة الميدانية
         </button>
@@ -898,7 +1134,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   if (!activeCommittee) {
     return (
       <div className="max-w-4xl mx-auto py-10 px-4 space-y-12 animate-fade-in text-center">
-        <div className="bg-slate-950 p-10 rounded-[4rem] text-white shadow-2xl relative overflow-hidden border-b-[10px] border-blue-600">
+        <div className="bg-gradient-to-br from-[#020817] via-[#0a1628] to-[#020617] p-10 rounded-[4rem] text-white shadow-2xl relative overflow-hidden border-b-[10px] border-blue-600">
           <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-10">
             <div className="flex items-center gap-8">
               <div className="w-24 h-24 bg-white rounded-3xl p-1 flex items-center justify-center border-4 border-blue-500/20 shadow-2xl">
@@ -959,7 +1195,8 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
             <div className="fixed inset-0 z-[500] bg-slate-950/98 backdrop-blur-3xl flex flex-col items-center justify-center p-8 no-print text-white">
               <div
                 id="proctor-qr-v70"
-                className="w-full max-w-sm aspect-square bg-black rounded-[4rem] border-8 border-white/10 overflow-hidden shadow-2xl"
+                className="w-full max-w-sm aspect-square bg-black rounded-[3rem] border-2 border-blue-400/60 overflow-hidden shadow-2xl"
+                style={{ boxShadow: '0 0 30px rgba(59,130,246,0.2)' }}
               ></div>
               <button
                 onClick={stopScanner}
@@ -1002,7 +1239,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="bg-slate-950 p-8 md:p-10 rounded-[3.5rem] text-white shadow-2xl border-b-[8px] border-blue-600">
+      <div className="bg-gradient-to-r from-[#020817] to-[#0a1628] p-8 md:p-10 rounded-[3.5rem] text-white shadow-2xl border-b-[8px] border-blue-600">
         <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-8">
             <div className="w-24 h-24 bg-blue-600 text-white rounded-[2rem] flex flex-col items-center justify-center font-black shadow-2xl">
@@ -1067,30 +1304,58 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
             </h3>
           </div>
           <div className="space-y-4">
-            {myActiveRequests.map((req) => (
+            {myActiveRequests.map((req) => {
+              const receiverSummon = isReceiverSummon(req);
+              const signatureRequest = isSignatureRequest(req);
+              const requestText = (receiverSummon || signatureRequest) ? cleanRequestText(req.text) : req.text;
+              const requestStatusText = signatureRequest
+                ? "توقيع المراقب مطلوب"
+                : receiverSummon
+                ? req.status === "PENDING" ? "استدعاء من المستلم" : "بانتظار إغلاق المستلم"
+                : req.status === "PENDING" ? "بانتظار المباشرة" : "المساعد في الطريق إليك";
+              return (
               <div
                 key={req.id}
-                className="flex flex-col md:flex-row justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 group"
+                className={`flex flex-col md:flex-row justify-between items-center p-4 rounded-2xl border group ${
+                  receiverSummon || signatureRequest ? "bg-blue-50 border-blue-100" : "bg-slate-50 border-slate-100"
+                }`}
               >
-                <div className="flex items-center gap-4 flex-1">
+                <div className="flex items-center gap-4 flex-1 min-w-0">
                   <div
-                    className={`w-3 h-3 rounded-full ${req.status === "PENDING" ? "bg-amber-500 animate-pulse" : "bg-blue-500"}`}
+                    className={`w-3 h-3 rounded-full shrink-0 ${
+                      receiverSummon || signatureRequest
+                        ? req.status === "PENDING" ? "bg-blue-600 animate-pulse" : "bg-violet-600"
+                        : req.status === "PENDING" ? "bg-amber-500 animate-pulse" : "bg-blue-500"
+                    }`}
                   ></div>
-                  <p className="font-black text-slate-700 text-sm">
-                    {req.text}
-                  </p>
+                  <div className="min-w-0 text-right">
+                    <p className="font-black text-slate-700 text-sm truncate">
+                      {requestText}
+                    </p>
+                    {(receiverSummon || signatureRequest) && (
+                      <p className="mt-1 text-[10px] font-bold text-blue-500 truncate">
+                        من: {req.from}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-4 mt-3 md:mt-0">
+                <div className="flex flex-wrap items-center justify-end gap-3 mt-3 md:mt-0">
+                  {receiverSummon && req.status === "PENDING" && (
+                    <button
+                      onClick={() => acknowledgeReceiverSummon(req)}
+                      className="px-4 py-2 rounded-xl bg-blue-600 text-white font-black text-xs shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
+                    >
+                      استلام الطلب
+                    </button>
+                  )}
                   <span
                     className={`px-4 py-1 rounded-full font-black text-[9px] uppercase tracking-widest ${
-                      req.status === "PENDING"
-                        ? "bg-amber-100 text-amber-600"
-                        : "bg-blue-600 text-white shadow-lg"
+                      receiverSummon || signatureRequest
+                        ? req.status === "PENDING" ? "bg-blue-100 text-blue-700" : "bg-violet-600 text-white shadow-lg"
+                        : req.status === "PENDING" ? "bg-amber-100 text-amber-600" : "bg-blue-600 text-white shadow-lg"
                     }`}
                   >
-                    {req.status === "PENDING"
-                      ? "بانتظار المباشرة"
-                      : "المساعد في الطريق إليك"}
+                    {requestStatusText}
                   </span>
                   <div className="text-[9px] font-bold text-slate-400 font-mono">
                     {new Date(req.time).toLocaleTimeString("ar-SA", {
@@ -1100,7 +1365,8 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1166,7 +1432,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
                 ${isReceivedStatus ? (receivedTone === "late" ? "bg-gradient-to-br from-amber-50 via-white to-amber-50 border-amber-200 shadow-2xl shadow-amber-500/15 scale-100" : "bg-gradient-to-br from-red-50 via-white to-red-50 border-red-200 shadow-2xl shadow-red-500/15 scale-100") :
                   isAbsent ? "bg-slate-50 opacity-60 grayscale-[0.5] border-transparent shadow-none scale-95" : 
                   isLate ? "bg-gradient-to-br from-amber-50 to-white shadow-xl shadow-amber-500/10 border-amber-100" : 
-                  "bg-white/80 backdrop-blur-3xl shadow-2xl border-white hover:border-blue-100"}`}
+                  "bg-white shadow-2xl border-slate-100 hover:shadow-md hover:border-blue-100"}`}
             >
               {isReceivedStatus && <div className={`absolute inset-x-0 top-0 h-2 ${receivedTone === "late" ? "bg-amber-500" : "bg-red-600"}`}></div>}
               {isLate && <div className="absolute top-0 right-0 w-32 h-32 bg-amber-400/10 blur-3xl rounded-full"></div>}
@@ -1214,7 +1480,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
               <div className="relative z-10 grid grid-cols-2 gap-3 mt-8">
                 <button
                   onClick={() => toggleStudentStatus(s, "ABSENT")}
-                  className={`py-4 rounded-[1.8rem] font-black text-xs transition-all flex items-center justify-center gap-2 ${isAbsent ? "bg-slate-800 text-white shadow-lg" : "bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-red-500 border border-slate-100"}`}
+                  className={`py-4 rounded-[1.8rem] font-black text-xs transition-all flex items-center justify-center gap-2 active:scale-[0.97] ${isAbsent ? "bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-lg" : "bg-gradient-to-r from-red-600 to-red-500 text-white shadow-md hover:from-red-500 hover:to-red-400"}`}
                 >
                   {isAbsent ? <Check size={16} /> : <X size={16} />} 
                   {isAbsent ? "إلغاء الغياب" : "رصد غياب"}
@@ -1222,7 +1488,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
                 <button
                   onClick={() => toggleStudentStatus(s, "LATE")}
                   disabled={isAbsent}
-                  className={`py-4 rounded-[1.8rem] font-black text-xs transition-all flex items-center justify-center gap-2 ${isAbsent ? "opacity-50 cursor-not-allowed bg-slate-50 text-slate-300" : isLate ? "bg-amber-500 text-white shadow-lg shadow-amber-500/30" : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-amber-600 border border-slate-100"}`}
+                  className={`py-4 rounded-[1.8rem] font-black text-xs transition-all flex items-center justify-center gap-2 active:scale-[0.97] ${isAbsent ? "opacity-50 cursor-not-allowed bg-slate-50 text-slate-300" : isLate ? "bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-lg" : "bg-gradient-to-r from-amber-500 to-amber-400 text-white shadow-md hover:from-amber-400 hover:to-amber-300"}`}
                 >
                   {isLate ? <Check size={16} /> : <Clock size={16} />}
                   {isLate ? "إلغاء التأخر" : "رصد تأخر"}

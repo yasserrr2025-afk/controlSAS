@@ -15,9 +15,13 @@ interface Props {
 }
 
 const StatCard = ({ title, value, icon, color, bgColor, textColor }: any) => (
-  <div className={`p-8 rounded-[2.5rem] border-2 ${color} bg-white shadow-xl flex items-center gap-8 transition-all hover:scale-[1.03] text-right`}>
-    <div className={`p-6 ${bgColor} ${textColor} rounded-3xl shadow-inner`}>{icon}</div>
-    <div><p className="text-slate-400 text-[10px] font-black uppercase mb-1">{title}</p><p className="text-4xl font-black text-slate-900 leading-none tabular-nums">{value}</p></div>
+  <div className={`group p-5 md:p-6 rounded-[2rem] border ${color} bg-white shadow-md flex items-center gap-5 transition-all hover:shadow-xl hover:-translate-y-1 duration-300 text-right relative overflow-hidden`}>
+    <div className="absolute inset-0 bg-gradient-to-br from-transparent to-slate-50/40 pointer-events-none" />
+    <div className={`p-4 ${bgColor} ${textColor} rounded-2xl shrink-0 group-hover:scale-110 transition-transform shadow-sm`}>{icon}</div>
+    <div className="relative z-10">
+      <p className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-1">{title}</p>
+      <p className="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">{value}</p>
+    </div>
   </div>
 );
 
@@ -71,11 +75,11 @@ const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, su
     <div className="space-y-10 animate-fade-in text-right pb-20">
       <div className="flex flex-col lg:flex-row justify-between items-end gap-6 no-print">
         <div className="space-y-2 flex-1">
-          <h2 className="text-4xl font-black text-slate-800 tracking-tighter">متابعة غياب اليوم</h2>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight">متابعة غياب اليوم</h2>
           <p className="text-slate-400 font-bold italic">يجب تأكيد استلام الغياب أو التأخير قبل الاتصال بولي الأمر.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {assignedGrades.length > 0 ? assignedGrades.map(grade => (
-              <span key={grade} className="rounded-xl bg-blue-50 px-4 py-2 text-xs font-black text-blue-700 border border-blue-100">صف {grade}</span>
+              <span key={grade} className="rounded-full bg-blue-50 px-4 py-1.5 text-xs font-black text-blue-700 border border-blue-100 shadow-sm">صف {grade}</span>
             )) : (
               <span className="rounded-xl bg-orange-50 px-4 py-2 text-xs font-black text-orange-700 border border-orange-100">لم يتم إسناد صفوف لهذا الموجه</span>
             )}
@@ -88,12 +92,12 @@ const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, su
             <input
               type="text"
               placeholder="ابحث باسم الطالب، اللجنة، أو الصف..."
-              className="w-full pr-12 pl-4 py-4 bg-white border-2 border-slate-100 rounded-2xl font-bold shadow-sm outline-none focus:border-blue-600 transition-all"
+              className="w-full pr-12 pl-4 py-3.5 bg-white border border-slate-200 rounded-xl font-bold shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
             />
           </div>
-          <button onClick={() => window.print()} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black shadow-xl flex items-center gap-3 hover:bg-black transition-all">
+          <button onClick={() => window.print()} className="bg-gradient-to-r from-slate-900 to-slate-800 text-white px-6 py-3.5 rounded-xl font-black shadow-lg flex items-center gap-3 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200">
             <Printer size={20} />
             تقرير الغياب
           </button>
@@ -109,11 +113,11 @@ const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, su
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 no-print">
         {enrichedAbsences.length > 0 ? enrichedAbsences.map((a: any) => (
-          <div key={a.id} className={`bg-white rounded-[3.5rem] p-10 shadow-2xl border-2 transition-all hover:scale-[1.02] flex flex-col justify-between min-h-[460px] relative overflow-hidden group ${a.type === 'ABSENT' ? 'border-red-50' : 'border-amber-50'}`}>
+          <div key={a.id} className={`bg-white rounded-[2.5rem] p-7 shadow-md border border-slate-100 transition-all hover:shadow-xl hover:-translate-y-1 duration-300 flex flex-col justify-between min-h-[420px] relative overflow-hidden group ${a.type === 'ABSENT' ? '' : ''}`}>
             <div className={`absolute top-0 right-0 w-32 h-32 blur-3xl opacity-10 ${a.type === 'ABSENT' ? 'bg-red-600' : 'bg-amber-500'}`}></div>
             <div className="relative z-10">
               <div className="flex justify-between items-start mb-6">
-                <span className={`px-5 py-1.5 rounded-full font-black text-[10px] uppercase tracking-widest ${a.type === 'ABSENT' ? 'bg-red-600 text-white' : 'bg-amber-500 text-white shadow-amber-200 shadow-lg'}`}>
+                <span className={`px-4 py-1.5 rounded-full font-black text-[10px] uppercase tracking-widest shadow-sm ${a.type === 'ABSENT' ? 'bg-red-600 text-white' : 'bg-amber-500 text-white'}`}>
                   {a.type === 'ABSENT' ? 'غائب' : 'متأخر'}
                 </span>
                 <span className={`px-4 py-1.5 rounded-full text-[10px] font-black ${a.receipt ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
@@ -165,7 +169,7 @@ const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, su
                 <button
                   onClick={() => acknowledge(a)}
                   disabled={receivingId === a.id}
-                  className="w-full py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-4 transition-all shadow-xl active:scale-95 bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200 disabled:opacity-60"
+                  className="w-full py-4 rounded-2xl font-black text-base flex items-center justify-center gap-3 transition-all active:scale-[0.98] bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/35 disabled:opacity-60"
                 >
                   <Inbox size={24} />
                   {receivingId === a.id ? 'جاري تأكيد الاستلام...' : `تأكيد استلام ${getAbsenceKindLabel(a.type)}`}
@@ -178,8 +182,8 @@ const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, su
             </div>
           </div>
         )) : (
-          <div className="col-span-full py-20 text-center flex flex-col items-center gap-6">
-            <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center text-slate-300"><CheckCircle2 size={64} /></div>
+          <div className="py-20 text-center flex flex-col items-center gap-5 col-span-full">
+            <div className="w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-50 rounded-full flex items-center justify-center text-slate-300 shadow-inner"><CheckCircle2 size={64} /></div>
             <h3 className="text-2xl font-black text-slate-400 italic">لا توجد حالات غياب مسجلة حتى الآن</h3>
           </div>
         )}

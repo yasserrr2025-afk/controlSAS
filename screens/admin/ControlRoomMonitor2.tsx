@@ -27,6 +27,8 @@ import {
 } from 'lucide-react';
 import { Absence, ControlRequest, DeliveryLog, Student, Supervision, User } from '../../types';
 import { getAbsenceKindLabel, getAbsenceReceipt } from '../../services/absenceReceipt';
+import { isPlaceholderProctorStart } from '../../utils/proctorTime';
+import { cleanControlRequestText, isInternalSignatureRecord, isSignatureRequest } from '../../services/signatures';
 
 interface Props {
   absences: Absence[];
@@ -46,6 +48,34 @@ const formatTime = (value?: string) => {
   return new Date(value).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
 };
 
+const isReceiverSummon = (request: ControlRequest) => request.text?.startsWith('[CALL_RECEIVER]');
+const cleanSummonText = (text?: string) => String(text || '').replace('[CALL_RECEIVER]', '').trim();
+const summonAgeMinutes = (time?: string) => {
+  if (!time) return 0;
+  const value = new Date(time).getTime();
+  if (Number.isNaN(value)) return 0;
+  return Math.max(0, Math.round((Date.now() - value) / 60000));
+};
+
+const getRiyadhDateKey = (value: string | Date) => {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Riyadh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const get = (type: string) => parts.find(part => part.type === type)?.value || '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+};
+
+const matchesMonitorDate = (value: string | undefined | null, date: string) => {
+  if (!value || !date) return false;
+  const text = String(value);
+  return text.startsWith(date) || getRiyadhDateKey(text) === date;
+};
+
 const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, deliveryLogs, students, requests }) => {
   const [now, setNow] = useState(new Date());
   const [scene, setScene] = useState<Scene>('overview');
@@ -54,7 +84,7 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
   const [showDayComplete, setShowDayComplete] = useState(false);
   const latestSeenRef = useRef({ request: '', absence: '', delivery: '' });
   const wasCompleteRef = useRef(false);
-  const activeDate = new Date().toISOString().slice(0, 10);
+  const activeDate = getRiyadhDateKey(new Date());
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -119,16 +149,7 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
 
     if (latestDelivery && latestDelivery.id !== seen.delivery) {
       latestSeenRef.current = { ...latestSeenRef.current, delivery: latestDelivery.id };
-      const label = latestDelivery.status === 'CONFIRMED'
-        ? `تم الاستلام النهائي: لجنة ${latestDelivery.committee_number} · ${latestDelivery.grade} · المستلم: ${latestDelivery.teacher_name}`
-        : `إغلاق جديد: لجنة ${latestDelivery.committee_number} · ${latestDelivery.grade}`;
-
-      if (latestDelivery.status === 'CONFIRMED' && pinnedScene === 'map') {
-        setPriorityScene({ scene: 'map', until: Date.now() + 8000, label });
-        return;
-      }
-
-      showPriority(latestDelivery.status === 'CONFIRMED' ? 'timeline' : 'map', 8000, label);
+      return;
     }
   }, [absences, deliveryLogs, pinnedScene, requests]);
 
@@ -139,13 +160,27 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
       const grades = Array.from(new Set(committeeStudents.map(s => s.grade)));
       const supervision = supervisions.find(s => s.committee_number === num);
       const proctor = users.find(u => u.id === supervision?.teacher_id);
-      const logs = deliveryLogs.filter(l => l.committee_number === num && l.time.startsWith(activeDate));
+      const logs = deliveryLogs.filter(l => l.committee_number === num && matchesMonitorDate(l.time, activeDate));
       const confirmed = grades.length > 0 && grades.every(g => logs.some(l => l.grade === g && l.status === 'CONFIRMED'));
       const submitted = !confirmed && grades.length > 0 && grades.every(g => logs.some(l => l.grade === g));
-      const pendingAlert = requests.some(r => r.committee === num && r.status === 'PENDING');
-      const inProgressAlert = requests.some(r => r.committee === num && r.status === 'IN_PROGRESS');
-      const committeeAbsences = absences.filter(a => a.committee_number === num);
-      const status = confirmed ? 'confirmed' : submitted ? 'submitted' : pendingAlert ? 'alert' : inProgressAlert ? 'progress' : supervision ? 'active' : 'idle';
+      const normalRequests = requests.filter(r => r.committee === num && !isReceiverSummon(r) && !isSignatureRequest(r) && !isInternalSignatureRecord(r));
+      const receiverSummons = requests
+        .filter(r => r.committee === num && r.status !== 'DONE' && isReceiverSummon(r))
+        .sort((a, b) => b.time.localeCompare(a.time));
+      const activeSummon = receiverSummons[0];
+      const activeSummonAge = activeSummon ? summonAgeMinutes(activeSummon.time) : 0;
+      const summonTone = activeSummon
+        ? activeSummonAge >= 10
+          ? 'late'
+          : activeSummon.status === 'IN_PROGRESS'
+            ? 'ack'
+            : 'new'
+        : null;
+      const pendingAlert = !confirmed && normalRequests.some(r => r.status === 'PENDING');
+      const inProgressAlert = !confirmed && normalRequests.some(r => r.status === 'IN_PROGRESS');
+      const committeeAbsences = absences.filter(a => a.committee_number === num && matchesMonitorDate(a.date, activeDate));
+      const hasActualJoin = supervision && !isPlaceholderProctorStart(supervision.date);
+      const status = confirmed ? 'confirmed' : submitted ? 'submitted' : pendingAlert ? 'alert' : inProgressAlert ? 'progress' : hasActualJoin ? 'active' : 'idle';
       const receiptLog = logs.find(l => l.status === 'CONFIRMED');
       const closeLog = logs.find(l => l.status === 'PENDING');
 
@@ -158,8 +193,11 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
         lates: committeeAbsences.filter(a => a.type === 'LATE').length,
         hasPendingAlert: pendingAlert,
         hasInProgressAlert: inProgressAlert,
+        activeSummon,
+        summonTone,
+        summonCount: receiverSummons.length,
         status,
-        joinedAt: supervision?.date,
+        joinedAt: hasActualJoin ? supervision?.date : undefined,
         closedAt: closeLog?.time,
         receivedAt: receiptLog?.time,
         receiverName: receiptLog?.teacher_name || '',
@@ -177,6 +215,11 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
     const activeRequests = requests.filter(r => r.status !== 'DONE').length;
     const absentCount = absences.filter(a => a.type === 'ABSENT').length;
     const lateCount = absences.filter(a => a.type === 'LATE').length;
+    const totalStudents = students.length;
+    const attendanceIssueCount = absentCount + lateCount;
+    const presentCount = Math.max(0, totalStudents - attendanceIssueCount);
+    const attendanceRate = totalStudents ? Number(((presentCount / totalStudents) * 100).toFixed(1)) : 0;
+    const absenceRate = totalStudents ? Number(((attendanceIssueCount / totalStudents) * 100).toFixed(1)) : 0;
     const progress = total ? Math.round((confirmed / total) * 100) : 0;
 
     const receiptDurations = committees
@@ -199,7 +242,7 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
       acc[key] = (acc[key] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
-    const topAlert = Object.entries(alertsByCommittee).sort((a, b) => b[1] - a[1])[0];
+    const topAlert = Object.entries(alertsByCommittee).sort((a, b) => Number(b[1]) - Number(a[1]))[0];
 
     const attendanceHotspot = [...committees].sort((a, b) => (b.absents + b.lates) - (a.absents + a.lates))[0];
 
@@ -213,13 +256,18 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
       activeRequests,
       absentCount,
       lateCount,
+      totalStudents,
+      attendanceIssueCount,
+      presentCount,
+      attendanceRate,
+      absenceRate,
       progress,
       fastest,
       delayed,
       topAlert: topAlert ? { committee: topAlert[0], count: topAlert[1] } : null,
       attendanceHotspot,
     };
-  }, [absences, committees, requests]);
+  }, [absences, committees, requests, students.length]);
 
   const recentEvents = useMemo(() => {
     const deliveryEvents = deliveryLogs.map(log => ({
@@ -233,7 +281,7 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
       time: req.time,
       tone: req.status === 'DONE' ? 'slate' : 'red',
       title: req.status === 'DONE' ? 'إغلاق بلاغ' : 'بلاغ لجنة',
-      text: `لجنة ${req.committee} - ${req.text}`,
+      text: `لجنة ${req.committee} - ${cleanControlRequestText(req.text)}`,
       icon: BellRing,
     }));
     const absenceEvents = absences.map(absence => ({
@@ -245,6 +293,29 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
     }));
     return [...deliveryEvents, ...requestEvents, ...absenceEvents].sort((a, b) => b.time.localeCompare(a.time)).slice(0, 12);
   }, [absences, deliveryLogs, requests]);
+
+  const alertBoardItems = useMemo(() => {
+    return requests.filter(req => !isInternalSignatureRecord(req)).map(req => {
+      const receiverSummon = isReceiverSummon(req);
+      const signatureRequest = isSignatureRequest(req);
+      return {
+        id: `request-${req.id}`,
+        time: req.time,
+        committee: req.committee,
+        title: signatureRequest
+          ? 'طلب توقيع مراقب'
+          : receiverSummon
+          ? req.status === 'IN_PROGRESS' ? 'استلم المراقب الاستدعاء' : req.status === 'DONE' ? 'استدعاء مغلق' : 'استدعاء مراقب'
+          : req.status === 'DONE' ? 'بلاغ مغلق' : 'بلاغ كنترول',
+        text: cleanControlRequestText(req.text),
+        source: req.from,
+        tone: receiverSummon || signatureRequest ? (req.status === 'DONE' ? 'done' : req.status === 'IN_PROGRESS' ? 'summonAck' : 'summon') : req.status === 'DONE' ? 'done' : 'request',
+        status: req.status,
+      };
+    })
+      .sort((a, b) => b.time.localeCompare(a.time))
+      .slice(0, 8);
+  }, [requests]);
 
   const newsItems = useMemo(() => {
     const items = [
@@ -259,7 +330,10 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
     return [...items, ...items];
   }, [insights]);
 
-  const statusStyle = (status: string) => {
+  const statusStyle = (status: string, summonTone?: string | null) => {
+    if (summonTone === 'late') return 'from-orange-600 to-amber-500 border-orange-100 shadow-orange-500/70 animate-pulse';
+    if (summonTone === 'ack') return 'from-violet-600 to-indigo-500 border-violet-100 shadow-violet-500/60';
+    if (summonTone === 'new') return 'from-blue-700 to-cyan-500 border-cyan-100 shadow-cyan-500/60 animate-pulse';
     switch (status) {
       case 'confirmed': return 'from-emerald-500 to-teal-500 border-emerald-200 shadow-emerald-500/30';
       case 'alert': return 'from-red-600 to-rose-500 border-red-200 shadow-red-500/60 animate-pulse';
@@ -582,8 +656,23 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
               </div>
               <div className="tv2-map-grid grid h-[calc(100%-7rem)] grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-5 overflow-hidden">
                 {committees.map(c => (
-                  <div key={c.num} className={`relative min-h-0 overflow-hidden rounded-[2rem] border-2 bg-gradient-to-br p-5 shadow-2xl ${statusStyle(c.status)}`}>
+                  <div key={c.num} className={`relative min-h-0 overflow-hidden rounded-[2rem] border-2 bg-gradient-to-br p-5 shadow-2xl ${statusStyle(c.status, c.summonTone)}`}>
                     <div className="absolute -left-8 -top-8 h-24 w-24 rounded-full bg-white/20 blur-2xl" />
+                    {c.activeSummon && (
+                      <div className={`absolute right-3 top-3 z-20 flex max-w-[75%] items-center gap-1.5 rounded-full px-3 py-1 text-[9px] font-black text-white shadow-xl ${
+                        c.summonTone === 'late'
+                          ? 'bg-orange-700'
+                          : c.summonTone === 'ack'
+                            ? 'bg-violet-700'
+                            : 'bg-blue-800'
+                      }`}>
+                        <BellRing size={12} />
+                        <span className="truncate">
+                          {c.summonTone === 'late' ? 'استدعاء متأخر' : c.summonTone === 'ack' ? 'استلمه المراقب' : 'استدعاء مراقب'}
+                        </span>
+                        {c.summonCount > 1 && <span className="rounded-full bg-white/20 px-1.5">+{c.summonCount - 1}</span>}
+                      </div>
+                    )}
                     {c.status === 'submitted' && <Truck className="absolute left-4 top-4 animate-bounce text-white/80" size={26} />}
                     {c.status === 'alert' && <BellRing className="absolute left-4 top-4 animate-pulse text-white" size={26} />}
                     {c.status === 'submitted' && (c.hasPendingAlert || c.hasInProgressAlert) && (
@@ -599,6 +688,11 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
                       </div>
                       <div className="rounded-2xl bg-slate-950/22 px-3 py-2 backdrop-blur-sm">
                         <p className="tv2-proctor-name text-sm font-black leading-5 text-white drop-shadow-sm">{c.proctorName}</p>
+                        {c.activeSummon && (
+                          <p className="mt-1 truncate text-[10px] font-black text-white/90">
+                            {cleanSummonText(c.activeSummon.text)} · {c.activeSummon.from}
+                          </p>
+                        )}
                         <p className="mt-1 text-[11px] font-black opacity-75">{c.totalStudents} طالب · {c.grades.length} صف</p>
                       </div>
                     </div>
@@ -619,14 +713,44 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
                   </div>
                 </div>
                 <div className="space-y-4 overflow-hidden">
-                  {[...requests].sort((a, b) => b.time.localeCompare(a.time)).length ? [...requests].sort((a, b) => b.time.localeCompare(a.time)).slice(0, 6).map(req => (
-                    <div key={req.id} className={`rounded-[2rem] border p-5 ${req.status === 'DONE' ? 'border-white/10 bg-white/5 opacity-60' : 'border-red-300/30 bg-red-600/20'}`}>
+                  {alertBoardItems.length ? alertBoardItems.map(item => (
+                    <div
+                      key={item.id}
+                      className={`rounded-[2rem] border p-5 ${
+                        item.tone === 'done'
+                          ? 'border-white/10 bg-white/5 opacity-60'
+                          : item.tone === 'summonAck'
+                            ? 'border-violet-300/40 bg-violet-600/25'
+                            : item.tone === 'summon'
+                              ? 'border-cyan-300/40 bg-blue-600/25'
+                          : item.tone === 'late'
+                            ? 'border-amber-300/30 bg-amber-500/20'
+                            : item.tone === 'absence'
+                              ? 'border-rose-300/30 bg-rose-600/20'
+                              : 'border-red-300/30 bg-red-600/20'
+                      }`}
+                    >
                       <div className="mb-3 flex items-center justify-between">
-                        <span className="rounded-2xl bg-slate-950 px-5 py-2 text-xl font-black">لجنة {req.committee}</span>
-                        <span className="font-mono text-sm font-black text-red-100">{formatTime(req.time)}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="rounded-2xl bg-slate-950 px-5 py-2 text-xl font-black">لجنة {item.committee}</span>
+                          <span className={`rounded-2xl px-4 py-2 text-xs font-black ${
+                            item.tone === 'late'
+                              ? 'bg-amber-500'
+                              : item.tone === 'summonAck'
+                                ? 'bg-violet-600'
+                                : item.tone === 'summon'
+                                  ? 'bg-blue-600'
+                              : item.tone === 'absence'
+                                ? 'bg-rose-500'
+                                : item.tone === 'done'
+                                  ? 'bg-slate-500'
+                                  : 'bg-red-600'
+                          }`}>{item.title}</span>
+                        </div>
+                        <span className="font-mono text-sm font-black text-red-100">{formatTime(item.time)}</span>
                       </div>
-                      <p className="text-2xl font-black leading-9">{req.text}</p>
-                      <p className="mt-2 text-xs font-black text-red-100/70">{req.from}</p>
+                      <p className="text-2xl font-black leading-9">{item.text}</p>
+                      <p className="mt-2 text-xs font-black text-red-100/70">{item.source}</p>
                     </div>
                   )) : (
                     <div className="grid h-96 place-items-center rounded-[3rem] border border-emerald-400/20 bg-emerald-500/10 text-center">
@@ -683,6 +807,24 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
                     <Timer size={54} className="mx-auto mb-4" />
                     <p className="text-7xl font-black">{insights.lateCount}</p>
                     <p className="text-sm font-black">تأخير</p>
+                  </div>
+                </div>
+                <div className="mt-5 rounded-[3rem] border border-emerald-300/20 bg-emerald-500/12 p-8 text-center text-emerald-50 shadow-[0_0_45px_rgba(16,185,129,.08)]">
+                  <UserCheck size={58} className="mx-auto mb-4 text-emerald-200" />
+                  <p className="text-[11px] font-black uppercase tracking-[0.25em] text-emerald-200/75">إجمالي الحضور</p>
+                  <p className="mt-2 text-8xl font-black leading-none tabular-nums">{insights.presentCount}</p>
+                  <p className="mt-3 text-sm font-black text-emerald-100/70">من أصل {insights.totalStudents} طالب</p>
+                </div>
+                <div className="mt-5 grid grid-cols-2 gap-5">
+                  <div className="rounded-[2.5rem] border border-cyan-300/20 bg-cyan-500/12 p-6 text-center text-cyan-50">
+                    <Gauge size={40} className="mx-auto mb-3 text-cyan-200" />
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100/70">نسبة الحضور</p>
+                    <p className="mt-2 text-6xl font-black tabular-nums">{insights.attendanceRate}%</p>
+                  </div>
+                  <div className="rounded-[2.5rem] border border-rose-300/20 bg-rose-500/12 p-6 text-center text-rose-50">
+                    <UserX size={40} className="mx-auto mb-3 text-rose-200" />
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-100/70">نسبة الغياب والتأخير</p>
+                    <p className="mt-2 text-6xl font-black tabular-nums">{insights.absenceRate}%</p>
                   </div>
                 </div>
               </div>

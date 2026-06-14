@@ -118,7 +118,7 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users }) => 
 
   return (
     <div className="space-y-8 animate-fade-in text-right">
-      <div className="bg-slate-950 p-10 rounded-[3rem] text-white shadow-2xl relative overflow-hidden border-b-[8px] border-emerald-600 no-print">
+      <div className="bg-gradient-to-br from-[#020817] via-[#0a1628] to-[#050d1a] p-10 rounded-[3rem] text-white shadow-2xl relative overflow-hidden border-b-[8px] border-emerald-600 no-print">
         <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
           <div>
             <h2 className="text-4xl font-black mb-2 flex items-center gap-4">
@@ -132,7 +132,7 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users }) => 
           <button
             onClick={startScanner}
             disabled={isScanning || !!scannedData}
-            className="px-8 py-5 rounded-[2rem] font-black text-2xl flex items-center gap-4 transition-all shadow-xl active:scale-95 bg-emerald-600 hover:bg-emerald-500"
+            className="px-8 py-5 rounded-[2rem] font-black text-2xl flex items-center gap-4 transition-all shadow-xl shadow-emerald-500/20 active:scale-[0.98] bg-gradient-to-r from-emerald-600 to-emerald-500 hover:-translate-y-1 hover:shadow-2xl hover:shadow-emerald-500/30"
           >
             <Camera size={32} />
             مسح المظروف وتوثيقه
@@ -141,7 +141,7 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users }) => 
       </div>
 
       {isScanning && (
-        <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-3xl animate-fade-in no-print">
+        <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md animate-fade-in no-print">
           <button onClick={stopScanner} className="absolute top-6 left-6 text-white bg-white/10 p-4 rounded-full"><X size={32} /></button>
           <div className="w-full max-w-sm">
             <div id="envelope-scanner" className="aspect-square w-full rounded-[4rem] overflow-hidden border-8 border-emerald-500 shadow-2xl"></div>
@@ -180,7 +180,7 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users }) => 
             </div>
           </div>
 
-          <button onClick={handleSave} className="w-full py-6 bg-blue-600 text-white rounded-[2rem] font-black text-2xl shadow-xl hover:bg-blue-700 active:scale-95 transition-all">
+          <button onClick={handleSave} className="w-full py-6 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-[2rem] font-black text-2xl shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/30 hover:-translate-y-1 active:scale-[0.98] transition-all">
             اعتماد وتوثيق الفتح
           </button>
         </div>
@@ -188,13 +188,13 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users }) => 
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 no-print">
         {openings.map(o => (
-          <div key={o.id} className="bg-white p-8 rounded-[3rem] shadow-xl border-2 border-slate-50 relative overflow-hidden flex flex-col">
+          <div key={o.id} className="bg-white p-8 rounded-[3rem] shadow-md border border-slate-100 relative overflow-hidden flex flex-col hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
             <div className="flex justify-between items-start mb-6 border-b border-slate-50 pb-6">
               <div>
                 <h4 className="text-2xl font-black text-slate-800 mb-1">{o.subject}</h4>
                 <p className="text-sm font-bold text-slate-500">{o.grade}</p>
               </div>
-              <div className={`px-4 py-2 rounded-xl font-black text-xs uppercase ${o.status === 'INTACT' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+              <div className={`px-4 py-2 rounded-full font-black text-xs uppercase border ${o.status === 'INTACT' ? 'bg-gradient-to-br from-emerald-50 to-emerald-100/50 text-emerald-600 border-emerald-200' : 'bg-gradient-to-br from-red-50 to-red-100/50 text-rose-600 border-red-200'}`}>
                 {o.status === 'INTACT' ? 'سليم' : 'غير سليم'}
               </div>
             </div>
@@ -211,7 +211,7 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users }) => 
             </div>
 
             <div className="flex gap-2 mt-6">
-              <button onClick={() => setPrintRecord(o)} className="flex-1 py-4 bg-slate-900 text-white rounded-[1.5rem] font-black text-lg flex justify-center items-center gap-2 hover:bg-slate-800 transition-all">
+              <button onClick={() => setPrintRecord(o)} className="flex-1 py-4 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-[1.5rem] font-black text-lg flex justify-center items-center gap-2 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
                 <Printer size={20} /> طباعة المحضر
               </button>
               <button onClick={() => handleDelete(o.id)} className="p-4 bg-red-50 text-red-500 rounded-[1.5rem] hover:bg-red-600 hover:text-white transition-all">

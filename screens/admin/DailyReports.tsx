@@ -8,6 +8,10 @@ import {
 } from 'lucide-react';
 import { APP_CONFIG } from '../../constants';
 
+const systemConfig = { academic_year: '1446 / 1447' };
+import { formatActualProctorStart, isPlaceholderProctorStart } from '../../utils/proctorTime';
+import { isInternalSignatureRecord, isSignatureRequest } from '../../services/signatures';
+
 interface Props {
   supervisions?: Supervision[];
   users?: User[];
@@ -72,7 +76,7 @@ const PrintHeader: React.FC<{ date: string; subject?: string }> = ({ date, subje
         <p>التاريخ: <span className="font-black tabular-nums">{new Date(date).toLocaleDateString('ar-SA')}</span></p>
         <p>اليوم: <span className="font-black">{new Intl.DateTimeFormat('ar-SA', { weekday: 'long' }).format(new Date(date))}</span></p>
         {subject && <p>المادة: <span className="font-black">{subject}</span></p>}
-        <p>العام الدراسي: <span className="font-black">1446 / 1447</span></p>
+        <p>العام الدراسي: <span className="font-black">{systemConfig.academic_year || '1446 / 1447'}</span></p>
       </div>
     </div>
   </div>
@@ -220,14 +224,14 @@ const AdminDailyReports: React.FC<Props> = ({
       return {
         committee: String(num),
         proctorName: proctor?.full_name || '—',
-        joinTime: safeTime(sv?.date),
+        joinTime: formatActualProctorStart(sv?.date),
         closeTime: safeTime(closeLog?.time),
         receiptTime: safeTime(receiptLog?.time),
         receiverName: receiptLog?.teacher_name || '—',
         joinAt: sv?.date || '',
         closeAt: closeLog?.time || '',
         receiptAt: receiptLog?.time || '',
-        status: receiptLog ? 'CONFIRMED' : closeLog ? 'CLOSED' : sv ? 'ACTIVE' : 'NOT_STARTED',
+        status: receiptLog ? 'CONFIRMED' : closeLog ? 'CLOSED' : (sv && !isPlaceholderProctorStart(sv.date)) ? 'ACTIVE' : 'NOT_STARTED',
         totalStudents: committeeStudents.length,
         grades: gradeSet.length,
         observations: detailedReport?.observations || '',
@@ -271,7 +275,7 @@ const AdminDailyReports: React.FC<Props> = ({
     ].slice(0, 3);
 
     const alertsByCommittee = controlRequests
-      .filter(r => matchesDate(r.time, reportDate))
+      .filter(r => matchesDate(r.time, reportDate) && !isInternalSignatureRecord(r) && !isSignatureRequest(r))
       .reduce((acc, req) => {
         const key = String(req.committee || 'غير محدد');
         acc[key] = (acc[key] || 0) + 1;
@@ -279,7 +283,7 @@ const AdminDailyReports: React.FC<Props> = ({
       }, {} as Record<string, number>);
 
     const topAlertCommittee = Object.entries(alertsByCommittee)
-      .sort((a, b) => b[1] - a[1])
+      .sort((a, b) => Number(b[1]) - Number(a[1]))
       .map(([committee, count]) => ({ committee, count }))[0];
 
     const absencesByCommittee = absences
@@ -292,7 +296,7 @@ const AdminDailyReports: React.FC<Props> = ({
         return acc;
       }, {} as Record<string, { absent: number; late: number }>);
 
-    const topAttendanceIssue = Object.entries(absencesByCommittee)
+    const topAttendanceIssue = (Object.entries(absencesByCommittee) as Array<[string, { absent: number; late: number }]>)
       .map(([committee, v]) => ({ committee, total: v.absent + v.late, ...v }))
       .sort((a, b) => b.total - a.total)[0];
 

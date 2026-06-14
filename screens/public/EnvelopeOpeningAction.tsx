@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, EnvelopeLog } from '../../types';
+import { User } from '../../types';
 import { db } from '../../supabase';
 import { APP_CONFIG } from '../../constants';
 import { 
@@ -27,14 +27,13 @@ const EnvelopeOpeningAction: React.FC<Props> = ({ grade, subject, period, curren
         if (!currentUser) return;
         setIsSaving(true);
         try {
-            await db.envelopeLogs.insert({
+            await db.envelopeOpenings.upsert({
                 id: crypto.randomUUID(),
+                date: new Date().toISOString().slice(0, 10),
+                time: new Date().toISOString(),
                 grade,
                 subject,
-                period,
-                opened_by_id: currentUser.id,
-                opened_by_name: currentUser.full_name,
-                time: new Date().toISOString(),
+                opened_by: currentUser.full_name,
                 status: envStatus
             });
             setIsDone(true);

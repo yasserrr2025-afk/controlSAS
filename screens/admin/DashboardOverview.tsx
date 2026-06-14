@@ -27,11 +27,12 @@ interface CommitteeStatus {
 }
 
 const StatCard = ({ title, value, icon, color, bgColor, textColor }: any) => (
-  <div className={`group p-5 md:p-8 rounded-[2rem] border-2 ${color} bg-white shadow-xl flex items-center gap-4 md:gap-8 transition-all hover:scale-[1.02] text-right relative overflow-hidden`}>
-    <div className={`p-4 md:p-6 ${bgColor} ${textColor} rounded-2xl md:rounded-3xl shadow-inner shrink-0 group-hover:rotate-6 transition-transform`}>{icon}</div>
-    <div className="flex-1">
-      <p className="text-slate-400 text-[10px] font-black uppercase mb-1 flex items-center gap-2">{title}</p>
-      <p className="text-2xl md:text-4xl font-black text-slate-900 leading-none tabular-nums">{value}</p>
+  <div className={`group p-6 rounded-[2rem] border ${color} bg-white shadow-md flex items-center gap-5 transition-all hover:shadow-xl hover:-translate-y-1.5 duration-300 text-right relative overflow-hidden`}>
+    <div className="absolute inset-0 bg-gradient-to-br from-transparent to-slate-50/50 pointer-events-none" />
+    <div className={`p-4 ${bgColor} ${textColor} rounded-2xl shrink-0 group-hover:scale-110 transition-transform shadow-sm`}>{icon}</div>
+    <div className="flex-1 relative z-10">
+      <p className="text-slate-400 text-[10px] font-black uppercase tracking-wider mb-1">{title}</p>
+      <p className="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">{value}</p>
     </div>
   </div>
 );
@@ -105,12 +106,12 @@ const AdminDashboardOverview = ({
     <div className="space-y-8 animate-slide-up text-right">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h2 className="text-3xl md:text-5xl font-black text-slate-900 tracking-tighter">مركز القيادة </h2>
+          <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight">مركز القيادة </h2>
           <p className="text-slate-400 font-bold text-sm italic mt-2 flex items-center gap-2">
             <Activity size={16} className="text-blue-600 animate-pulse"/> إدارة اللجان والتوثيق المركزي المباشر
           </p>
         </div>
-        <div className="bg-slate-950 p-1.5 rounded-[2rem] flex items-center gap-1 shadow-2xl">
+        <div className="bg-slate-900/90 backdrop-blur-sm p-1 rounded-2xl flex items-center gap-1 shadow-lg border border-white/5">
            <div className="bg-blue-600 text-white px-5 py-2.5 rounded-full font-black text-xs flex items-center gap-2">
               <Clock size={14}/> {currentTime.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
            </div>
@@ -127,11 +128,11 @@ const AdminDashboardOverview = ({
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         <div className="xl:col-span-2 space-y-6">
-           <div className="bg-white p-6 rounded-[2.5rem] border shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
+           <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
               <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><Radio size={20} className="text-blue-600"/> حائط اللجان المباشر</h3>
               <div className="relative w-full md:w-64">
                 <Search size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input type="text" placeholder="رقم اللجنة أو المراقب..." className="w-full pr-10 py-3 bg-slate-50 border rounded-2xl font-bold text-xs outline-none focus:border-blue-500" value={liveSearch} onChange={e => setLiveSearch(e.target.value)} />
+                <input type="text" placeholder="رقم اللجنة أو المراقب..." className="w-full pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={liveSearch} onChange={e => setLiveSearch(e.target.value)} />
               </div>
            </div>
 
@@ -189,7 +190,7 @@ const AdminDashboardOverview = ({
                 }
 
                 return (
-                  <div key={committee.num} className={`p-6 rounded-[3rem] border-2 transition-all flex flex-col gap-4 relative overflow-hidden min-h-[340px] shadow-xl hover:scale-[1.02] ${cardStyle}`}>
+                  <div key={committee.num} className={`p-5 rounded-[2rem] border-2 transition-all flex flex-col gap-3.5 relative overflow-hidden min-h-[300px] shadow-md hover:shadow-xl hover:-translate-y-1 duration-300 ${cardStyle}`}>
                     <div className={`absolute -top-10 -right-10 w-32 h-32 blur-[60px] opacity-20 ${committee.status === 'DONE' ? 'bg-emerald-500' : committee.status === 'SUBMITTED' ? 'bg-orange-500' : committee.status === 'PROBLEM' ? 'bg-rose-500' : 'bg-blue-600'}`}></div>
                     <div className="flex justify-between items-start relative z-10">
                       <div className="flex flex-col">
@@ -228,16 +229,16 @@ const AdminDashboardOverview = ({
         </div>
 
         <div className="space-y-6">
-           <div className="bg-slate-950 p-8 rounded-[3rem] text-white shadow-2xl relative overflow-hidden">
+           <div className="bg-gradient-to-br from-[#0a1628] to-[#0f172a] p-7 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden border border-white/[0.06]">
               <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/10 blur-3xl rounded-full"></div>
               <h3 className="text-xl font-black mb-6 flex items-center gap-3"><Send size={20} className="text-blue-400"/> بث تعليمات فورية</h3>
               <div className="space-y-4 relative z-10 text-right">
-                <select value={targetRole} onChange={e => setTargetRole(e.target.value as any)} className="w-full bg-white/10 border border-white/10 rounded-2xl p-4 font-bold text-xs outline-none focus:border-blue-400">
+                <select value={targetRole} onChange={e => setTargetRole(e.target.value as any)} className="w-full bg-white/[0.07] border border-white/10 rounded-xl p-3.5 font-bold text-sm outline-none focus:border-blue-400 transition-all">
                   <option value="ALL">البث للجميع</option>
                   {Object.entries(ROLES_ARABIC).map(([key, val]) => <option key={key} value={key} className="text-slate-900">{val}</option>)}
                 </select>
-                <textarea value={broadcastMsg} onChange={e => setBroadcastMsg(e.target.value)} placeholder="اكتب التنبيه هنا..." className="w-full bg-white/10 border border-white/10 rounded-2xl p-4 font-bold text-xs h-32 outline-none focus:border-blue-400 resize-none" />
-                <button onClick={() => { if(broadcastMsg) { onBroadcast(broadcastMsg, targetRole); setBroadcastMsg(''); } }} disabled={!broadcastMsg} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-blue-500 transition-all flex items-center justify-center gap-2 disabled:opacity-50">إرسال الآن</button>
+                <textarea value={broadcastMsg} onChange={e => setBroadcastMsg(e.target.value)} placeholder="اكتب التنبيه هنا..." className="w-full bg-white/[0.07] border border-white/10 rounded-xl p-3.5 font-bold text-sm h-32 outline-none focus:border-blue-400 transition-all resize-none" />
+                <button onClick={() => { if(broadcastMsg) { onBroadcast(broadcastMsg, targetRole); setBroadcastMsg(''); } }} disabled={!broadcastMsg} className="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3.5 rounded-xl font-black shadow-lg shadow-blue-600/20 hover:shadow-blue-600/40 transition-all flex items-center justify-center gap-2 disabled:opacity-40 active:scale-[0.98]">إرسال الآن</button>
               </div>
            </div>
         </div>

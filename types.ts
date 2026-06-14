@@ -26,6 +26,23 @@ export interface User {
   assigned_grades?: string[];      
 }
 
+export interface ExamSchedule {
+  id: string;
+  tenant_id?: string;
+  exam_date: string;
+  day_name?: string;
+  subject: string;
+  period: number;
+  start_time: string;
+  end_time?: string;
+  grades?: string[];
+  committees?: string[];
+  notes?: string;
+  status?: 'DRAFT' | 'READY' | 'PUBLISHED' | string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Student {
   id: string;
   tenant_id?: string;
@@ -104,7 +121,9 @@ export interface SystemConfig {
   exam_start_time: string; 
   exam_date: string;
   active_exam_date?: string;
+  academic_year?: string;
   allow_manual_join?: boolean;
+  openrouter_api_key?: string;
 }
 
 export interface EnvelopeOpening {
@@ -116,4 +135,15 @@ export interface EnvelopeOpening {
   grade: string;
   status: 'INTACT' | 'DAMAGED';
   opened_by: string;
+}
+
+export interface ArchiveBox {
+  id: string;
+  tenant_id?: string;
+  box_number: string;
+  grade: string;
+  subject: string;
+  exam_date: string;
+  committees: string[];
+  created_at?: string;
 }

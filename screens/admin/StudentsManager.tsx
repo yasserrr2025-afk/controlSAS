@@ -154,10 +154,10 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
       {/* ── Header ── */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-black text-slate-800 tracking-tight">إدارة بيانات الطلاب</h2>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight">إدارة بيانات الطلاب</h2>
           <p className="text-slate-400 font-bold text-sm mt-1">رفع الكشوف ودمج أرقام الجوالات</p>
         </div>
-        <button onClick={() => openModal()} className="bg-blue-600 text-white px-6 py-3.5 rounded-2xl flex items-center gap-2 shadow-lg hover:bg-blue-700 transition-all font-black text-sm">
+        <button onClick={() => openModal()} className="bg-gradient-to-r from-blue-600 to-blue-500 text-white px-5 py-3.5 rounded-xl flex items-center gap-2 shadow-lg shadow-blue-600/20 hover:shadow-blue-600/35 hover:-translate-y-0.5 transition-all font-black text-sm">
           <UserPlus size={18} /> إضافة يدوية
         </button>
       </div>
@@ -170,7 +170,7 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
           { label: 'برقم جوال', value: withPhone, color: 'from-emerald-500 to-emerald-700', icon: Smartphone },
           { label: 'بدون جوال', value: students.length - withPhone, color: 'from-amber-500 to-orange-600', icon: AlertTriangle },
         ].map(stat => (
-          <div key={stat.label} className={`bg-gradient-to-br ${stat.color} text-white p-5 rounded-3xl shadow-lg`}>
+          <div key={stat.label} className={`bg-gradient-to-br ${stat.color} text-white p-5 rounded-3xl shadow-lg hover:-translate-y-1 transition-all duration-200`}>
             <stat.icon size={24} className="opacity-70 mb-2" />
             <p className="text-4xl font-black tabular-nums">{stat.value}</p>
             <p className="text-[10px] font-black uppercase tracking-wider opacity-70 mt-1">{stat.label}</p>
@@ -182,9 +182,9 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
         {/* رفع بيانات الطلاب */}
-        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-lg p-7 space-y-4">
+        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-lg p-7 space-y-4 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 bg-slate-900 rounded-2xl flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl flex items-center justify-center shrink-0 shadow-sm">
               <FileSpreadsheet size={20} className="text-white" />
             </div>
             <div>
@@ -218,9 +218,9 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
         </div>
 
         {/* دمج أرقام الجوالات */}
-        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-lg p-7 space-y-4">
+        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-lg p-7 space-y-4 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 bg-emerald-600 rounded-2xl flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl flex items-center justify-center shrink-0 shadow-sm">
               <Phone size={20} className="text-white" />
             </div>
             <div>
@@ -239,7 +239,7 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
             </div>
             <div className="h-2 bg-emerald-200 rounded-full overflow-hidden">
               <div
-                className="h-full bg-emerald-500 rounded-full transition-all duration-700"
+                className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-700"
                 style={{ width: students.length > 0 ? `${(withPhone / students.length) * 100}%` : '0%' }}
               />
             </div>
@@ -300,7 +300,7 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
         {/* الجدول */}
         <div className="overflow-x-auto">
           <table className="w-full text-right">
-            <thead className="bg-slate-50 border-b">
+            <thead className="bg-gradient-to-r from-slate-50 to-slate-100 border-b">
               <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                 {['الطالب', 'الصف / الفصل', 'رقم الجلوس', 'اللجنة', 'رقم الجوال', ''].map(h => (
                   <th key={h} className="px-6 py-4">{h}</th>
@@ -367,7 +367,7 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
           <div className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl relative z-10 overflow-hidden animate-slide-up">
             {/* رأس النافذة */}
-            <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-7 text-white flex justify-between items-center">
+            <div className="bg-gradient-to-r from-[#0a1628] to-[#0f172a] p-7 text-white flex justify-between items-center">
               <div>
                 <h3 className="text-xl font-black">{editingStudent ? 'تعديل بيانات الطالب' : 'إضافة طالب جديد'}</h3>
                 <p className="text-slate-400 text-xs font-bold mt-1">أدخل جميع البيانات المطلوبة</p>
@@ -409,7 +409,7 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
                   />
                 </div>
               </div>
-              <button type="submit" className="w-full bg-slate-900 text-white py-4 rounded-[1.5rem] font-black text-base shadow-xl hover:bg-blue-700 transition-all">
+              <button type="submit" className="w-full bg-gradient-to-r from-slate-900 to-slate-800 text-white py-4 rounded-[1.5rem] font-black text-base shadow-lg hover:from-blue-700 hover:to-blue-600 transition-all active:scale-[0.98]">
                 {editingStudent ? 'حفظ التعديلات' : 'إضافة الطالب للنظام'}
               </button>
             </form>

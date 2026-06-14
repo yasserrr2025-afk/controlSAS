@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { User, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport } from './types';
+import { User, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, ExamSchedule } from './types';
 import Sidebar from './components/Sidebar';
 import Login from './screens/Login';
 import AdminDashboardOverview from './screens/admin/DashboardOverview';
@@ -11,6 +11,12 @@ import AdminDailyReports from './screens/admin/DailyReports';
 import AdminOfficialForms from './screens/admin/OfficialForms';
 import AdminSystemSettings from './screens/admin/SystemSettings';
 import AdminProctorPerformance from './screens/admin/ProctorPerformance';
+import PrintSheets from './screens/admin/PrintSheets';
+import SeatingPlanner from './screens/admin/SeatingPlanner';
+import { ArchiveBoxesManager } from './screens/admin/ArchiveBoxesManager';
+import { MasterPortfolio } from './screens/admin/MasterPortfolio';
+import AiDashboard from './screens/admin/AiDashboard';
+import ComprehensiveStats from './screens/admin/ComprehensiveStats';
 import CommitteeLabelsPrint from './screens/admin/CommitteeLabelsPrint';
 import ControlHeadDashboard from './screens/admin/ControlHeadDashboard';
 import ControlManager from './screens/admin/ControlManager';
@@ -19,6 +25,7 @@ import ControlRoomMonitor from './screens/admin/ControlRoomMonitor';
 import ControlRoomMonitor2 from './screens/admin/ControlRoomMonitor2';
 import ProctorDailyAssignmentFlow from './screens/proctor/DailyAssignmentFlow';
 import ProctorAlertsHistory from './screens/proctor/ProctorAlertsHistory';
+import ProctorScheduleView from './screens/proctor/ProctorScheduleView';
 import TeacherBadgeView from './screens/proctor/TeacherBadgeView';
 import CounselorAbsenceMonitor from './screens/counselor/AbsenceMonitor';
 import ControlReceiptView from './screens/control/ReceiptView';
@@ -31,6 +38,7 @@ import CommitteePublicView from './screens/public/CommitteePublicView';
 import StudentLookupView from './screens/public/StudentLookupView';
 import StudentCommitteeInquiry from './screens/public/StudentCommitteeInquiry';
 import SupervisionVerification from './screens/public/SupervisionVerification';
+import { PublicBoxReport } from './screens/public/PublicBoxReport';
 import { buildAbsenceReceiptNote, getAbsenceKindLabel } from './services/absenceReceipt';
 import {
   BrowserNotificationPermission,
@@ -60,6 +68,7 @@ const App: React.FC = () => {
   const [controlRequests, setControlRequests] = useState<ControlRequest[]>([]);
   const [deliveryLogs, setDeliveryLogs] = useState<DeliveryLog[]>([]);
   const [committeeReports, setCommitteeReports] = useState<CommitteeReport[]>([]);
+  const [examSchedule, setExamSchedule] = useState<ExamSchedule[]>([]);
   const [systemConfig, setSystemConfig] = useState<SystemConfig>({ 
     id: 'main_config', 
     exam_start_time: '08:00', 
@@ -108,7 +117,7 @@ const App: React.FC = () => {
         setSystemConfig(prev => ({ ...prev, ...cfg }));
         filterDate = cfg.active_exam_date || filterDate;
       }
-      const [u, s, sv, ab, cr, dl, reports] = await Promise.all([
+      const [u, s, sv, ab, cr, dl, reports, exams] = await Promise.all([
         db.users.getAll(),
         db.students.getAll(),
         db.supervision.getAll(),
@@ -116,6 +125,7 @@ const App: React.FC = () => {
         db.controlRequests.getAll(),
         db.deliveryLogs.getAll(),
         db.committeeReports.getAll(),
+        db.examSchedule.getAll(),
       ]);
       setUsers(u);
       const savedUser = localStorage.getItem('currentUser');
@@ -144,6 +154,7 @@ const App: React.FC = () => {
       }
       setStudents(s);
       setAllSupervisions(sv);
+      setExamSchedule(exams);
       
       if (filterDate) {
         setSupervisions(sv.filter(i => i.date && i.date.startsWith(filterDate))); 
@@ -435,9 +446,9 @@ const App: React.FC = () => {
       'my-tasks';
 
     const allowedTabsByRole: Record<string, string[]> = {
-      ADMIN: ['head-dash', 'dashboard', 'control-monitor', 'control-monitor-2', 'control-manager', 'proctor-excellence', 'committee-labels', 'door-labels', 'teachers', 'students', 'committees', 'daily-reports', 'official-forms', 'envelope-opening', 'envelope-labels', 'paper-logs', 'receipt-history', 'settings'],
+      ADMIN: ['head-dash', 'dashboard', 'control-monitor', 'control-monitor-2', 'control-manager', 'ai-insights', 'comprehensive-stats', 'master-portfolio', 'archive-boxes', 'proctor-excellence', 'committee-labels', 'door-labels', 'teachers', 'students', 'seating-planner', 'print-sheets', 'committees', 'daily-reports', 'official-forms', 'envelope-opening', 'envelope-labels', 'paper-logs', 'receipt-history', 'settings'],
       CONTROL_MANAGER: ['head-dash', 'control-manager', 'committees', 'daily-reports', 'official-forms', 'envelope-opening', 'paper-logs', 'receipt-history'],
-      PROCTOR: ['my-tasks', 'proctor-alerts', 'digital-id'],
+      PROCTOR: ['my-tasks', 'my-schedule', 'proctor-alerts', 'digital-id'],
       COUNSELOR: ['student-absences'],
       ASSISTANT_CONTROL: ['assigned-requests'],
       CONTROL: ['envelope-opening', 'paper-logs', 'receipt-history']
@@ -466,11 +477,17 @@ const App: React.FC = () => {
            <ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} />
         </div>
       );
+      case 'ai-insights': return <AiDashboard systemConfig={systemConfig} />;
+      case 'comprehensive-stats': return <ComprehensiveStats students={students} users={users} supervisions={allSupervisions} absences={absences} deliveryLogs={deliveryLogs} controlRequests={controlRequests} committeeReports={committeeReports} examSchedule={examSchedule} systemConfig={systemConfig} />;
+      case 'master-portfolio': return <MasterPortfolio students={students} users={users} supervisions={allSupervisions} systemConfig={systemConfig} absences={absences} committeeReports={committeeReports} examSchedule={examSchedule} deliveryLogs={deliveryLogs} controlRequests={controlRequests} />;
+      case 'archive-boxes': return <ArchiveBoxesManager students={students} examSchedule={examSchedule} deliveryLogs={deliveryLogs} supervisions={allSupervisions} users={users} absences={absences} />;
       case 'proctor-excellence': return <AdminProctorPerformance users={users} supervisions={supervisions} deliveryLogs={deliveryLogs} absences={absences} systemConfig={systemConfig} />;
       case 'committee-labels': return <CommitteeLabelsPrint students={students} />;
       case 'control-manager': return <ControlManager users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} onBroadcast={(m, t) => db.notifications.broadcast(m, t, currentUser.full_name)} onUpdateUserGrades={async (userId, grades) => { const uMatch = users.find(u => u.id === userId); if (uMatch) { await db.users.upsert([{ ...uMatch, assigned_grades: grades }]); await fetchData(); } }} systemConfig={systemConfig} absences={absences} supervisions={supervisions} smartSupervisions={allSupervisions} setDeliveryLogs={async (log) => { await db.deliveryLogs.upsert(log); await fetchData(); }} setSystemConfig={async (cfg) => { await db.config.upsert(cfg); await fetchData(); }} onRemoveSupervision={async (id) => { await deleteSameDayTeacherAssignment(id, systemConfig.active_exam_date || new Date().toISOString().slice(0, 10)); await fetchData(); }} onAssignProctor={async (tid, cid) => { const date = systemConfig.active_exam_date || new Date().toISOString().slice(0, 10); await deleteSameDayTeacherAssignment(tid, date); await deleteSameDayCommitteeAssignment(cid, date); await db.supervision.insert({ id: crypto.randomUUID(), teacher_id: tid, committee_number: cid, date: `${date}T${new Date().toTimeString().slice(0, 8)}`, period: 1, subject: 'اختبار' }); await fetchData(); }} onCommitSmartDistribution={handleCommitSmartDistribution} />;
       case 'teachers': return <AdminUsersManager users={users} setUsers={upsertUsersOptimistically} students={students} onDeleteUser={async (id: string) => { if(confirm('حذف؟')) { await db.users.delete(id); await fetchData(); } }} onAlert={addLocalNotification} />;
       case 'students': return <AdminStudentsManager students={students} setStudents={upsertStudentsOptimistically} onDeleteStudent={async (id: string) => { if(confirm('حذف؟')) { await db.students.delete(id); await fetchData(); } }} onAlert={addLocalNotification} />;
+      case 'seating-planner': return <SeatingPlanner systemConfig={systemConfig} />;
+      case 'print-sheets': return <PrintSheets students={students} examSchedule={examSchedule} systemConfig={systemConfig} users={users} supervisions={allSupervisions} deliveryLogs={deliveryLogs} controlRequests={controlRequests} absences={absences} />;
       case 'committees': return <AdminSupervisionMonitor supervisions={supervisions} users={users} students={students} absences={absences} deliveryLogs={deliveryLogs} />;
       case 'daily-reports': return <AdminDailyReports supervisions={supervisions} users={users} students={students} deliveryLogs={deliveryLogs} systemConfig={systemConfig} committeeReports={committeeReports} absences={absences} controlRequests={controlRequests} />;
       case 'official-forms': return <AdminOfficialForms absences={absences} students={students} supervisions={supervisions} users={users} />;
@@ -479,6 +496,7 @@ const App: React.FC = () => {
       case 'paper-logs': return <ControlReceiptView user={currentUser} students={students} absences={absences} deliveryLogs={deliveryLogs} setDeliveryLogs={async (log) => { await db.deliveryLogs.upsert(log); await fetchData(); }} supervisions={supervisions} users={users} controlRequests={controlRequests} setControlRequests={fetchData} systemConfig={systemConfig} onAlert={addLocalNotification} />;
       case 'receipt-history': return <ReceiptLogsView deliveryLogs={deliveryLogs} users={users} />;
       case 'digital-id': return <TeacherBadgeView user={currentUser} />;
+      case 'my-schedule': return <ProctorScheduleView user={currentUser} supervisions={allSupervisions} systemConfig={systemConfig} />;
       case 'proctor-alerts': return <ProctorAlertsHistory requests={controlRequests} userFullName={currentUser.full_name} deliveryLogs={deliveryLogs} supervisions={supervisions} systemConfig={systemConfig} />;
       case 'student-absences': return <CounselorAbsenceMonitor user={currentUser} absences={absences} students={students} supervisions={supervisions} users={users} onAcknowledgeAbsence={(absence) => acknowledgeAbsenceReceipt(absence, currentUser)} />;
       case 'my-tasks': return <ProctorDailyAssignmentFlow user={currentUser} supervisions={supervisions} setSupervisions={fetchData} students={students} absences={absences} setAbsences={fetchData} deliveryLogs={deliveryLogs} setDeliveryLogs={async (log) => { await db.deliveryLogs.upsert(log); await fetchData(); }} sendRequest={async (txt, com) => { await db.controlRequests.insert({ from: currentUser.full_name, committee: com, text: txt, time: new Date().toISOString(), status: 'PENDING' }); await fetchData(); }} controlRequests={controlRequests} users={users} systemConfig={systemConfig} committeeReports={committeeReports} onReportUpsert={async (report) => { await db.committeeReports.upsert(report); await fetchData(); }} onAlert={addLocalNotification} />;
@@ -491,7 +509,7 @@ const App: React.FC = () => {
 
   if (isInitialLoading) {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('public_committee') || params.get('student_lookup') || params.get('student_inquiry') || params.get('supervision_verify') || params.get('sv') || params.get('tv2')) {
+    if (params.get('public_committee') || params.get('student_lookup') || params.get('student_inquiry') || params.get('public_box') || params.get('supervision_verify') || params.get('sv') || params.get('tv2')) {
        return (
          <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-6 font-['Tajawal']" dir="rtl">
            <Loader2 size={48} className="text-blue-600 animate-spin" />
@@ -526,6 +544,11 @@ const App: React.FC = () => {
   const isStudentInquiry = new URLSearchParams(window.location.search).get('student_inquiry');
   if (isStudentInquiry) {
     return <StudentCommitteeInquiry students={students} />;
+  }
+
+  const publicBoxId = new URLSearchParams(window.location.search).get('public_box');
+  if (publicBoxId) {
+    return <PublicBoxReport boxId={publicBoxId} students={students} supervisions={allSupervisions} deliveryLogs={deliveryLogs} users={users} examSchedule={examSchedule} absences={absences} systemConfig={systemConfig} />;
   }
 
   const publicParams = new URLSearchParams(window.location.search);

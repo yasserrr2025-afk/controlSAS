@@ -52,7 +52,37 @@ alter table public.delivery_logs add column if not exists proctor_name text;
 alter table public.delivery_logs add column if not exists status text default 'PENDING';
 alter table public.control_requests add column if not exists assistant_name text;
 alter table public.system_config add column if not exists active_exam_date text default current_date::text;
+alter table public.system_config add column if not exists academic_year text default '1446 / 1447';
 alter table public.system_config add column if not exists allow_manual_join boolean default false;
+alter table public.system_config add column if not exists openrouter_api_key text;
+
+create table if not exists public.exam_schedule (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid references public.tenants(id) on delete cascade,
+  exam_date text not null,
+  day_name text,
+  subject text not null,
+  period integer not null default 1,
+  start_time text not null default '08:00',
+  end_time text,
+  grades text[] default '{}',
+  committees text[] default '{}',
+  notes text,
+  status text default 'READY',
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.archive_boxes (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid references public.tenants(id) on delete cascade,
+  box_number text not null,
+  grade text not null default '',
+  subject text not null default '',
+  exam_date text not null default current_date::text,
+  committees text[] default '{}',
+  created_at timestamptz not null default timezone('utc', now())
+);
 
 create unique index if not exists users_tenant_national_id_uidx
   on public.users(tenant_id, national_id);
@@ -71,6 +101,8 @@ create index if not exists delivery_logs_tenant_time_idx on public.delivery_logs
 create index if not exists control_requests_tenant_time_idx on public.control_requests(tenant_id, time);
 create index if not exists committee_reports_tenant_date_idx on public.committee_reports(tenant_id, date);
 create index if not exists envelope_openings_tenant_date_idx on public.envelope_openings(tenant_id, date);
+create index if not exists exam_schedule_tenant_date_idx on public.exam_schedule(tenant_id, exam_date, period);
+create index if not exists archive_boxes_tenant_date_idx on public.archive_boxes(tenant_id, exam_date);
 
 -- Seed one demo tenant. Change this before production.
 insert into public.tenants (name, slug, status, plan)

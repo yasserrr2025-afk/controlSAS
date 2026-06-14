@@ -7,6 +7,7 @@ import {
   MessageSquare, Stethoscope, FileText, Pencil, UserSearch, Package,
   TrendingUp, ArrowRight
 } from 'lucide-react';
+import { cleanControlRequestText, isInternalSignatureRecord } from '../../services/signatures';
 
 interface Props {
   requests: ControlRequest[];
@@ -63,7 +64,7 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
   /* ── تحديد الحالة الفعلية لكل طلب ── */
   const myHistory = useMemo(() => {
     return requests
-      .filter(r => r.from === userFullName)
+      .filter(r => r.from === userFullName && !isInternalSignatureRecord(r))
       .map(r => {
         // إذا كانت رسالة إنهاء لجنة وتم استلامها من الكنترول → مكتمل
         const isClosureMsg = r.text.includes('متجه') || r.text.includes('إنهاء') || r.text.includes('أنهى رصد');
@@ -103,12 +104,12 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
     <div className="max-w-4xl mx-auto py-8 px-4 space-y-8 animate-fade-in text-right" dir="rtl">
 
       {/* ── الهيدر ── */}
-      <div className="bg-slate-950 p-8 md:p-10 rounded-[3.5rem] text-white shadow-2xl relative overflow-hidden border-b-[8px] border-blue-600">
+      <div className="bg-gradient-to-br from-[#020817] via-[#091628] to-[#0a1835] p-7 md:p-10 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden border border-blue-900/20">
         <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/10 blur-[120px] rounded-full pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-48 h-48 bg-indigo-600/10 blur-[80px] rounded-full pointer-events-none" />
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-center gap-6">
-            <div className="bg-blue-600 p-4 rounded-[1.5rem] shadow-2xl ring-4 ring-blue-500/20 shrink-0">
+            <div className="bg-gradient-to-br from-blue-500 to-blue-700 p-4 rounded-[1.5rem] shadow-lg shadow-blue-500/30 ring-4 ring-blue-500/15 shrink-0">
               <History size={36} />
             </div>
             <div>
@@ -135,10 +136,10 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
             { label: 'قيد المتابعة', value: stats.in_progress, icon: Timer,        grad: 'from-blue-500 to-blue-700',      shadow: 'shadow-blue-500/20' },
             { label: 'لجان مختلفة', value: stats.committees,   icon: TrendingUp,   grad: 'from-slate-700 to-slate-900',    shadow: 'shadow-slate-500/20' },
           ].map(s => (
-            <div key={s.label} className={`bg-gradient-to-br ${s.grad} text-white p-6 rounded-[2.5rem] shadow-xl ${s.shadow} flex flex-col gap-3`}>
+            <div key={s.label} className={`bg-gradient-to-br ${s.grad} text-white p-5 rounded-[1.8rem] shadow-lg ${s.shadow} flex flex-col gap-2.5 hover:-translate-y-1 transition-all duration-200`}>
               <s.icon size={26} className="opacity-80" />
               <div>
-                <p className="text-5xl font-black tabular-nums leading-none">{s.value}</p>
+                <p className="text-4xl font-black tabular-nums leading-none">{s.value}</p>
                 <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mt-1.5">{s.label}</p>
               </div>
             </div>
@@ -148,7 +149,7 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
 
       {/* ── فلاتر الحالة ── */}
       {stats.total > 0 && (
-        <div className="bg-white p-2 rounded-full shadow-md border border-slate-100 flex gap-2 overflow-x-auto">
+        <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 flex gap-1.5 overflow-x-auto">
           {([
             { id: 'ALL',         label: `الكل (${stats.total})`,               color: 'bg-slate-900 text-white' },
             { id: 'DONE',        label: `مكتمل (${stats.done})`,               color: 'bg-emerald-500 text-white' },
@@ -158,7 +159,7 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
             <button
               key={f.id}
               onClick={() => setFilterStatus(f.id)}
-              className={`flex-1 min-w-[90px] py-3 px-3 rounded-full font-black text-sm transition-all whitespace-nowrap text-center ${filterStatus === f.id ? f.color + ' shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}
+              className={`flex-1 min-w-[90px] py-2.5 px-3 rounded-xl font-black text-sm transition-all whitespace-nowrap text-center ${filterStatus === f.id ? f.color + ' shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}
             >
               {f.label}
             </button>
@@ -169,7 +170,7 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
       {/* ── القائمة المجمعة ── */}
       <div className="space-y-10">
         {grouped.length === 0 ? (
-          <div className="py-32 text-center bg-white rounded-[4rem] border-4 border-dashed border-slate-100 flex flex-col items-center gap-6 shadow-inner">
+          <div className="py-24 text-center bg-gradient-to-br from-slate-50 to-white rounded-[2.5rem] border border-dashed border-slate-200 flex flex-col items-center gap-5 shadow-inner">
             <Ghost size={80} className="text-slate-200" />
             <div>
               <p className="text-2xl font-black text-slate-300 italic">لا توجد بلاغات</p>
@@ -182,7 +183,7 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
               {/* عنوان اليوم */}
               <div className="flex items-center gap-4">
                 <div className="h-px flex-1 bg-slate-100" />
-                <div className="bg-slate-900 text-white px-5 py-2 rounded-full text-xs font-black uppercase tracking-widest shadow flex items-center gap-2">
+                <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest shadow-sm flex items-center gap-2">
                   <Circle size={8} className="fill-blue-400 text-blue-400" />
                   {formatDate(dayReqs[0].time)}
                 </div>
@@ -206,9 +207,8 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
                   return (
                     <div
                       key={req.id}
-                      className={`bg-white rounded-[2.5rem] border transition-all duration-300 overflow-hidden group relative
-                        ${st === 'DONE' ? 'border-emerald-100 shadow-lg shadow-emerald-500/5' : st === 'IN_PROGRESS' ? 'border-blue-100 shadow-lg shadow-blue-500/5' : 'border-slate-100 shadow-md'}
-                        hover:shadow-xl`}
+                      className={`bg-white rounded-[2rem] border transition-all duration-200 overflow-hidden group relative hover:shadow-xl
+                        ${st === 'DONE' ? 'border-emerald-100 shadow-lg shadow-emerald-500/5' : st === 'IN_PROGRESS' ? 'border-blue-100 shadow-lg shadow-blue-500/5' : 'border-slate-100 shadow-md'}`}
                     >
                       {/* شريط الحالة الجانبي */}
                       <div className={`absolute top-0 right-0 bottom-0 w-1.5 rounded-r-[2.5rem] ${statusStyle.bar}`} />
@@ -237,7 +237,7 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
                             </div>
                             {/* نص البلاغ */}
                             <p className="text-sm md:text-base font-black text-slate-800 leading-snug line-clamp-1 group-hover:text-blue-700 transition-colors">
-                              {req.text}
+                              {cleanControlRequestText(req.text)}
                             </p>
                           </div>
                         </div>
@@ -267,7 +267,7 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
                           {/* نص البلاغ كاملاً */}
                           <div className="bg-slate-50 rounded-[1.5rem] p-5 border border-slate-100">
                             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">نص البلاغ الكامل</p>
-                            <p className="text-sm font-bold text-slate-700 leading-relaxed">{req.text}</p>
+                            <p className="text-sm font-bold text-slate-700 leading-relaxed">{cleanControlRequestText(req.text)}</p>
                           </div>
 
                           {/* بطاقات المعلومات */}

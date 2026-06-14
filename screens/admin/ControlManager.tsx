@@ -17,10 +17,12 @@ import {
   Copy, ExternalLink, Link2, Archive, FileDown, ClipboardList, Siren,
   WifiOff, DatabaseBackup, MessageCircle, Wand2
 } from 'lucide-react';
-import { User, DeliveryLog, Student, UserRole, SystemConfig, Absence, Supervision, ControlRequest } from '../../types';
+import { User, DeliveryLog, Student, UserRole, SystemConfig, Absence, Supervision, ControlRequest, ExamSchedule } from '../../types';
 import { ROLES_ARABIC } from '../../constants';
-import { supabase, db, getActiveTenantSlug } from '../../supabase';
+import { db, getActiveTenantId, getActiveTenantSlug, supabase } from '../../supabase';
 import SmartProctorDistribution, { SmartDistributionItem } from './SmartProctorDistribution';
+import { isPlaceholderProctorStart } from '../../utils/proctorTime';
+import { cleanControlRequestText, isInternalSignatureRecord, isSignatureRequest } from '../../services/signatures';
 
 interface ControlManagerProps {
   users: User[];
@@ -32,29 +34,58 @@ interface ControlManagerProps {
   absences: Absence[];
   supervisions: Supervision[];
   smartSupervisions?: Supervision[];
+  examSchedule?: ExamSchedule[];
   requests?: ControlRequest[];
   setDeliveryLogs: (log: DeliveryLog) => Promise<void>;
   setSystemConfig: (cfg: any) => Promise<void>;
   onRemoveSupervision: (teacherId: string) => Promise<void>;
   onAssignProctor: (teacherId: string, committeeNumber: string) => Promise<void>;
   onCommitSmartDistribution: (items: SmartDistributionItem[], replaceExisting: boolean) => Promise<void>;
+  onDeleteSmartDistributions?: (ids: string[]) => Promise<void>;
+  onUpdateSmartDistribution?: (id: string, teacherId: string) => Promise<void>;
+  onUpsertExamSchedule?: (item: Partial<ExamSchedule>) => Promise<void>;
+  onDeleteExamSchedule?: (id: string) => Promise<void>;
 }
 
 const ControlManager: React.FC<ControlManagerProps> = ({ 
-  users, deliveryLogs, students, onBroadcast, onUpdateUserGrades, systemConfig, absences, supervisions, smartSupervisions, requests = [], setDeliveryLogs, setSystemConfig, onRemoveSupervision, onAssignProctor, onCommitSmartDistribution
+  users, deliveryLogs, students, onBroadcast, onUpdateUserGrades, systemConfig, absences, supervisions, smartSupervisions, examSchedule = [], requests = [], setDeliveryLogs, setSystemConfig, onRemoveSupervision, onAssignProctor, onCommitSmartDistribution, onDeleteSmartDistributions, onUpdateSmartDistribution, onUpsertExamSchedule, onDeleteExamSchedule
 }) => {
-  const [activeTab, setActiveTab] = useState<'cockpit' | 'ops-center' | 'assignments' | 'emergency-receipt' | 'comms' | 'proctors-mgmt'>('cockpit');
+  type ControlTab = 'cockpit' | 'ops-center' | 'assignments' | 'emergency-receipt' | 'comms' | 'proctors-mgmt';
+  const [activeTab, setActiveTabState] = useState<ControlTab>(() => {
+    const saved = localStorage.getItem('control_manager_active_tab') as ControlTab | null;
+    return saved || 'cockpit';
+  });
+  const setActiveTab = (tab: ControlTab) => {
+    setActiveTabState(tab);
+    localStorage.setItem('control_manager_active_tab', tab);
+  };
   const [broadcastTarget, setBroadcastTarget] = useState<UserRole | 'ALL'>('ALL');
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [broadcastTone, setBroadcastTone] = useState<'INFO' | 'URGENT' | 'REMINDER' | 'THANKS'>('INFO');
   const [isResetting, setIsResetting] = useState(false);
   const [assignmentSearch, setAssignmentSearch] = useState('');
   const [globalSearch, setGlobalSearch] = useState('');
+  const [auditEvents, setAuditEvents] = useState<{ id: string; time: string; action: string; detail: string }[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('control_audit_events') || '[]');
+    } catch {
+      return [];
+    }
+  });
   
   // States for Assigning/Swapping
   const [isAssigning, setIsAssigning] = useState(false);
   const [targetCommittee, setTargetCommittee] = useState<string | null>(null);
   const [proctorSearchInModal, setProctorSearchInModal] = useState('');
+
+  const addAuditEvent = (action: string, detail: string) => {
+    const event = { id: crypto.randomUUID(), time: new Date().toISOString(), action, detail };
+    setAuditEvents(prev => {
+      const next = [event, ...prev].slice(0, 80);
+      localStorage.setItem('control_audit_events', JSON.stringify(next));
+      return next;
+    });
+  };
 
   const stats = useMemo(() => {
     const totalComs = new Set(students.map(s => s.committee_number)).size;
@@ -82,29 +113,70 @@ const ControlManager: React.FC<ControlManagerProps> = ({
     return users.filter(u => u.role === 'PROCTOR' && !activeTeacherIds.includes(u.id));
   }, [users, supervisions]);
 
+  const allSupervisionRows = smartSupervisions || supervisions;
+  const activeExamDateKey = systemConfig.active_exam_date || new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Riyadh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  const isReserveRow = (item: Supervision) => String(item.subject || '').includes('[RESERVE]');
+
+  const reserveCandidateIdsForTarget = useMemo(() => {
+    if (!targetCommittee) return new Set<string>();
+    return new Set(
+      allSupervisionRows
+        .filter(s => isReserveRow(s))
+        .filter(s => s.committee_number === targetCommittee)
+        .filter(s => !activeExamDateKey || String(s.date || '').slice(0, 10) === activeExamDateKey)
+        .map(s => s.teacher_id),
+    );
+  }, [allSupervisionRows, targetCommittee, activeExamDateKey]);
+
   const proctorsListForModal = useMemo(() => {
-    return users.filter(u => u.role === 'PROCTOR' && (u.full_name.includes(proctorSearchInModal) || u.national_id.includes(proctorSearchInModal)));
-  }, [users, proctorSearchInModal]);
+    const q = proctorSearchInModal.trim();
+    return users
+      .filter(u => u.role === 'PROCTOR' && (!q || u.full_name.includes(q) || u.national_id.includes(q)))
+      .sort((a, b) => {
+        const aReserveForTarget = reserveCandidateIdsForTarget.has(a.id);
+        const bReserveForTarget = reserveCandidateIdsForTarget.has(b.id);
+        if (aReserveForTarget !== bReserveForTarget) return aReserveForTarget ? -1 : 1;
+        const aActive = supervisions.some(s => s.teacher_id === a.id);
+        const bActive = supervisions.some(s => s.teacher_id === b.id);
+        if (aActive !== bActive) return aActive ? 1 : -1;
+        const aCount = allSupervisionRows.filter(s => s.teacher_id === a.id && !isReserveRow(s)).length;
+        const bCount = allSupervisionRows.filter(s => s.teacher_id === b.id && !isReserveRow(s)).length;
+        if (aCount !== bCount) return aCount - bCount;
+        const aReserveCount = allSupervisionRows.filter(s => s.teacher_id === a.id && isReserveRow(s)).length;
+        const bReserveCount = allSupervisionRows.filter(s => s.teacher_id === b.id && isReserveRow(s)).length;
+        if (aReserveCount !== bReserveCount) return aReserveCount - bReserveCount;
+        return a.full_name.localeCompare(b.full_name, 'ar');
+      });
+  }, [users, proctorSearchInModal, supervisions, allSupervisionRows, reserveCandidateIdsForTarget]);
 
   const handleStartNewDay = async () => {
     const today = new Date().toISOString().split('T')[0];
     if (!confirm(`بدء يوم جديد سيقوم بتصفير اللجان لليوم (${today}). هل أنت متأكد؟`)) return;
     setIsResetting(true);
     try {
-      await supabase.from('supervision').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      const tenantId = getActiveTenantId();
+      let query = supabase.from('supervision').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (tenantId) query = query.eq('tenant_id', tenantId);
+      await query;
       await setSystemConfig({ ...systemConfig, active_exam_date: today });
       onBroadcast(`تم تفعيل يوم الاختبار الجديد (${today}). يرجى المباشرة فوراً.`, 'ALL');
+      addAuditEvent('بداية يوم جديد', `تم تصفير اللجان وتفعيل تاريخ ${today}`);
       window.location.reload();
     } catch (err: any) { alert(err.message); } finally { setIsResetting(false); }
   };
 
-  const studentInquiryUrl = useMemo(() => {
+  const studentInquiryUrl = (() => {
     const url = new URL(`${window.location.origin}${window.location.pathname}`);
     url.searchParams.set('student_inquiry', '1');
     const tenantSlug = getActiveTenantSlug();
     if (tenantSlug) url.searchParams.set('tenant', tenantSlug);
     return url.toString();
-  }, []);
+  })();
 
   const handleCopyStudentInquiryLink = async () => {
     try {
@@ -116,7 +188,8 @@ const ControlManager: React.FC<ControlManagerProps> = ({
   };
 
   const todayLogs = useMemo(() => deliveryLogs.filter(l => !systemConfig.active_exam_date || l.time?.startsWith(systemConfig.active_exam_date)), [deliveryLogs, systemConfig.active_exam_date]);
-  const pendingRequests = useMemo(() => requests.filter(r => r.status !== 'DONE'), [requests]);
+  const visibleRequests = useMemo(() => requests.filter(r => !isInternalSignatureRecord(r) && !isSignatureRequest(r)), [requests]);
+  const pendingRequests = useMemo(() => visibleRequests.filter(r => r.status !== 'DONE'), [visibleRequests]);
   const unassignedCommittees = useMemo(() => committeeStatus.filter(c => !c.proctor), [committeeStatus]);
   const closedWaitingReceipt = useMemo(() => {
     return committeeStatus.filter(c => {
@@ -137,16 +210,18 @@ const ControlManager: React.FC<ControlManagerProps> = ({
 
   const timeline = useMemo(() => {
     const items = [
-      ...supervisions.map(s => ({ time: s.date, type: 'دخول مراقب', title: `لجنة ${s.committee_number}`, text: users.find(u => u.id === s.teacher_id)?.full_name || 'مراقب غير معروف' })),
+      ...supervisions
+        .filter(s => !isPlaceholderProctorStart(s.date))
+        .map(s => ({ time: s.date, type: 'دخول مراقب', title: `لجنة ${s.committee_number}`, text: users.find(u => u.id === s.teacher_id)?.full_name || 'مراقب غير معروف' })),
       ...todayLogs.map(l => ({ time: l.time, type: l.status === 'CONFIRMED' ? 'استلام كنترول' : 'إغلاق ميداني', title: `لجنة ${l.committee_number}`, text: `${l.grade} - ${l.teacher_name}` })),
       ...absences.map(a => ({ time: a.date, type: a.type === 'ABSENT' ? 'غياب' : 'تأخر', title: `لجنة ${a.committee_number}`, text: a.student_name })),
-      ...requests.map(r => ({ time: r.time, type: r.status === 'DONE' ? 'إغلاق بلاغ' : 'بلاغ', title: `لجنة ${r.committee}`, text: r.text })),
+      ...visibleRequests.map(r => ({ time: r.time, type: r.status === 'DONE' ? 'إغلاق بلاغ' : 'بلاغ', title: `لجنة ${r.committee}`, text: cleanControlRequestText(r.text) })),
     ];
     return items
       .filter(i => i.time)
       .sort((a, b) => String(b.time).localeCompare(String(a.time)))
       .slice(0, 16);
-  }, [supervisions, todayLogs, absences, requests, users]);
+  }, [supervisions, todayLogs, absences, visibleRequests, users]);
 
   const searchResults = useMemo(() => {
     const q = globalSearch.trim();
@@ -154,7 +229,7 @@ const ControlManager: React.FC<ControlManagerProps> = ({
     return [
       ...students.filter(s => [s.name, s.national_id, s.committee_number, s.seating_number].some(v => String(v || '').includes(q))).slice(0, 6).map(s => ({ type: 'طالب', title: s.name, sub: `هوية ${s.national_id} - لجنة ${s.committee_number}` })),
       ...users.filter(u => [u.full_name, u.national_id, u.role].some(v => String(v || '').includes(q))).slice(0, 6).map(u => ({ type: 'مستخدم', title: u.full_name, sub: ROLES_ARABIC[u.role] || u.role })),
-      ...requests.filter(r => [r.committee, r.text, r.from].some(v => String(v || '').includes(q))).slice(0, 6).map(r => ({ type: 'بلاغ', title: `لجنة ${r.committee}`, sub: r.text })),
+      ...visibleRequests.filter(r => [r.committee, cleanControlRequestText(r.text), r.from].some(v => String(v || '').includes(q))).slice(0, 6).map(r => ({ type: 'بلاغ', title: `لجنة ${r.committee}`, sub: cleanControlRequestText(r.text) })),
     ].slice(0, 12);
   }, [globalSearch, students, users, requests]);
 
@@ -179,11 +254,13 @@ const ControlManager: React.FC<ControlManagerProps> = ({
     a.download = `control-backup-${systemConfig.active_exam_date || new Date().toISOString().slice(0,10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    addAuditEvent('نسخ احتياطي', `تم تصدير نسخة JSON لتاريخ ${systemConfig.active_exam_date || new Date().toISOString().slice(0,10)}`);
   };
 
   const archiveTodayLocally = () => {
     const key = `control_archive_${systemConfig.active_exam_date || new Date().toISOString().slice(0,10)}`;
     localStorage.setItem(key, JSON.stringify({ students, users, supervisions, absences, deliveryLogs, requests, archived_at: new Date().toISOString() }));
+    addAuditEvent('أرشفة اليوم', `تم حفظ أرشيف محلي لتاريخ ${systemConfig.active_exam_date || new Date().toISOString().slice(0,10)}`);
     alert('تم حفظ أرشيف اليوم محليًا على هذا الجهاز.');
   };
 
@@ -313,7 +390,13 @@ const ControlManager: React.FC<ControlManagerProps> = ({
              students={students}
              supervisions={smartSupervisions || supervisions}
              activeDate={systemConfig.active_exam_date}
+             examSchedule={examSchedule}
+             onUpsertExamSchedule={onUpsertExamSchedule}
+             onDeleteExamSchedule={onDeleteExamSchedule}
              onCommit={onCommitSmartDistribution}
+             onDeleteSupervisions={onDeleteSmartDistributions}
+             onUpdateSupervision={onUpdateSmartDistribution}
+             systemConfig={systemConfig}
            />
 
            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -423,6 +506,14 @@ const ControlManager: React.FC<ControlManagerProps> = ({
                      {proctorsListForModal.map(u => {
                         const currentSv = supervisions.find(s => s.teacher_id === u.id);
                         const isCurrentInThisCom = currentSv?.committee_number === targetCommittee;
+                        const isReserveForTarget = reserveCandidateIdsForTarget.has(u.id);
+                        const totalAssignments = allSupervisionRows.filter(s => s.teacher_id === u.id && !isReserveRow(s)).length;
+                        const reserveAssignments = allSupervisionRows.filter(s => s.teacher_id === u.id && isReserveRow(s)).length;
+                        const startedAssignments = allSupervisionRows.filter(s => {
+                          if (s.teacher_id !== u.id) return false;
+                          const d = new Date(s.date);
+                          return s.date && !Number.isNaN(d.getTime()) && !(d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0);
+                        }).length;
                         
                         return (
                            <button 
@@ -431,21 +522,30 @@ const ControlManager: React.FC<ControlManagerProps> = ({
                              onClick={async () => {
                                 if (confirm(`هل ترغب في تعيين (${u.full_name}) كبديل في اللجنة (${targetCommittee})؟`)) {
                                    await onAssignProctor(u.id, targetCommittee);
+                                   addAuditEvent('استبدال طارئ', `تم تعيين ${u.full_name} على لجنة ${targetCommittee}${isReserveForTarget ? ' من احتياط اللجنة' : ''}`);
                                    setIsAssigning(false);
                                 }
                              }}
-                             className={`w-full p-6 rounded-[2.5rem] border-2 transition-all flex items-center justify-between group hover:shadow-2xl ${isCurrentInThisCom ? 'opacity-30 border-slate-100 bg-slate-50 grayscale' : 'border-slate-50 bg-slate-50 hover:border-blue-200 hover:bg-white'}`}
+                             className={`w-full p-6 rounded-[2.5rem] border-2 transition-all flex items-center justify-between group hover:shadow-2xl ${isCurrentInThisCom ? 'opacity-30 border-slate-100 bg-slate-50 grayscale' : isReserveForTarget ? 'border-violet-200 bg-violet-50 hover:border-violet-400 hover:bg-white shadow-violet-100' : 'border-slate-50 bg-slate-50 hover:border-blue-200 hover:bg-white'}`}
                            >
                               <div className="flex items-center gap-6">
-                                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-inner ${currentSv ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-inner ${isReserveForTarget ? 'bg-violet-600 text-white' : currentSv ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`}>
                                     {currentSv ? <ArrowRightLeft size={28}/> : <UserCheck size={28}/>}
                                  </div>
                                  <div className="text-right">
-                                    <p className="font-black text-xl text-slate-800 leading-none mb-1">{u.full_name}</p>
+                                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                                      {isReserveForTarget && <span className="px-3 py-1 rounded-full bg-violet-600 text-white text-[9px] font-black">احتياط هذه اللجنة</span>}
+                                      <p className="font-black text-xl text-slate-800 leading-none">{u.full_name}</p>
+                                    </div>
                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                       {currentSv ? `سيتم نقله من لجنة ${currentSv.committee_number}` : 'مراقب احتياط جاهز للبدء'}
+                                       {isReserveForTarget ? 'مرشح من الاحتياط الذكي لنفس اللجنة' : currentSv ? `سيتم نقله من لجنة ${currentSv.committee_number}` : 'مراقب متاح وجاهز للبدء'}
                                     </p>
                                  </div>
+                              </div>
+                              <div className="hidden md:flex flex-col gap-2 text-[10px] font-black text-slate-500">
+                                <span className="px-3 py-1 rounded-full bg-white border border-slate-100">مسند: {totalAssignments}</span>
+                                <span className="px-3 py-1 rounded-full bg-white border border-slate-100">احتياط: {reserveAssignments}</span>
+                                <span className="px-3 py-1 rounded-full bg-white border border-slate-100">باشر: {startedAssignments}</span>
                               </div>
                               <CheckCircle className="text-blue-600 opacity-0 group-hover:opacity-100 transition-all" size={32}/>
                            </button>
@@ -486,6 +586,26 @@ const ControlManager: React.FC<ControlManagerProps> = ({
               </div>
 
               <div className="bg-white rounded-[3rem] p-7 border border-slate-100 shadow-xl">
+                <div className="flex items-center justify-between gap-3 mb-5">
+                  <h3 className="text-xl font-black text-slate-900 flex items-center gap-3"><History className="text-blue-600" /> سجل التدقيق</h3>
+                  <button onClick={() => { localStorage.removeItem('control_audit_events'); setAuditEvents([]); }} className="px-3 py-2 rounded-xl bg-slate-100 text-slate-500 text-[10px] font-black">مسح</button>
+                </div>
+                <div className="space-y-3 max-h-72 overflow-y-auto custom-scrollbar pr-1">
+                  {auditEvents.length ? auditEvents.slice(0, 8).map(event => (
+                    <div key={event.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-black text-slate-900">{event.action}</p>
+                        <span className="text-[10px] font-mono text-slate-400">{new Date(event.time).toLocaleString('ar-SA')}</span>
+                      </div>
+                      <p className="text-xs font-bold text-slate-500 mt-1">{event.detail}</p>
+                    </div>
+                  )) : (
+                    <p className="text-center py-8 text-slate-400 font-black">لا توجد عمليات مسجلة بعد.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-[3rem] p-7 border border-slate-100 shadow-xl">
                 <h3 className="text-xl font-black text-slate-900 mb-5 flex items-center gap-3"><WifiOff className="text-orange-500" /> وضع الطوارئ</h3>
                 <p className="text-sm font-bold text-slate-500 leading-7">عند انقطاع الإنترنت تحفظ شاشة المراقب التغييرات محليًا وتزامنها عند عودة الاتصال. استخدم النسخ الاحتياطي قبل بدء يوم جديد.</p>
                 <button onClick={exportTodayBackup} className="mt-5 w-full bg-slate-950 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2"><FileDown size={18} /> تصدير نسخة الآن</button>
@@ -518,13 +638,13 @@ const ControlManager: React.FC<ControlManagerProps> = ({
               <div className="bg-white rounded-[3rem] p-7 border border-slate-100 shadow-xl min-h-[520px]">
                 <h3 className="text-2xl font-black text-slate-900 mb-6 flex items-center gap-3"><MessageCircle className="text-red-600" /> مركز البلاغات</h3>
                 <div className="space-y-4 max-h-[430px] overflow-y-auto custom-scrollbar pr-2">
-                  {requests.length ? requests.slice(0, 16).map(req => (
+                  {visibleRequests.length ? visibleRequests.slice(0, 16).map(req => (
                     <div key={req.id} className={`p-5 rounded-2xl border ${req.status === 'DONE' ? 'bg-emerald-50 border-emerald-100' : req.status === 'IN_PROGRESS' ? 'bg-blue-50 border-blue-100' : 'bg-red-50 border-red-100'}`}>
                       <div className="flex items-center justify-between">
                         <span className="bg-slate-950 text-white px-3 py-1 rounded-xl text-xs font-black">لجنة {req.committee}</span>
                         <span className="text-[10px] font-black text-slate-500">{req.status === 'DONE' ? 'مغلق' : req.status === 'IN_PROGRESS' ? 'قيد المتابعة' : 'عاجل'}</span>
                       </div>
-                      <p className="font-black text-slate-900 mt-3 leading-7">{req.text}</p>
+                      <p className="font-black text-slate-900 mt-3 leading-7">{cleanControlRequestText(req.text)}</p>
                       <p className="text-xs font-bold text-slate-500 mt-2">{req.from} - {new Date(req.time).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</p>
                     </div>
                   )) : <p className="text-center text-slate-300 font-black py-20">لا توجد بلاغات مسجلة.</p>}
@@ -657,7 +777,10 @@ const ControlManager: React.FC<ControlManagerProps> = ({
                                return (
                                  <button key={com} onClick={async () => {
                                     const updated = isActive ? user.assigned_committees!.filter(c => c !== com) : [...(user.assigned_committees || []), com];
-                                    await supabase.from('users').update({ assigned_committees: updated }).eq('id', user.id);
+                                     const tenantId = getActiveTenantId();
+                                     let query = supabase.from('users').update({ assigned_committees: updated }).eq('id', user.id);
+                                     if (tenantId) query = query.eq('tenant_id', tenantId);
+                                     await query;
                                  }} className={`px-5 py-2.5 rounded-2xl font-black text-xs transition-all border-2 flex items-center gap-2 ${isActive ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-400 hover:border-indigo-200'}`}>
                                     {isActive ? <Check size={14}/> : <Plus size={14}/>}
                                     لجنة {com}
@@ -722,7 +845,7 @@ const ControlManager: React.FC<ControlManagerProps> = ({
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">نص البلاغ / التعليمات</label>
                     <textarea value={broadcastMsg} onChange={e => setBroadcastMsg(e.target.value)} placeholder="اكتب التعليمات هنا بوضوح..." className="w-full bg-slate-50 border-2 border-slate-100 rounded-[2.5rem] p-8 font-bold text-lg h-48 outline-none focus:border-blue-600 transition-all shadow-inner resize-none" />
                  </div>
-                 <button onClick={() => { if(broadcastMsg.trim()) { onBroadcast(formatBroadcast(broadcastMsg), broadcastTarget); setBroadcastMsg(''); alert('تم بث الرسالة بنجاح'); } }} disabled={!broadcastMsg.trim()} className="w-full py-8 bg-blue-600 text-white rounded-[2.5rem] font-black text-2xl flex items-center justify-center gap-6 shadow-2xl hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50">
+                 <button onClick={() => { if(broadcastMsg.trim()) { onBroadcast(formatBroadcast(broadcastMsg), broadcastTarget); addAuditEvent('بث إعلامي', `تم بث رسالة إلى ${broadcastTarget}`); setBroadcastMsg(''); alert('تم بث الرسالة بنجاح'); } }} disabled={!broadcastMsg.trim()} className="w-full py-8 bg-blue-600 text-white rounded-[2.5rem] font-black text-2xl flex items-center justify-center gap-6 shadow-2xl hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50">
                     <Send size={32}/> بث التعليمات الآن
                  </button>
               </div>

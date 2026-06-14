@@ -12,6 +12,7 @@ import {
   Timer, Inbox, SlidersHorizontal
 } from 'lucide-react';
 import { db } from '../../supabase';
+import { buildSignatureText, isInternalSignatureRecord, isSignatureRequest, SIGNATURE_REQUEST_PREFIX } from '../../services/signatures';
 
 interface Props {
   user: User;
@@ -27,6 +28,8 @@ interface Props {
   systemConfig: any;
 }
 
+type ReceiptScopeInfo = { grade: string; count: number; committee: string; key: string };
+
 const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliveryLogs, setDeliveryLogs, supervisions, users, onAlert, controlRequests, setControlRequests, systemConfig }) => {
   const [activeCommitteeId, setActiveCommitteeId] = useState<string | null>(null);
   const [currentQueueIndex, setCurrentQueueIndex] = useState(0);
@@ -37,6 +40,13 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'READY' | 'WAITING' | 'RECEIVED'>('ALL');
   const [receiptNote, setReceiptNote] = useState('');
   const [listSearch, setListSearch] = useState('');
+  const [summonReason, setSummonReason] = useState('مراجعة المستلم');
+  const [summonNote, setSummonNote] = useState('');
+  const [isSummonSaving, setIsSummonSaving] = useState(false);
+  const [receiverSignatureOpen, setReceiverSignatureOpen] = useState(false);
+  const [receiverSignatureData, setReceiverSignatureData] = useState('');
+  const receiverSignatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const receiverSignatureDrawingRef = useRef(false);
   const qrScannerRef = useRef<Html5Qrcode | null>(null);
 
   const todayDate = systemConfig?.active_exam_date || new Date().toISOString().split('T')[0];
@@ -47,27 +57,45 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
   };
 
   /* ── مطابقة التاريخ بمرونة (يتعامل مع ISO كامل أو YYYY-MM-DD) ── */
+  const getRiyadhDateKey = (value: string | Date) => {
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Riyadh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(d);
+    const get = (type: string) => parts.find(part => part.type === type)?.value || '';
+    return `${get('year')}-${get('month')}-${get('day')}`;
+  };
+
   const matchDate = (isoStr: string | undefined | null, date: string): boolean => {
     if (!isoStr || !date) return false;
-    try {
-      const d = new Date(isoStr);
-      if (isNaN(d.getTime())) return String(isoStr).startsWith(date);
-      return d.toISOString().startsWith(date);
-    } catch { return String(isoStr ?? '').startsWith(date); }
+    const text = String(isoStr);
+    return text.startsWith(date) || getRiyadhDateKey(text) === date;
   };
 
   const getUniqueKey = (committee: string | number, grade: string): string => {
     return `${cleanId(committee)}_${grade.trim()}`;
   };
 
+  const actualTodayDate = useMemo(() => {
+    return getRiyadhDateKey(new Date());
+  }, []);
+
+  const matchesReceiptWorkDate = (value?: string | null) => {
+    return matchDate(value, todayDate) || matchDate(value, actualTodayDate);
+  };
+
   // اللجان التي أغلقها المراقب ميدانياً اليوم وتنتظر الاستلام الفعلي
   const proctorSubmittedCommittees = useMemo(() => {
     return new Set(
       deliveryLogs
-        .filter(l => l.type === 'RECEIVE' && matchDate(l.time, todayDate) && (l.status === 'PENDING' || l.proctor_name))
+        .filter(l => l.type === 'RECEIVE' && (l.status === 'PENDING' || l.proctor_name) && matchesReceiptWorkDate(l.time))
         .map(l => cleanId(l.committee_number))
     );
-  }, [deliveryLogs, todayDate]);
+  }, [deliveryLogs, todayDate, actualTodayDate]);
 
   const receivedKeys = useMemo(() => {
     return new Set(deliveryLogs.filter(l => l.type === 'RECEIVE' && l.status === 'CONFIRMED' && matchDate(l.time, todayDate)).map(l => getUniqueKey(l.committee_number, l.grade)));
@@ -116,6 +144,52 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
       .slice(0, 5);
   }, [deliveryLogs, todayDate, user.full_name]);
 
+  const isReceiverSummon = (request: ControlRequest) => request.text?.startsWith('[CALL_RECEIVER]');
+  const cleanSummonText = (text?: string) => String(text || '').replace('[CALL_RECEIVER]', '').trim();
+
+  const activeCommitteeSummons = useMemo(() => {
+    if (!activeCommitteeId) return [];
+    return controlRequests
+      .filter(request => request.committee === activeCommitteeId && request.status !== 'DONE' && isReceiverSummon(request))
+      .sort((a, b) => b.time.localeCompare(a.time));
+  }, [activeCommitteeId, controlRequests]);
+
+  const handleSendSummon = async () => {
+    if (!activeCommitteeId || isSummonSaving) return;
+    setIsSummonSaving(true);
+    try {
+      const notePart = summonNote.trim() ? ` - ${summonNote.trim()}` : '';
+      await db.controlRequests.insert({
+        from: `${user.full_name} - المستلم`,
+        committee: activeCommitteeId,
+        text: `[CALL_RECEIVER] استدعاء المراقب: ${summonReason}${notePart}`,
+        time: new Date().toISOString(),
+        status: 'PENDING',
+      });
+      setSummonNote('');
+      await setControlRequests();
+      onAlert('تم إرسال استدعاء المراقب لهذه اللجنة.', 'success');
+    } catch (error: any) {
+      onAlert(error.message || 'تعذر إرسال استدعاء المراقب.', 'error');
+    } finally {
+      setIsSummonSaving(false);
+    }
+  };
+
+  const handleCloseSummon = async (requestId: string) => {
+    if (isSummonSaving) return;
+    setIsSummonSaving(true);
+    try {
+      await db.controlRequests.updateStatus(requestId, 'DONE', user.full_name);
+      await setControlRequests();
+      onAlert('تم إغلاق الاستدعاء من شاشة الاستلام.', 'success');
+    } catch (error: any) {
+      onAlert(error.message || 'تعذر إغلاق الاستدعاء.', 'error');
+    } finally {
+      setIsSummonSaving(false);
+    }
+  };
+
   const progressPercentage = useMemo(() => {
     const total = Object.keys(myTotalScope).length;
     if (total === 0) return 0;
@@ -124,17 +198,18 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
   }, [myTotalScope, receivedKeys]);
 
   const scopeCards = useMemo(() => {
-    return Object.values(myTotalScope)
+    return (Object.values(myTotalScope) as ReceiptScopeInfo[])
       .map(info => {
         const isReceived = receivedKeys.has(info.key);
-        const isReady = !isReceived && proctorSubmittedCommittees.has(info.committee);
         const sv = supervisions.find(s => cleanId(s.committee_number) === info.committee && matchDate(s.date, todayDate));
         const proctor = users.find(u => u.id === sv?.teacher_id);
         const confirmedLog = deliveryLogs.find(l => l.status === 'CONFIRMED' && matchDate(l.time, todayDate) && getUniqueKey(l.committee_number, l.grade) === info.key);
-        const pendingLog = deliveryLogs.find(l => l.status === 'PENDING' && matchDate(l.time, todayDate) && getUniqueKey(l.committee_number, l.grade) === info.key);
+        const pendingLog = deliveryLogs.find(l => l.status === 'PENDING' && matchesReceiptWorkDate(l.time) && getUniqueKey(l.committee_number, l.grade) === info.key)
+          || deliveryLogs.find(l => l.type === 'RECEIVE' && l.status === 'PENDING' && matchesReceiptWorkDate(l.time) && cleanId(l.committee_number) === info.committee);
+        const isReady = !isReceived && (proctorSubmittedCommittees.has(info.committee) || Boolean(pendingLog));
         const gradeAbsences = absences.filter(a => a.committee_number === info.committee && a.type === 'ABSENT' && matchDate(a.date, todayDate) && students.find(s => s.national_id === a.student_id)?.grade === info.grade);
         const gradeLates = absences.filter(a => a.committee_number === info.committee && a.type === 'LATE' && matchDate(a.date, todayDate) && students.find(s => s.national_id === a.student_id)?.grade === info.grade);
-        const openAlerts = controlRequests.filter(r => r.committee === info.committee && r.status !== 'DONE');
+        const openAlerts = controlRequests.filter(r => r.committee === info.committee && r.status !== 'DONE' && !isInternalSignatureRecord(r) && !isSignatureRequest(r));
         const status = isReceived ? 'RECEIVED' : isReady ? 'READY' : 'WAITING';
         return {
           ...info,
@@ -163,10 +238,10 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
         const rank = { READY: 0, WAITING: 1, RECEIVED: 2 } as Record<string, number>;
         return rank[a.status] - rank[b.status] || Number(a.committee) - Number(b.committee) || a.grade.localeCompare(b.grade);
       });
-  }, [absences, controlRequests, deliveryLogs, listSearch, myTotalScope, proctorSubmittedCommittees, receivedKeys, statusFilter, students, supervisions, todayDate, users]);
+  }, [absences, actualTodayDate, controlRequests, deliveryLogs, listSearch, myTotalScope, proctorSubmittedCommittees, receivedKeys, statusFilter, students, supervisions, todayDate, users]);
 
   const personalStats = useMemo(() => {
-    const cards = Object.values(myTotalScope);
+    const cards = Object.values(myTotalScope) as ReceiptScopeInfo[];
     const received = cards.filter(c => receivedKeys.has(c.key)).length;
     const ready = cards.filter(c => !receivedKeys.has(c.key) && proctorSubmittedCommittees.has(c.committee)).length;
     const waiting = cards.filter(c => !receivedKeys.has(c.key) && !proctorSubmittedCommittees.has(c.committee)).length;
@@ -228,9 +303,79 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
     }
   };
 
-  const confirmReceipt = async () => {
+  const getCanvasPoint = (canvas: HTMLCanvasElement, event: React.PointerEvent<HTMLCanvasElement>) => {
+    const rect = canvas.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  };
+
+  const startReceiverSignature = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = receiverSignatureCanvasRef.current;
+    if (!canvas) return;
+    receiverSignatureDrawingRef.current = true;
+    canvas.setPointerCapture(event.pointerId);
+    const ctx = canvas.getContext('2d');
+    const point = getCanvasPoint(canvas, event);
+    if (!ctx) return;
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+  };
+
+  const drawReceiverSignature = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = receiverSignatureCanvasRef.current;
+    if (!canvas || !receiverSignatureDrawingRef.current) return;
+    const ctx = canvas.getContext('2d');
+    const point = getCanvasPoint(canvas, event);
+    if (!ctx) return;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+  };
+
+  const finishReceiverSignature = () => {
+    receiverSignatureDrawingRef.current = false;
+    const data = receiverSignatureCanvasRef.current?.toDataURL('image/png') || '';
+    if (data) {
+      setReceiverSignatureData(data);
+      localStorage.setItem(`receiver_signature_${user.id}`, data);
+    }
+  };
+
+  const clearReceiverSignature = () => {
+    const canvas = receiverSignatureCanvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setReceiverSignatureData('');
+    localStorage.removeItem(`receiver_signature_${user.id}`);
+  };
+
+  const openReceiverSignature = () => {
+    setReceiverSignatureOpen(true);
+    setTimeout(() => {
+      const canvas = receiverSignatureCanvasRef.current;
+      const saved = localStorage.getItem(`receiver_signature_${user.id}`);
+      if (!canvas || !saved) return;
+      const ctx = canvas.getContext('2d');
+      const image = new Image();
+      image.onload = () => {
+        ctx?.clearRect(0, 0, canvas.width, canvas.height);
+        ctx?.drawImage(image, 0, 0, canvas.width, canvas.height);
+        setReceiverSignatureData(saved);
+      };
+      image.src = saved;
+    }, 50);
+  };
+
+  const confirmReceipt = async (signatureData = receiverSignatureData) => {
     const item = currentQueue[currentQueueIndex];
     if (!item) return;
+    if (!signatureData) {
+      openReceiverSignature();
+      onAlert('يرجى توقيع المستلم قبل اعتماد الاستلام.', 'warning');
+      return;
+    }
 
     const sv = supervisions.find(s => cleanId(s.committee_number) === item.committee && matchDate(s.date, todayDate));
     const proctorObj = users.find(u => u.id === sv?.teacher_id);
@@ -250,10 +395,33 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
     setIsSaving(true);
     try {
       await setDeliveryLogs(newLog);
+      await db.controlRequests.insert({
+        from: user.full_name,
+        committee: item.committee,
+        text: buildSignatureText({
+          role: 'receiver',
+          committee: item.committee,
+          grade: item.grade,
+          name: user.full_name,
+          time: newLog.time,
+          signature: signatureData,
+        }),
+        time: newLog.time,
+        status: 'DONE',
+      });
+      await db.controlRequests.insert({
+        from: `${user.full_name} - المستلم`,
+        committee: item.committee,
+        text: `${SIGNATURE_REQUEST_PREFIX} الرجاء توقيع مراقب اللجنة بعد استلام الكنترول للصف: ${item.grade}`,
+        time: newLog.time,
+        status: 'PENDING',
+      });
+      await setControlRequests();
       if (receiptNote.trim()) {
         onAlert(`تم حفظ الاستلام مع ملاحظة: ${receiptNote.trim()}`, 'info');
       }
       setReceiptNote('');
+      setReceiverSignatureOpen(false);
       setIsSuccessState(true);
       setTimeout(() => {
         setIsSuccessState(false);
@@ -273,9 +441,10 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
   return (
     <div className="space-y-8 animate-fade-in text-right pb-32 px-4 md:px-0 max-w-7xl mx-auto">
       
-      <div className="relative overflow-hidden rounded-[3.5rem] bg-slate-950 text-white shadow-2xl border border-slate-800">
-        <div className="absolute -top-28 -right-28 h-72 w-72 rounded-full bg-blue-600/25 blur-[90px]" />
-        <div className="absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-emerald-500/15 blur-[100px]" />
+      <div className="relative overflow-hidden rounded-[3.5rem] bg-gradient-to-br from-[#020817] via-[#0a1628] to-[#050d1a] text-white shadow-2xl border border-slate-800/60">
+        <div className="absolute -top-28 -right-28 h-72 w-72 rounded-full bg-blue-600/30 blur-[90px] pointer-events-none" />
+        <div className="absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-emerald-500/20 blur-[100px] pointer-events-none" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 rounded-full bg-indigo-700/10 blur-[120px] pointer-events-none" />
         <div className="relative z-10 p-7 md:p-10 space-y-8">
           <div className="flex flex-col xl:flex-row justify-between gap-8">
             <div className="space-y-4">
@@ -338,7 +507,7 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
                     } catch { setIsScanning(false); }
                   }, 300);
                 }}
-                className="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white py-5 px-5 rounded-2xl font-black flex items-center justify-center gap-4 shadow-lg transition-all"
+                className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 active:scale-[0.98] text-white py-5 px-5 rounded-2xl font-black flex items-center justify-center gap-4 shadow-lg shadow-blue-600/30 transition-all"
               >
                 <Camera size={26} />
                 مسح باركود اللجنة أو بطاقة المراقب
@@ -405,7 +574,7 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
             <p className="text-slate-400 text-sm font-bold mt-1">بطاقة المراقب · QR لجنة · صفحة التعريف</p>
           </div>
           <div className="relative w-72 h-72">
-            <div id="receipt-qr-v15" className="w-full h-full bg-black rounded-3xl overflow-hidden shadow-2xl" />
+            <div id="receipt-qr-v15" className="w-full h-full bg-black rounded-3xl overflow-hidden shadow-[0_0_40px_rgba(59,130,246,0.4)] border border-blue-400/50" />
             <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-blue-500 rounded-tr-2xl pointer-events-none" />
             <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-500 rounded-tl-2xl pointer-events-none" />
             <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-blue-500 rounded-br-2xl pointer-events-none" />
@@ -423,8 +592,8 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
 
       {activeCommitteeId && currentQueue.length > 0 && (
          <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 animate-fade-in no-print overflow-y-auto">
-            <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-2xl" onClick={() => !isSaving && setActiveCommitteeId(null)}></div>
-            <div className="bg-white w-full max-w-2xl rounded-[4rem] shadow-[0_0_100px_rgba(0,0,0,0.5)] relative z-10 overflow-hidden border-b-[15px] border-slate-900 my-auto animate-slide-up">
+            <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-md" onClick={() => !isSaving && setActiveCommitteeId(null)}></div>
+            <div className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl border border-slate-100 relative z-10 overflow-hidden border-b-[15px] border-slate-900 my-auto animate-slide-up">
                
                {isSaving || isSuccessState ? (
                   <div className="p-24 text-center space-y-10 animate-fade-in flex flex-col items-center">
@@ -433,8 +602,9 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
                   </div>
                ) : (
                   <div>
-                    <div className="bg-slate-900 p-10 text-white flex justify-between items-center relative overflow-hidden">
-                       <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/20 blur-3xl rounded-full"></div>
+                     <div className="bg-gradient-to-br from-[#020817] via-[#0a1628] to-[#050d1a] p-10 text-white flex justify-between items-center relative overflow-hidden border-b border-slate-800/60">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/25 blur-3xl rounded-full pointer-events-none"></div>
+                        <div className="absolute bottom-0 left-0 w-24 h-24 bg-emerald-600/15 blur-3xl rounded-full pointer-events-none"></div>
                        <div className="flex items-center gap-6 relative z-10">
                           <div className="w-20 h-20 bg-blue-600 text-white rounded-[1.8rem] flex flex-col items-center justify-center font-black shadow-2xl">
                              <span className="text-[10px] opacity-50 uppercase leading-none mb-1">لجنة</span>
@@ -505,7 +675,75 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
                           </div>
                         </div>
 
-                        {controlRequests.some(r => r.committee === activeCommitteeId && r.status !== 'DONE') && (
+                        <div className="bg-indigo-50 border border-indigo-100 rounded-[2rem] p-5 space-y-4">
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-11 h-11 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shrink-0">
+                                <ShieldAlert size={21} />
+                              </div>
+                              <div className="text-right">
+                                <p className="font-black text-indigo-950">استدعاء مراقب اللجنة</p>
+                                <p className="text-xs font-bold text-indigo-500 mt-1">يظهر للمراقب المرتبط بهذه اللجنة ويظهر في TV2 بالألوان.</p>
+                              </div>
+                            </div>
+                            <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black text-indigo-700 border border-indigo-100">
+                              {activeCommitteeSummons.length ? `${activeCommitteeSummons.length} استدعاء نشط` : 'لا يوجد استدعاء نشط'}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-[170px_1fr_auto] gap-3">
+                            <select
+                              value={summonReason}
+                              onChange={e => setSummonReason(e.target.value)}
+                              className="rounded-2xl border border-indigo-100 bg-white px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-400"
+                            >
+                              <option>مراجعة المستلم</option>
+                              <option>مطابقة عدد الأوراق</option>
+                              <option>نقص أو زيادة أوراق</option>
+                              <option>ملاحظة على المحضر</option>
+                              <option>توقيع أو اعتماد مطلوب</option>
+                              <option>أخرى</option>
+                            </select>
+                            <input
+                              value={summonNote}
+                              onChange={e => setSummonNote(e.target.value)}
+                              placeholder="ملاحظة اختيارية للمراقب"
+                              className="rounded-2xl border border-indigo-100 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-indigo-400"
+                            />
+                            <button
+                              onClick={handleSendSummon}
+                              disabled={isSummonSaving}
+                              className="rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-indigo-500/20 disabled:opacity-50"
+                            >
+                              {isSummonSaving ? 'جاري...' : 'إرسال الاستدعاء'}
+                            </button>
+                          </div>
+
+                          {activeCommitteeSummons.length > 0 && (
+                            <div className="space-y-2">
+                              {activeCommitteeSummons.map(request => (
+                                <div key={request.id} className="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-2xl bg-white border border-indigo-100 p-4">
+                                  <div className="text-right">
+                                    <p className="font-black text-slate-900">{cleanSummonText(request.text)}</p>
+                                    <p className="mt-1 text-[11px] font-bold text-slate-500">
+                                      الحالة: {request.status === 'PENDING' ? 'مرسل وينتظر استلام المراقب' : 'استلمه المراقب'}
+                                      {request.assistant_name ? ` - ${request.assistant_name}` : ''}
+                                    </p>
+                                  </div>
+                                  <button
+                                    onClick={() => handleCloseSummon(request.id)}
+                                    disabled={isSummonSaving}
+                                    className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50"
+                                  >
+                                    إغلاق الاستدعاء
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {controlRequests.some(r => r.committee === activeCommitteeId && r.status !== 'DONE' && !isInternalSignatureRecord(r) && !isSignatureRequest(r)) && (
                           <div className="bg-red-50 border border-red-100 rounded-[2rem] p-5 flex items-start gap-4">
                             <ShieldAlert size={24} className="text-red-600 shrink-0 mt-1" />
                             <div className="text-right">
@@ -532,9 +770,9 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
 
                        <div className="pt-4">
                          <button 
-                           onClick={confirmReceipt} 
+                           onClick={() => confirmReceipt()} 
                            disabled={isSaving}
-                           className="w-full py-6 bg-emerald-600 text-white rounded-[2rem] font-black text-xl flex items-center justify-center gap-4 shadow-[0_10px_30px_rgba(16,185,129,0.3)] hover:bg-emerald-700 transition-all active:scale-95 relative overflow-hidden group"
+                           className="w-full py-6 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-[2rem] font-black text-xl flex items-center justify-center gap-4 shadow-[0_10px_30px_rgba(16,185,129,0.25)] shadow-emerald-500/25 hover:from-emerald-700 hover:to-emerald-600 transition-all active:scale-[0.97] relative overflow-hidden group"
                          >
                             <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                             <Save size={28}/> 
@@ -549,7 +787,57 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
          </div>
       )}
 
-      <div className="bg-white rounded-[3rem] border border-slate-100 shadow-xl overflow-hidden">
+      {receiverSignatureOpen && activeCommitteeId && currentQueue[currentQueueIndex] && (
+        <div className="fixed inset-0 z-[700] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-xl no-print">
+          <div className="w-full max-w-xl rounded-[2.5rem] bg-white p-6 shadow-2xl border border-slate-100">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div className="text-right">
+                <p className="text-xl font-black text-slate-950">توقيع مستلم الكنترول</p>
+                <p className="mt-1 text-xs font-bold text-slate-500">
+                  اللجنة {activeCommitteeId} · {currentQueue[currentQueueIndex].grade}
+                </p>
+              </div>
+              <button
+                onClick={() => setReceiverSignatureOpen(false)}
+                className="grid h-11 w-11 place-items-center rounded-2xl bg-slate-100 text-slate-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="rounded-[2rem] border-2 border-dashed border-slate-200 bg-slate-50 p-3">
+              <canvas
+                ref={receiverSignatureCanvasRef}
+                width={760}
+                height={260}
+                onPointerDown={startReceiverSignature}
+                onPointerMove={drawReceiverSignature}
+                onPointerUp={finishReceiverSignature}
+                onPointerCancel={finishReceiverSignature}
+                className="h-44 w-full touch-none rounded-[1.5rem] bg-white shadow-inner"
+              />
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                onClick={clearReceiverSignature}
+                className="rounded-2xl border border-slate-200 bg-white py-4 text-sm font-black text-slate-600"
+              >
+                مسح التوقيع
+              </button>
+              <button
+                onClick={() => confirmReceipt(receiverSignatureCanvasRef.current?.toDataURL('image/png') || receiverSignatureData)}
+                disabled={isSaving}
+                className="rounded-2xl bg-emerald-600 py-4 text-sm font-black text-white shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+              >
+                حفظ التوقيع واعتماد الاستلام
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-[3rem] border border-slate-100 shadow-xl shadow-slate-200/60 overflow-hidden">
         <div className="p-5 md:p-6 border-b border-slate-100 bg-slate-50/60 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <SlidersHorizontal size={22} className="text-blue-600" />
@@ -606,12 +894,12 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
                 const isReady = card.status === 'READY';
                 const isReceived = card.status === 'RECEIVED';
                 const statusClasses = isReceived
-                  ? 'border-emerald-200 bg-emerald-50/50 shadow-emerald-100'
+                  ? 'border-emerald-200/60 bg-gradient-to-br from-emerald-50 to-emerald-100/40 shadow-emerald-100'
                   : isReady
-                    ? 'border-blue-300 bg-blue-50/40 shadow-blue-100'
-                    : 'border-orange-100 bg-orange-50/30 shadow-orange-50';
+                    ? 'border-blue-200/60 bg-gradient-to-br from-blue-50 to-blue-100/40 shadow-blue-100'
+                    : 'border-amber-200/60 bg-white shadow-amber-100';
                 return (
-                  <div key={card.key} className={`p-6 rounded-[3rem] border-2 shadow-xl transition-all relative overflow-hidden group flex flex-col min-h-[420px] ${statusClasses}`}>
+                  <div key={card.key} className={`p-6 rounded-[3rem] border-2 shadow-xl hover:-translate-y-1 hover:shadow-2xl transition-all duration-300 relative overflow-hidden group flex flex-col min-h-[420px] ${statusClasses}`}>
                     <div className="absolute -top-16 -right-16 w-40 h-40 bg-white/70 blur-3xl rounded-full pointer-events-none" />
                     <div className="relative z-10 flex justify-between items-start gap-4">
                       <div>
@@ -619,7 +907,7 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
                         <p className="text-7xl font-black leading-none tabular-nums text-slate-950">{card.committee}</p>
                       </div>
                       <div className="text-left space-y-2">
-                        <span className={`inline-flex px-4 py-2 rounded-2xl text-[10px] font-black ${isReceived ? 'bg-emerald-600 text-white' : isReady ? 'bg-blue-600 text-white' : 'bg-orange-500 text-white'}`}>
+                        <span className={`inline-flex px-4 py-2 rounded-2xl text-[10px] font-black ${isReceived ? 'bg-emerald-600 text-white' : isReady ? 'bg-blue-600 text-white' : 'bg-amber-500 text-white'}`}>
                           {isReceived ? 'تم الاستلام' : isReady ? 'جاهز للاستلام' : 'بانتظار الإغلاق'}
                         </span>
                         {card.openAlerts.length > 0 && <span className="block bg-red-600 text-white px-3 py-1 rounded-xl text-[9px] font-black">بلاغ مفتوح</span>}
@@ -653,7 +941,7 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
                         if (isReady) handleStartProcess(card.committee);
                       }}
                       disabled={!isReady}
-                      className={`relative z-10 mt-5 w-full py-5 rounded-[2rem] font-black text-lg transition-all flex items-center justify-center gap-3 shadow-sm ${isReady ? 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95' : isReceived ? 'bg-emerald-100 text-emerald-700 cursor-default' : 'bg-white text-orange-400 cursor-not-allowed border border-orange-100'}`}
+                      className={`relative z-10 mt-5 w-full py-5 rounded-[2rem] font-black text-lg transition-all flex items-center justify-center gap-3 shadow-sm ${isReady ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white shadow-emerald-500/25 active:scale-[0.97]' : isReceived ? 'bg-emerald-100 text-emerald-700 cursor-default' : 'bg-white text-amber-500 cursor-not-allowed border border-amber-100'}`}
                     >
                       {isReady ? <>تأكيد الاستلام النهائي <ArrowRight size={20} className="rotate-180" /></> : isReceived ? <><CheckCircle2 size={20} /> مستلم بواسطة {card.receiverName || 'الكنترول'}</> : <><Lock size={18} /> لم تغلق اللجنة بعد</>}
                     </button>

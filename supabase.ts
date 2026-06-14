@@ -1,6 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { User, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, EnvelopeOpening, Tenant } from './types';
+import { User, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, EnvelopeOpening, Tenant, ExamSchedule, ArchiveBox } from './types';
 
 const env = import.meta.env;
 const supabaseUrl = env.VITE_SUPABASE_URL;
@@ -166,6 +166,7 @@ export const db = {
               id: 'main_config',
               exam_start_time: '08:00',
               active_exam_date: new Date().toISOString().split('T')[0],
+              academic_year: '1446 / 1447',
               allow_manual_join: false
             }]),
           });
@@ -361,6 +362,36 @@ export const db = {
     }
   },
 
+  examSchedule: {
+    getAll: async () => {
+      const { data, error } = await scopeToTenant(
+        supabase
+          .from('exam_schedule')
+          .select('*')
+          .order('exam_date', { ascending: true })
+          .order('period', { ascending: true })
+      );
+      if (error) {
+        console.warn('exam_schedule table not found or unavailable, using empty list');
+        return [] as ExamSchedule[];
+      }
+      return (data || []) as ExamSchedule[];
+    },
+    upsert: async (item: Partial<ExamSchedule>) => {
+      const { error } = await supabase.from('exam_schedule').upsert([withTenant(item)], { onConflict: 'id' });
+      const err = handleError(error, "examSchedule.upsert");
+      if (err) throw new Error(err);
+    },
+    delete: async (id: string) => {
+      const tenantId = getActiveTenantId();
+      let query = supabase.from('exam_schedule').delete().eq('id', id);
+      if (tenantId) query = query.eq('tenant_id', tenantId);
+      const { error } = await query;
+      const err = handleError(error, "examSchedule.delete");
+      if (err) throw new Error(err);
+    }
+  },
+
   deliveryLogs: {
     getAll: async () => {
       const { data, error } = await scopeToTenant(supabase.from('delivery_logs').select('*'));
@@ -420,6 +451,32 @@ export const db = {
       if (tenantId) query = query.eq('tenant_id', tenantId);
       const { error } = await query;
       const err = handleError(error, "envelopeOpenings.delete");
+      if (err) throw new Error(err);
+    }
+  },
+
+  archiveBoxes: {
+    getAll: async () => {
+      const { data, error } = await scopeToTenant(
+        supabase.from('archive_boxes').select('*').order('created_at', { ascending: false })
+      );
+      if (error) {
+        console.warn('archive_boxes table not found, using empty list');
+        return [] as ArchiveBox[];
+      }
+      return (data || []) as ArchiveBox[];
+    },
+    upsert: async (box: Partial<ArchiveBox>) => {
+      const { error } = await supabase.from('archive_boxes').upsert([withTenant(box)], { onConflict: 'id' });
+      const err = handleError(error, "archiveBoxes.upsert");
+      if (err) throw new Error(err);
+    },
+    delete: async (id: string) => {
+      const tenantId = getActiveTenantId();
+      let query = supabase.from('archive_boxes').delete().eq('id', id);
+      if (tenantId) query = query.eq('tenant_id', tenantId);
+      const { error } = await query;
+      const err = handleError(error, "archiveBoxes.delete");
       if (err) throw new Error(err);
     }
   }

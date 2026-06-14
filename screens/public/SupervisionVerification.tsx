@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { CheckCircle2, Clock3, DoorOpen, FileCheck2, HeartHandshake, ShieldCheck } from 'lucide-react';
 import { Absence, DeliveryLog, Student, Supervision, User } from '../../types';
+import { formatActualProctorStart, isPlaceholderProctorStart } from '../../utils/proctorTime';
 
 interface Props {
   supervisions: Supervision[];
@@ -27,6 +28,8 @@ const formatTime = (value?: string) => {
     minute: '2-digit',
   }).format(new Date(value));
 };
+
+const formatProctorTime = (value?: string) => formatActualProctorStart(value, 'لم يسجل');
 
 const sameDay = (value: string | undefined, date: string) => Boolean(value && value.startsWith(date));
 
@@ -69,7 +72,7 @@ const SupervisionVerification: React.FC<Props> = ({ supervisions, users, student
 
     return {
       supervision,
-      proctorName: proctor?.full_name || receiptLog?.proctor_name || 'غير محدد',
+      proctorName: (proctor && !isPlaceholderProctorStart(supervision?.date)) ? proctor.full_name : receiptLog?.proctor_name || 'لم يسجل',
       receiverName: receiptLog?.teacher_name || 'لم يتم الاستلام بعد',
       total: gradeStudents.length,
       present: Math.max(gradeStudents.length - absent.length, 0),
@@ -89,7 +92,7 @@ const SupervisionVerification: React.FC<Props> = ({ supervisions, users, student
     : 'هذا الرمز يخص خانة توقيع المراقب ويثبت بيانات مراقب اللجنة وإغلاقها.';
 
   const timeline = [
-    { label: 'وقت دخول اللجنة', value: formatTime(record.startTime), icon: DoorOpen, tone: 'bg-blue-50 text-blue-700 border-blue-100' },
+    { label: 'وقت دخول اللجنة', value: formatProctorTime(record.startTime), icon: DoorOpen, tone: 'bg-blue-50 text-blue-700 border-blue-100' },
     { label: 'وقت إغلاق اللجنة', value: formatTime(record.closeTime), icon: Clock3, tone: 'bg-orange-50 text-orange-700 border-orange-100' },
     { label: 'وقت استلام الكنترول', value: formatTime(record.receiptTime), icon: FileCheck2, tone: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
   ];
