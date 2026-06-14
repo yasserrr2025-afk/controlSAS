@@ -1,6 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { User, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, EnvelopeOpening, Tenant, ExamSchedule, ArchiveBox } from './types';
+import { User, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, EnvelopeOpening, Tenant, ExamSchedule, ArchiveBox, ProctorExclusion } from './types';
 
 const env = import.meta.env;
 const supabaseUrl = env.VITE_SUPABASE_URL;
@@ -388,6 +388,44 @@ export const db = {
       if (tenantId) query = query.eq('tenant_id', tenantId);
       const { error } = await query;
       const err = handleError(error, "examSchedule.delete");
+      if (err) throw new Error(err);
+    }
+  },
+
+  proctorExclusions: {
+    getAll: async () => {
+      const { data, error } = await scopeToTenant(
+        supabase
+          .from('proctor_exclusions')
+          .select('*')
+          .order('exam_date', { ascending: true })
+          .order('period', { ascending: true })
+      );
+      if (error) {
+        console.warn('proctor_exclusions table not found or unavailable, using local exclusions');
+        return [] as ProctorExclusion[];
+      }
+      return (data || []) as ProctorExclusion[];
+    },
+    upsert: async (item: Partial<ProctorExclusion>) => {
+      const { error } = await supabase.from('proctor_exclusions').upsert([withTenant(item)], {
+        onConflict: getActiveTenantId() ? 'tenant_id,teacher_id,exam_date,period,subject' : 'teacher_id,exam_date,period,subject'
+      });
+      const err = handleError(error, "proctorExclusions.upsert");
+      if (err) throw new Error(err);
+    },
+    deleteByScope: async (teacherId: string, examDate: string, period: number, subject: string) => {
+      const tenantId = getActiveTenantId();
+      let query = supabase
+        .from('proctor_exclusions')
+        .delete()
+        .eq('teacher_id', teacherId)
+        .eq('exam_date', examDate)
+        .eq('period', period)
+        .eq('subject', subject);
+      if (tenantId) query = query.eq('tenant_id', tenantId);
+      const { error } = await query;
+      const err = handleError(error, "proctorExclusions.deleteByScope");
       if (err) throw new Error(err);
     }
   },

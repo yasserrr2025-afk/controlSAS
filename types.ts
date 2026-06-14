@@ -43,6 +43,17 @@ export interface ExamSchedule {
   updated_at?: string;
 }
 
+export interface ProctorExclusion {
+  id: string;
+  tenant_id?: string;
+  teacher_id: string;
+  exam_date: string;
+  period: number;
+  subject: string;
+  reason?: string;
+  created_at?: string;
+}
+
 export interface Student {
   id: string;
   tenant_id?: string;

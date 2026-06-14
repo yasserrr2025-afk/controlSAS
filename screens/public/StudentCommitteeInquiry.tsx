@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { Student } from '../../types';
 import { APP_CONFIG } from '../../constants';
-import { getActiveTenantSlug } from '../../supabase';
+import { db, getActiveTenantSlug } from '../../supabase';
 
 interface Props {
   students: Student[];
@@ -54,6 +54,17 @@ const StudentCommitteeInquiry: React.FC<Props> = ({ students }) => {
   const [nationalId, setNationalId] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [schoolName, setSchoolName] = useState(APP_CONFIG.SCHOOL_NAME || 'نظام كنترول الاختبارات');
+  const [schoolLogoUrl, setSchoolLogoUrl] = useState(APP_CONFIG.LOGO_URL);
+
+  useEffect(() => {
+    db.tenants.getActive()
+      .then((tenant) => {
+        if (tenant?.name) setSchoolName(tenant.name);
+        if (tenant?.logo_url) setSchoolLogoUrl(tenant.logo_url);
+      })
+      .catch(() => {});
+  }, []);
 
   const inquiryUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
@@ -72,14 +83,14 @@ const StudentCommitteeInquiry: React.FC<Props> = ({ students }) => {
   const whatsappUrl = useMemo(() => {
     const message = [
       'استعلام عن اللجنة',
-      'مدرسة عماد الدين زنكي المتوسطة',
+      schoolName,
       '',
       'يمكن للطلاب معرفة رقم اللجنة وموقعها عبر الرابط:',
       inquiryUrl,
     ].join('\n');
 
     return `https://wa.me/?text=${encodeURIComponent(message)}`;
-  }, [inquiryUrl]);
+  }, [inquiryUrl, schoolName]);
 
   const student = useMemo(() => {
     const query = normalizeId(nationalId);
@@ -156,7 +167,7 @@ const StudentCommitteeInquiry: React.FC<Props> = ({ students }) => {
     ctx.fillStyle = '#ea580c';
     ctx.font = '800 24px Tajawal, Arial';
     ctx.textAlign = 'right';
-    ctx.fillText('مدرسة عماد الدين زنكي المتوسطة', width - 72, 86);
+    ctx.fillText(schoolName, width - 72, 86);
 
     ctx.fillStyle = '#0f172a';
     ctx.font = '900 42px Tajawal, Arial';
@@ -242,10 +253,10 @@ const StudentCommitteeInquiry: React.FC<Props> = ({ students }) => {
         <header className="flex items-center justify-between gap-4 text-white">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/10 p-2 shadow-xl backdrop-blur">
-              <img src={APP_CONFIG.LOGO_URL} alt="شعار المدرسة" className="h-full w-full object-contain" />
+              <img src={schoolLogoUrl} alt="شعار المدرسة" className="h-full w-full object-contain" />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-xs font-black text-orange-100 sm:text-sm">مدرسة عماد الدين زنكي المتوسطة</p>
+              <p className="truncate text-xs font-black text-orange-100 sm:text-sm">{schoolName}</p>
               <p className="text-[10px] font-bold text-white/60">بوابة الطلاب الذكية</p>
             </div>
           </div>
@@ -262,7 +273,7 @@ const StudentCommitteeInquiry: React.FC<Props> = ({ students }) => {
               خدمة آمنة وسريعة للطلاب
             </div>
             <h1 className="text-4xl font-black leading-tight tracking-tight sm:text-5xl lg:text-6xl">استعلام عن اللجنة</h1>
-            <p className="mt-3 text-lg font-black text-orange-50">مدرسة عماد الدين زنكي المتوسطة</p>
+            <p className="mt-3 text-lg font-black text-orange-50">{schoolName}</p>
             <p className="mt-4 max-w-xl text-sm font-bold leading-8 text-white/75">
               أدخل رقم الهوية لتظهر بيانات اللجنة ورقم الجلوس وموقع الطالب بشكل واضح ومناسب للجوال والشاشات الكبيرة.
             </p>
