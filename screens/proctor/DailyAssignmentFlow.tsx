@@ -7,6 +7,7 @@ import {
   DeliveryLog,
   ControlRequest,
   CommitteeReport,
+  ExamSchedule,
 } from "../../types";
 import { Html5Qrcode } from "html5-qrcode";
 import {
@@ -66,6 +67,7 @@ interface Props {
   setDeliveryLogs: (log: Partial<DeliveryLog>) => Promise<void>;
   systemConfig: any;
   controlRequests?: ControlRequest[];
+  examSchedule?: ExamSchedule[];
 }
 
 const ProctorDailyAssignmentFlow: React.FC<Props> = ({
@@ -82,6 +84,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   setDeliveryLogs,
   systemConfig,
   controlRequests = [],
+  examSchedule = [],
 }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
@@ -140,7 +143,8 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     [supervisions, user.id, activeDate, optimisticAssignment],
   );
 
-  const activeCommittee = activeAssignment?.committee_number || null;
+  // activeCommittee: يستخدم اللجنة المؤكدة كـ fallback لمنع الخروج إلى شاشة المسح
+  const activeCommittee = activeAssignment?.committee_number || confirmedCommitteeNum || null;
   const isAssignmentStarted = (value?: string | null) => {
     return !isPlaceholderProctorStart(value);
   };
@@ -158,6 +162,12 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       return {};
     }
   });
+
+  // حفظ رقم اللجنة محلياً بعد التأكيد لمنع الخروج إلى شاشة المسح عند تحديث البيانات
+  const [confirmedCommitteeNum, setConfirmedCommitteeNum] = useState<string | null>(() => {
+    return localStorage.getItem(`confirmed_committee_${user.id}_${systemConfig?.active_exam_date || ''}`) || null;
+  });
+
   const activeAssignmentConfirmed = !!activeAssignment && (confirmedAssignments.includes(activeAssignment.id) || isAssignmentStarted(activeAssignment.date));
   const activeAssignmentStartTime = activeAssignment
     ? assignmentStartTimes[activeAssignment.id] || activeAssignment.date
@@ -165,12 +175,36 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   const isEmergencyAssignment = !!activeAssignment && /بديل|طوارئ|احتياط|\[RESERVE\]/.test(String(activeAssignment.subject || ''));
 
   useEffect(() => {
-    const timer = window.setInterval(() => setGateNow(new Date()), 30000);
+    // تحديث كل 10 ثوانٍ لضمان دقة فتح بوابة التأكيد
+    const timer = window.setInterval(() => setGateNow(new Date()), 10000);
     return () => window.clearInterval(timer);
   }, []);
 
   const assignmentGate = useMemo(() => {
-    const [hours, minutes] = String(systemConfig?.exam_start_time || '08:00').split(':').map(Number);
+    // الفترة 1: من الإعدادات العامة
+    // الفترة 2+: من وقت بدء الاختبار في جدول الاختبارات
+    const assignmentPeriod = activeAssignment?.period || 1;
+    const assignmentSubject = activeAssignment?.subject || '';
+
+    let examStartTimeStr = systemConfig?.exam_start_time || '08:00';
+
+    if (assignmentPeriod > 1 && examSchedule.length > 0) {
+      // البحث عن الاختبار المقابل في الجدول
+      const matchingExam = examSchedule.find(e =>
+        e.exam_date === activeDate &&
+        Number(e.period) === Number(assignmentPeriod) &&
+        (e.subject === assignmentSubject ||
+         !assignmentSubject ||
+         assignmentSubject === 'اختبار')
+      ) || examSchedule.find(e =>
+        e.exam_date === activeDate && Number(e.period) === Number(assignmentPeriod)
+      );
+      if (matchingExam?.start_time) {
+        examStartTimeStr = matchingExam.start_time;
+      }
+    }
+
+    const [hours, minutes] = String(examStartTimeStr).split(':').map(Number);
     const examStart = new Date(`${activeDate}T00:00:00`);
     examStart.setHours(Number.isFinite(hours) ? hours : 8, Number.isFinite(minutes) ? minutes : 0, 0, 0);
     const opensAt = new Date(examStart.getTime() - 15 * 60 * 1000);
@@ -178,8 +212,10 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       examStart,
       opensAt,
       canConfirm: gateNow.getTime() >= opensAt.getTime(),
+      examStartTimeStr,
+      period: assignmentPeriod,
     };
-  }, [activeDate, systemConfig?.exam_start_time, gateNow]);
+  }, [activeDate, systemConfig?.exam_start_time, gateNow, activeAssignment?.period, activeAssignment?.subject, examSchedule]);
 
   const gateTimeLabel = assignmentGate.opensAt.toLocaleTimeString('ar-SA', {
     hour: '2-digit',
@@ -209,13 +245,18 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     return !!value && (String(value).startsWith(activeDate) || getRiyadhDateKeyFromValue(value) === activeDate);
   }
 
-  const markAssignmentStarted = (assignmentId: string, startedAt: string) => {
+  const markAssignmentStarted = (assignmentId: string, startedAt: string, committeeNumber?: string) => {
     const nextConfirmed = Array.from(new Set([...confirmedAssignments, assignmentId]));
     const nextStartTimes = { ...assignmentStartTimes, [assignmentId]: startedAt };
     setConfirmedAssignments(nextConfirmed);
     setAssignmentStartTimes(nextStartTimes);
     localStorage.setItem(`confirmed_assignments_${user.id}`, JSON.stringify(nextConfirmed));
     localStorage.setItem(`assignment_start_times_${user.id}`, JSON.stringify(nextStartTimes));
+    // حفظ رقم اللجنة لمنع الخروج إلى شاشة المسح عند تحديث البيانات
+    if (committeeNumber) {
+      setConfirmedCommitteeNum(committeeNumber);
+      localStorage.setItem(`confirmed_committee_${user.id}_${activeDate}`, committeeNumber);
+    }
   };
 
   useEffect(() => {
@@ -233,7 +274,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
         }
         setSupervisions();
       });
-    markAssignmentStarted(activeAssignment.id, startedAt);
+    markAssignmentStarted(activeAssignment.id, startedAt, activeAssignment.committee_number);
     setOptimisticAssignment({ ...activeAssignment, date: startedAt });
     onAlert(`تمت مباشرة اللجنة رقم ${activeAssignment.committee_number} كاحتياط / بديل طارئ.`, 'success');
   }, [activeAssignment?.id, activeAssignment?.date, isEmergencyAssignment, confirmedAssignments]);
@@ -245,6 +286,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       return;
     }
     const startedAt = buildActiveDateTimestamp();
+    const committeeNum = activeAssignment.committee_number;
     try {
       const tenantId = getActiveTenantId();
       let query = supabase.from('supervision').update({ date: startedAt }).eq('id', activeAssignment.id);
@@ -252,10 +294,11 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       const { error } = await query;
       if (error) throw new Error(error.message);
       setOptimisticAssignment({ ...activeAssignment, date: startedAt });
-      markAssignmentStarted(activeAssignment.id, startedAt);
+      // حفظ رقم اللجنة و ID التأكيد معاً لمنع الخروج إلى شاشة المسح
+      markAssignmentStarted(activeAssignment.id, startedAt, committeeNum);
       setElapsedTime('00:00');
       await setSupervisions();
-      onAlert(`تم تأكيد المباشرة في اللجنة رقم ${activeAssignment.committee_number}`, 'success');
+      onAlert(`تم تأكيد المباشرة في اللجنة رقم ${committeeNum}`, 'success');
     } catch (err: any) {
       onAlert(err.message || 'تعذر تأكيد المباشرة', 'error');
     }
@@ -522,7 +565,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
         period: 1,
         subject: "اختبار",
       });
-      markAssignmentStarted(assignmentId, startedAt);
+      markAssignmentStarted(assignmentId, startedAt, cleanedNum);
       setElapsedTime('00:00');
       await setSupervisions();
       onAlert(`تمت المباشرة في اللجنة ${cleanedNum}`, "success");
@@ -731,8 +774,12 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     );
   }
 
-  // واجهة النجاح والقفل (وثيقة الإنجاز + سجل المطابقة)
+  // واجهة تأكيد المباشرة
   if (activeAssignment && !activeAssignmentConfirmed) {
+    const periodLabel = activeAssignment.period && Number(activeAssignment.period) > 1
+      ? `الفترة ${activeAssignment.period} - وقت الاختبار: ${assignmentGate.examStartTimeStr}`
+      : `وقت الاختبار: ${assignmentGate.examStartTimeStr}`;
+
     return (
       <div className="max-w-4xl mx-auto py-10 px-4 space-y-8 animate-fade-in text-center">
         <div className="bg-gradient-to-br from-[#020817] via-[#0a1628] to-[#020617] p-10 rounded-[4rem] text-white shadow-2xl relative overflow-hidden border-b-[10px] border-emerald-500">
@@ -750,7 +797,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
         </div>
 
         <div className="bg-white p-10 rounded-[3.5rem] shadow-2xl border border-slate-100">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-right mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-right mb-8">
             <div className="p-5 rounded-2xl bg-slate-50">
               <p className="text-[10px] font-black text-slate-400">اسم المراقب</p>
               <p className="font-black text-slate-900 mt-1">{user.full_name}</p>
@@ -763,17 +810,34 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
               <p className="text-[10px] font-black text-slate-400">الفترة</p>
               <p className="font-black text-slate-900 mt-1">{activeAssignment.period || 1}</p>
             </div>
+            <div className="p-5 rounded-2xl bg-blue-50 border border-blue-100">
+              <p className="text-[10px] font-black text-blue-500">موعد بدء الاختبار</p>
+              <p className="font-black text-blue-700 mt-1">{assignmentGate.examStartTimeStr}</p>
+            </div>
           </div>
+
+          {!assignmentGate.canConfirm && (
+            <div className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center gap-3">
+              <Clock size={20} className="text-amber-600 shrink-0" />
+              <div className="text-right">
+                <p className="font-black text-amber-800 text-sm">بوابة التأكيد مغلقة</p>
+                <p className="text-amber-700 text-xs font-bold mt-0.5">{periodLabel} | تُفتح عند {gateTimeLabel}</p>
+              </div>
+            </div>
+          )}
+
           <button
             onClick={confirmActiveAssignment}
             disabled={!assignmentGate.canConfirm}
             className="w-full p-8 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-[2.5rem] font-black text-2xl shadow-xl shadow-emerald-500/20 hover:from-emerald-500 hover:to-emerald-400 transition-all flex items-center justify-center gap-4 active:scale-[0.97] disabled:bg-none disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed"
           >
             <UserCheck size={32} />
-            {assignmentGate.canConfirm ? 'تأكيد اعتماد اللجنة' : `يفتح الاعتماد عند ${gateTimeLabel}`}
+            {assignmentGate.canConfirm ? 'تأكيد اعتماد اللجنة والدخول للرصد' : `يفتح الاعتماد عند ${gateTimeLabel}`}
           </button>
           <p className="mt-4 text-xs font-black text-slate-400">
-            اعتماد اللجنة يظهر قبل بداية الاختبار بـ 15 دقيقة حسب وقت بداية الجلسة في إعدادات النظام.
+            {Number(activeAssignment.period) > 1
+              ? `اعتماد الفترة ${activeAssignment.period} يعتمد على وقت بدء الاختبار من جدول الاختبارات.`
+              : 'اعتماد اللجنة يظهر قبل بداية الاختبار بـ 15 دقيقة حسب وقت بداية الجلسة في إعدادات النظام.'}
           </p>
         </div>
       </div>

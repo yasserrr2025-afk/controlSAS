@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  AlertTriangle,
   CalendarPlus,
   Check,
   FileText,
+  Loader2,
   Printer,
   RefreshCcw,
   Search,
@@ -13,9 +15,10 @@ import {
   UserMinus,
   Users,
   Wand2,
+  X,
 } from 'lucide-react';
-import { ExamSchedule, Student, Supervision, User } from '../../types';
-import { getActiveTenantId, supabase } from '../../supabase';
+import { ExamSchedule, ProctorExclusion, Student, Supervision, User } from '../../types';
+import { db, getActiveTenantId, supabase } from '../../supabase';
 import { APP_CONFIG } from '../../constants';
 
 export interface SmartExamSlot {
@@ -117,6 +120,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
   onCommit,
   onDeleteSupervisions,
   onUpdateSupervision,
+  systemConfig,
 }) => {
   const defaultDate = activeDate || today();
   const committees = useMemo(
@@ -131,13 +135,13 @@ const SmartProctorDistribution: React.FC<Props> = ({
   const [selectedExclusionDate, setSelectedExclusionDate] = useState(defaultDate);
   const [selectedExclusionScope, setSelectedExclusionScope] = useState(examScopeKey(defaultDate, 1, 'اختبار'));
   const [exclusionSearch, setExclusionSearch] = useState('');
-  const [excludedByDate, setExcludedByDate] = useState<Record<string, string[]>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('smart_proctor_exclusions_by_date') || '{}');
-    } catch {
-      return {};
-    }
-  });
+  // الاستبعاد من قاعدة البيانات بدلاً من localStorage
+  const [excludedByDate, setExcludedByDate] = useState<Record<string, string[]>>({});
+  const [isLoadingExclusions, setIsLoadingExclusions] = useState(false);
+  const [exclusionSaving, setExclusionSaving] = useState(false);
+  const [examSaving, setExamSaving] = useState(false);
+  const [examSaveMsg, setExamSaveMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   const [preview, setPreview] = useState<SmartDistributionItem[]>([]);
   const [replaceExisting, setReplaceExisting] = useState(false);
   const [distributionDateFilter, setDistributionDateFilter] = useState(defaultDate);
@@ -150,6 +154,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [isCommitting, setIsCommitting] = useState(false);
   const [isPrintingDistribution, setIsPrintingDistribution] = useState(false);
+  const [deletingGroupKey, setDeletingGroupKey] = useState<string | null>(null);
   const [newExam, setNewExam] = useState<Partial<ExamSchedule>>({
     exam_date: defaultDate,
     subject: '',
@@ -159,6 +164,34 @@ const SmartProctorDistribution: React.FC<Props> = ({
     grades: [],
     status: 'READY',
   });
+
+  // جلب المستبعدين من قاعدة البيانات عند التحميل
+  const loadExclusionsFromDB = useCallback(async () => {
+    setIsLoadingExclusions(true);
+    try {
+      const exclusions = await db.proctorExclusions.getAll();
+      const grouped: Record<string, string[]> = {};
+      exclusions.forEach((exc: ProctorExclusion) => {
+        const key = examScopeKey(exc.exam_date, exc.period, exc.subject);
+        if (!grouped[key]) grouped[key] = [];
+        if (!grouped[key].includes(exc.teacher_id)) grouped[key].push(exc.teacher_id);
+      });
+      setExcludedByDate(grouped);
+    } catch (err) {
+      console.warn('تعذر تحميل المستبعدين من قاعدة البيانات، تحميل من localStorage كبديل', err);
+      try {
+        const local = JSON.parse(localStorage.getItem('smart_proctor_exclusions_by_date') || '{}');
+        setExcludedByDate(local);
+      } catch {}
+    } finally {
+      setIsLoadingExclusions(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadExclusionsFromDB();
+  }, [loadExclusionsFromDB]);
+
 
   const primarySupervisions = useMemo(() => supervisions.filter(s => !isReserveSupervision(s)), [supervisions]);
   const reserveSupervisions = useMemo(() => supervisions.filter(isReserveSupervision), [supervisions]);
@@ -426,16 +459,42 @@ const SmartProctorDistribution: React.FC<Props> = ({
     return pages.length ? pages : [[]];
   }, [committedRows]);
 
-  const toggleExcluded = (date: string, userId: string) => {
-    setExcludedByDate(prev => {
-      const current = prev[date] || [];
-      const nextIds = current.includes(userId)
-        ? current.filter(id => id !== userId)
-        : [...current, userId];
-      const next = { ...prev, [date]: nextIds };
-      localStorage.setItem('smart_proctor_exclusions_by_date', JSON.stringify(next));
-      return next;
-    });
+  const toggleExcluded = async (scopeKey: string, userId: string) => {
+    const scopeSlot = slotScopes.find(s => s.key === scopeKey);
+    const examDate = scopeSlot?.slot.date || selectedExclusionDate || defaultDate;
+    const period = scopeSlot?.slot.period || 1;
+    const subject = scopeSlot?.slot.subject || 'اختبار';
+
+    const isCurrentlyExcluded = (excludedByDate[scopeKey] || []).includes(userId);
+    setExclusionSaving(true);
+    try {
+      if (isCurrentlyExcluded) {
+        // حذف الاستبعاد من DB
+        await db.proctorExclusions.deleteByScope(userId, examDate, Number(period), subject);
+      } else {
+        // إضافة استبعاد جديد في DB (upsert يتجنب التكرار بفضل unique constraint)
+        await db.proctorExclusions.upsert({
+          id: crypto.randomUUID(),
+          teacher_id: userId,
+          exam_date: examDate,
+          period: Number(period),
+          subject: subject,
+          reason: '',
+        });
+      }
+      // تحديث الحالة محلياً
+      setExcludedByDate(prev => {
+        const current = prev[scopeKey] || [];
+        const nextIds = isCurrentlyExcluded
+          ? current.filter(id => id !== userId)
+          : [...current, userId];
+        return { ...prev, [scopeKey]: nextIds };
+      });
+    } catch (err: any) {
+      console.error('تعذر تحديث الاستبعاد', err);
+    } finally {
+      setExclusionSaving(false);
+    }
   };
 
   const addSlot = () => {
@@ -453,7 +512,10 @@ const SmartProctorDistribution: React.FC<Props> = ({
   };
 
   const saveExamSchedule = async () => {
-    if (!onUpsertExamSchedule || !newExam.exam_date || !newExam.subject?.trim()) return;
+    if (!onUpsertExamSchedule || !newExam.exam_date || !newExam.subject?.trim()) {
+      setExamSaveMsg({ type: 'error', text: 'يرجى إدخال تاريخ ومادة الاختبار أولاً' });
+      return;
+    }
     const payload: Partial<ExamSchedule> = {
       ...newExam,
       id: newExam.id || crypto.randomUUID(),
@@ -462,8 +524,18 @@ const SmartProctorDistribution: React.FC<Props> = ({
       start_time: newExam.start_time || '08:00',
       status: newExam.status || 'READY',
     };
-    await onUpsertExamSchedule(payload);
-    setNewExam({ exam_date: payload.exam_date, subject: '', period: 1, start_time: payload.start_time || '08:00', end_time: '', grades: [], status: 'READY' });
+    setExamSaving(true);
+    setExamSaveMsg(null);
+    try {
+      await onUpsertExamSchedule(payload);
+      setNewExam({ exam_date: payload.exam_date, subject: '', period: (Number(payload.period) + 1) > 3 ? 1 : (Number(payload.period) + 1), start_time: payload.start_time || '08:00', end_time: '', grades: [], status: 'READY' });
+      setExamSaveMsg({ type: 'success', text: `تم حفظ اختبار "${payload.subject}" بنجاح لتاريخ ${payload.exam_date}` });
+      setTimeout(() => setExamSaveMsg(null), 4000);
+    } catch (err: any) {
+      setExamSaveMsg({ type: 'error', text: err?.message || 'تعذر حفظ الاختبار، يرجى التحقق من خاصية unique constraint في قاعدة البيانات' });
+    } finally {
+      setExamSaving(false);
+    }
   };
 
   const updateSlot = (id: string, patch: Partial<SmartExamSlot>) => {
@@ -686,6 +758,38 @@ const SmartProctorDistribution: React.FC<Props> = ({
     if (error) alert(error.message);
   };
 
+  // حذف كل توزيع مجموعة كاملة (date + period + subject) من قاعدة البيانات
+  const deleteGroupFromDB = async (group: { date: string; period: number; subject: string }) => {
+    const groupKey = examScopeKey(group.date, group.period, group.subject);
+    if (deletingGroupKey === groupKey) return; // منع التكرار
+    const confirmed = window.confirm(
+      `هل تريد حذف كل التوزيع لـ:\nالتاريخ: ${group.date}\nالمادة: ${group.subject}\nالفترة: ${group.period}\n\nسيتم حذف جميع الإسنادات لهذه المجموعة. هذا الإجراء لا يمكن التراجع عنه.`
+    );
+    if (!confirmed) return;
+
+    setDeletingGroupKey(groupKey);
+    try {
+      const tenantId = getActiveTenantId();
+      const dayStart = `${group.date}T00:00:00`;
+      const dayEnd = `${group.date}T23:59:59.999Z`;
+      // حذف الإسنادات الأساسية والاحتياط لهذه الفترة
+      let query = supabase.from('supervision')
+        .delete()
+        .gte('date', dayStart)
+        .lt('date', dayEnd)
+        .eq('period', group.period);
+      if (tenantId) query = query.eq('tenant_id', tenantId);
+      const { error } = await query;
+      if (error) throw new Error(error.message);
+      window.alert(`تم حذف توزيع ${group.subject} - الفترة ${group.period} بتاريخ ${group.date} بنجاح.`);
+    } catch (err: any) {
+      window.alert('خطأ في الحذف: ' + (err?.message || 'تعذر الحذف'));
+    } finally {
+      setDeletingGroupKey(null);
+    }
+  };
+
+
   const updateApprovedTeacher = async (row: { id: string; committeeNumber: string; teacherId: string; kindLabel: string }, teacherId: string) => {
     if (!teacherId || teacherId === row.teacherId) return;
     const teacher = users.find(u => u.id === teacherId);
@@ -782,8 +886,22 @@ const SmartProctorDistribution: React.FC<Props> = ({
             <input type="number" min={1} value={newExam.period || 1} onChange={e => setNewExam(prev => ({ ...prev, period: Number(e.target.value) || 1 }))} className="rounded-xl border border-blue-100 bg-white p-3 text-sm font-black outline-none" />
             <input type="time" value={newExam.start_time || '08:00'} onChange={e => setNewExam(prev => ({ ...prev, start_time: e.target.value }))} className="rounded-xl border border-blue-100 bg-white p-3 text-sm font-black outline-none" />
             <input type="time" value={newExam.end_time || ''} onChange={e => setNewExam(prev => ({ ...prev, end_time: e.target.value }))} className="rounded-xl border border-blue-100 bg-white p-3 text-sm font-black outline-none" />
-            <button onClick={saveExamSchedule} disabled={!onUpsertExamSchedule || !newExam.subject?.trim()} className="rounded-xl bg-blue-600 p-3 text-xs font-black text-white shadow-lg disabled:opacity-40">حفظ الاختبار</button>
+            <button
+              onClick={saveExamSchedule}
+              disabled={!onUpsertExamSchedule || !newExam.subject?.trim() || examSaving}
+              className="rounded-xl bg-blue-600 p-3 text-xs font-black text-white shadow-lg disabled:opacity-40 flex items-center justify-center gap-2"
+            >
+              {examSaving ? <><Loader2 size={14} className="animate-spin" /> جاري...</> : 'حفظ الاختبار'}
+            </button>
           </div>
+          {examSaveMsg && (
+            <div className={`mt-3 p-3 rounded-xl text-xs font-black flex items-center gap-2 ${
+              examSaveMsg.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+            }`}>
+              {examSaveMsg.type === 'success' ? <Check size={14} /> : <AlertTriangle size={14} />}
+              {examSaveMsg.text}
+            </div>
+          )}
 
           <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
             {examSchedule.length ? examSchedule.map(exam => (
@@ -1037,8 +1155,21 @@ const SmartProctorDistribution: React.FC<Props> = ({
                     <p className="font-black text-slate-950">{group.subject}</p>
                     <p className="text-[10px] font-black text-slate-400">{group.date} | فترة {group.period}</p>
                   </div>
-                  <span className="rounded-full bg-white px-4 py-2 text-[10px] font-black text-slate-600">{group.rows.length} إسناد</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="rounded-full bg-white px-4 py-2 text-[10px] font-black text-slate-600">{group.rows.length} إسناد</span>
+                    <button
+                      onClick={() => deleteGroupFromDB({ date: group.date, period: group.period, subject: group.subject })}
+                      disabled={deletingGroupKey === examScopeKey(group.date, group.period, group.subject)}
+                      className="rounded-full bg-red-50 border border-red-100 px-4 py-2 text-[10px] font-black text-red-600 hover:bg-red-600 hover:text-white transition-all disabled:opacity-50 flex items-center gap-1"
+                      title="حذف كل التوزيع لهذه المجموعة وإعادة التوزيع"
+                    >
+                      {deletingGroupKey === examScopeKey(group.date, group.period, group.subject)
+                        ? <><Loader2 size={12} className="animate-spin" /> جاري الحذف...</>
+                        : <><Trash2 size={12} /> حذف كل التوزيع</>}
+                    </button>
+                  </div>
                 </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {group.rows.map(row => {
                     const load = approvedLoadById[row.teacherId] || { primary: 0, reserve: 0, total: 0 };
