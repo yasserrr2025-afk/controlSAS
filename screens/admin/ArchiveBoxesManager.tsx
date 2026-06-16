@@ -441,7 +441,7 @@ export const ArchiveBoxesManager: React.FC<Props> = ({
         <div class="logo-wrap"><img src="${LOGO}" alt="شعار"/></div>
         <div>
           <div class="ministry">وزارة التعليم — المملكة العربية السعودية</div>
-          <div class="school-name">{systemConfig?.school_name || APP_CONFIG.SCHOOL_NAME}</div>
+          <div class="school-name">مدرسة عماد الدين زنكي المتوسطة</div>
         </div>
       </div>
       <div class="box-badge">
@@ -501,7 +501,7 @@ export const ArchiveBoxesManager: React.FC<Props> = ({
     <!-- FOOTER -->
     <div class="footer-bar">
       <img src="${LOGO}" alt=""/>
-      <span class="footer-txt">نظام الكنترول الرقمي — {systemConfig?.school_name || APP_CONFIG.SCHOOL_NAME}</span>
+      <span class="footer-txt">نظام الكنترول الرقمي — مدرسة عماد الدين زنكي المتوسطة</span>
     </div>
   </div>
 
@@ -792,7 +792,7 @@ export const ArchiveBoxesManager: React.FC<Props> = ({
                           className={`px-5 py-3 rounded-2xl font-black text-sm transition-all border-2 ${form.subject === e.subject ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
                         >
                           {e.subject}
-                          {e.grades && e.grades.length > 0 && <span className="mr-2 text-[10px] opacity-70">({e.grades.join(', })</span>}
+                          {e.grades && e.grades.length > 0 && <span className="mr-2 text-[10px] opacity-70">({e.grades.join(', ')})</span>}
                         </button>
                       ))}
                     </div>

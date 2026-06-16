@@ -24,7 +24,7 @@ interface Props {
 /* ── تصدير CSV ── */
 function exportCSV(filename: string, headers: string[], rows: (string | number)[][]) {
   const BOM = '\uFEFF';
-  const csv = BOM + [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""}"`).join(',')).join('\n');
+  const csv = BOM + [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
@@ -61,8 +61,8 @@ const PrintHeader: React.FC<{ date: string; subject?: string }> = ({ date, subje
       <div className="text-[9pt] font-black text-right leading-relaxed space-y-0.5">
         <p>المملكة العربية السعودية</p>
         <p>وزارة التعليم</p>
-        <p>{(systemConfig?.directorate_name || APP_CONFIG.ADMINISTRATION_NAME)} بمحافظة جدة</p>
-        <p>{(systemConfig?.school_name || 'مدرسة عماد الدين زنكي المتوسطة')}</p>
+        <p>إدارة التعليم بمحافظة جدة</p>
+        <p>مدرسة عماد الدين زنكي المتوسطة</p>
       </div>
       {/* وسط: شعار */}
       <div className="flex flex-col items-center justify-center">
@@ -71,7 +71,7 @@ const PrintHeader: React.FC<{ date: string; subject?: string }> = ({ date, subje
       </div>
       {/* يسار: التاريخ والمادة */}
       <div className="text-[9pt] font-bold text-left leading-relaxed space-y-0.5">
-        <p>التاريخ: <span className="font-black tabular-nums">{new Date(date).toLocaleDateString('ar-SA}</span></p>
+        <p>التاريخ: <span className="font-black tabular-nums">{new Date(date).toLocaleDateString('ar-SA')}</span></p>
         <p>اليوم: <span className="font-black">{new Intl.DateTimeFormat('ar-SA', { weekday: 'long' }).format(new Date(date))}</span></p>
         {subject && <p>المادة: <span className="font-black">{subject}</span></p>}
         <p>العام الدراسي: <span className="font-black">{systemConfig.academic_year || '1446 / 1447'}</span></p>
@@ -184,8 +184,8 @@ const PrintableMonitorSheet: React.FC<{
 
     {/* فوتر */}
     <div style={{ marginTop: '8mm', borderTop: '1px dashed #ccc', paddingTop: '3mm', display: 'flex', justifyContent: 'space-between', fontSize: '7pt', color: '#777' }}>
-      <span>نظام الكنترول المطور — {(systemConfig?.school_name || APP_CONFIG.SCHOOL_NAME)}</span>
-      <span>طُبع بتاريخ: {new Date().toLocaleString('ar-SA}</span>
+      <span>نظام الكنترول المطور — مدرسة عماد الدين زنكي المتوسطة</span>
+      <span>طُبع بتاريخ: {new Date().toLocaleString('ar-SA')}</span>
     </div>
   </div>
 );
@@ -372,10 +372,10 @@ const AdminDailyReports: React.FC<Props> = ({
               </div>
             </div>
             <div className="bg-white/10 p-1 rounded-2xl flex gap-1 border border-white/5">
-              <button onClick={() => setViewMode('SUMMARY} className={`px-5 py-2 rounded-xl text-xs font-black transition-all ${viewMode === 'SUMMARY' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
+              <button onClick={() => setViewMode('SUMMARY')} className={`px-5 py-2 rounded-xl text-xs font-black transition-all ${viewMode === 'SUMMARY' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
                 السجل الزمني
               </button>
-              <button onClick={() => setViewMode('NOTES} className={`px-5 py-2 rounded-xl text-xs font-black transition-all ${viewMode === 'NOTES' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
+              <button onClick={() => setViewMode('NOTES')} className={`px-5 py-2 rounded-xl text-xs font-black transition-all ${viewMode === 'NOTES' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}>
                 الملاحظات
               </button>
             </div>

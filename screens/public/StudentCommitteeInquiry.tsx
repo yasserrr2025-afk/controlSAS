@@ -67,7 +67,7 @@ const StudentCommitteeInquiry: React.FC<Props> = ({ students }) => {
   const whatsappUrl = useMemo(() => {
     const message = [
       'استعلام عن اللجنة',
-      APP_CONFIG.SCHOOL_NAME,
+      'مدرسة عماد الدين زنكي المتوسطة',
       '',
       'يمكن للطلاب معرفة رقم اللجنة وموقعها عبر الرابط:',
       inquiryUrl,
@@ -151,7 +151,7 @@ const StudentCommitteeInquiry: React.FC<Props> = ({ students }) => {
     ctx.fillStyle = '#ea580c';
     ctx.font = '800 24px Tajawal, Arial';
     ctx.textAlign = 'right';
-    ctx.fillText(APP_CONFIG.SCHOOL_NAME, width - 72, 86);
+    ctx.fillText('مدرسة عماد الدين زنكي المتوسطة', width - 72, 86);
 
     ctx.fillStyle = '#0f172a';
     ctx.font = '900 42px Tajawal, Arial';
@@ -240,7 +240,7 @@ const StudentCommitteeInquiry: React.FC<Props> = ({ students }) => {
               <img src={APP_CONFIG.LOGO_URL} alt="شعار المدرسة" className="h-full w-full object-contain" />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-xs font-black text-orange-100 sm:text-sm">{APP_CONFIG.SCHOOL_NAME}</p>
+              <p className="truncate text-xs font-black text-orange-100 sm:text-sm">مدرسة عماد الدين زنكي المتوسطة</p>
               <p className="text-[10px] font-bold text-white/60">بوابة الطلاب الذكية</p>
             </div>
           </div>
@@ -257,7 +257,7 @@ const StudentCommitteeInquiry: React.FC<Props> = ({ students }) => {
               خدمة آمنة وسريعة للطلاب
             </div>
             <h1 className="text-4xl font-black leading-tight tracking-tight sm:text-5xl lg:text-6xl">استعلام عن اللجنة</h1>
-            <p className="mt-3 text-lg font-black text-orange-50">{APP_CONFIG.SCHOOL_NAME}</p>
+            <p className="mt-3 text-lg font-black text-orange-50">مدرسة عماد الدين زنكي المتوسطة</p>
             <p className="mt-4 max-w-xl text-sm font-bold leading-8 text-white/75">
               أدخل رقم الهوية لتظهر بيانات اللجنة ورقم الجلوس وموقع الطالب بشكل واضح ومناسب للجوال والشاشات الكبيرة.
             </p>

@@ -10,15 +10,15 @@ const PrintHeader: React.FC<{ date: string }> = ({ date }) => (
       <div className="text-[10pt] font-black text-right leading-relaxed space-y-0.5">
         <p>المملكة العربية السعودية</p>
         <p>وزارة التعليم</p>
-        <p>{APP_CONFIG.ADMINISTRATION_NAME} بمحافظة جدة</p>
-        <p>{APP_CONFIG.SCHOOL_NAME}</p>
+        <p>إدارة التعليم بمحافظة جدة</p>
+        <p>مدرسة عماد الدين زنكي المتوسطة</p>
       </div>
       <div className="flex flex-col items-center justify-center">
         <img src={APP_CONFIG.LOGO_URL} alt="شعار" className="w-16 h-16 object-contain" />
         <p className="text-[8pt] text-slate-500 font-black mt-1 text-center">نظام كنترول الاختبارات</p>
       </div>
       <div className="text-[10pt] font-bold text-left leading-relaxed space-y-0.5">
-        <p>التاريخ: <span className="font-black tabular-nums">{new Date(date).toLocaleDateString('ar-SA}</span></p>
+        <p>التاريخ: <span className="font-black tabular-nums">{new Date(date).toLocaleDateString('ar-SA')}</span></p>
         <p>اليوم: <span className="font-black">{new Intl.DateTimeFormat('ar-SA', { weekday: 'long' }).format(new Date(date))}</span></p>
         <p>العام الدراسي: <span className="font-black">1446 / 1447</span></p>
       </div>
@@ -451,19 +451,19 @@ const SeatingPlanner: React.FC<Props> = ({ systemConfig }) => {
             
             <div className="flex bg-white/10 p-2 rounded-2xl border border-white/10 flex-wrap gap-2">
                <button 
-                 onClick={() => setActiveTab('generator}
+                 onClick={() => setActiveTab('generator')}
                  className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-black transition-all ${activeTab === 'generator' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}
                >
                  <Settings2 size={18} /> الموزع الآلي (توليد)
                </button>
                <button 
-                 onClick={() => setActiveTab('current}
+                 onClick={() => setActiveTab('current')}
                  className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-black transition-all ${activeTab === 'current' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}
                >
                  <Database size={18} /> كروكي اللجان الحالية
                </button>
                <button 
-                 onClick={() => setActiveTab('report}
+                 onClick={() => setActiveTab('report')}
                  className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-black transition-all ${activeTab === 'report' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}
                >
                  <FileText size={18} /> بيان اللجان الحالية

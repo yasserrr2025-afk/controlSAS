@@ -127,7 +127,7 @@ export const PublicBoxReport: React.FC<Props> = ({
               </div>
               <div>
                 <p className="text-indigo-200 text-xs font-black tracking-wider">وزارة التعليم</p>
-                <p className="text-white font-black text-sm leading-tight">{(systemConfig?.school_name || 'مدرسة عماد الدين زنكي المتوسطة')}</p>
+                <p className="text-white font-black text-sm leading-tight">مدرسة عماد الدين زنكي المتوسطة</p>
               </div>
             </div>
             <div className="text-left">
@@ -409,7 +409,7 @@ export const PublicBoxReport: React.FC<Props> = ({
           <img src={LOGO_URL} alt="شعار" className="w-12 h-12 object-contain mx-auto opacity-40"/>
           <p className="text-slate-400 text-sm font-bold">
             تم إنشاء هذا التقرير آلياً عبر نظام الكنترول الرقمي<br/>
-            <span className="text-slate-300">${(systemConfig?.school_name || 'مدرسة عماد الدين زنكي المتوسطة')} — وزارة التعليم</span>
+            <span className="text-slate-300">مدرسة عماد الدين زنكي المتوسطة — وزارة التعليم</span>
           </p>
         </div>
       </div>
