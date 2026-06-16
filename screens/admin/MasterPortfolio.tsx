@@ -158,9 +158,7 @@ export const MasterPortfolio: React.FC<Props> = ({
   }, [committeeReports, controlRequests, supervisions, users]);
 
   const OfficialPortfolioHeader = ({ title, meta }: { title: string; meta?: React.ReactNode }) => {
-    const directorateName = (systemConfig as any)?.directorate_name
-      ? `إدارة التعليم بـ${(systemConfig as any).directorate_name}`
-      : APP_CONFIG.ADMINISTRATION_NAME;
+    const directorateName = (systemConfig as any)?.directorate_name || APP_CONFIG.ADMINISTRATION_NAME;
 
     return (
     <div className="official-report-header">

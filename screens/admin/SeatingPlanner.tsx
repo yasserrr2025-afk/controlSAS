@@ -41,6 +41,7 @@ const SeatingPlanner: React.FC<Props> = ({ systemConfig }) => {
   const [students, setStudents] = useState<Student[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [committeesCount, setCommitteesCount] = useState<number>(20);
+  const [columnsCount, setColumnsCount] = useState<number>(6);
   const [gradeCounts, setGradeCounts] = useState<Record<string, number>>({});
   const [randomize, setRandomize] = useState<boolean>(true);
   const [committees, setCommittees] = useState<CommitteePreview[]>([]);
@@ -74,9 +75,8 @@ const SeatingPlanner: React.FC<Props> = ({ systemConfig }) => {
     setGradeCounts(prev => ({...prev, [grade]: count}));
   };
 
-  const distributeIntoColumns = (committeeStudents: Student[], isExisting: boolean) => {
-    const numCols = 6;
-    const finalCols: Student[][] = Array.from({ length: numCols }, () => []);
+  const distributeIntoColumns = (committeeStudents: Student[], isExisting: boolean, currentColsCount: number) => {
+    const finalCols: Student[][] = Array.from({ length: currentColsCount }, () => []);
     
     const studentsByGrade: Record<string, Student[]> = {};
     committeeStudents.forEach(s => {
@@ -84,34 +84,37 @@ const SeatingPlanner: React.FC<Props> = ({ systemConfig }) => {
        studentsByGrade[s.grade].push(s);
     });
 
-    const grades = Object.keys(studentsByGrade);
-    let fallbackCounter = 0;
+    const grades = Object.keys(studentsByGrade).sort();
 
-    grades.forEach(g => {
-       let targetCols = [-1, -1];
-       if (g.includes('أول') || g.includes('1')) targetCols = [0, 3];
-       else if (g.includes('ثاني') || g.includes('2')) targetCols = [1, 4];
-       else if (g.includes('ثالث') || g.includes('3')) targetCols = [2, 5];
-       else if (g.includes('رابع') || g.includes('4')) targetCols = [0, 3];
-       else if (g.includes('خامس') || g.includes('5')) targetCols = [1, 4];
-       else if (g.includes('سادس') || g.includes('6')) targetCols = [2, 5];
-       else {
-           const pairs = [[0,3], [1,4], [2,5]];
-           targetCols = pairs[fallbackCounter % 3];
-           fallbackCounter++;
-       }
-
+    grades.forEach((g, gIdx) => {
        const studentsForG = studentsByGrade[g];
        if (isExisting) {
            studentsForG.sort((a,b) => Number(a.seating_number) - Number(b.seating_number));
        }
 
-       const total = studentsForG.length;
-       const firstCount = Math.floor(total / 2); // الأقل دائماً في المسار الأول
-       const secondCount = Math.ceil(total / 2); // الأكثر في المسار الثاني
+       const targetCols: number[] = [];
+       for (let i = 0; i < currentColsCount; i++) {
+           if (i % grades.length === gIdx) {
+               targetCols.push(i);
+           }
+       }
 
-       finalCols[targetCols[0]].push(...studentsForG.slice(0, firstCount));
-       finalCols[targetCols[1]].push(...studentsForG.slice(firstCount, total));
+       if (targetCols.length === 0) {
+           targetCols.push(gIdx % currentColsCount);
+       }
+
+       const total = studentsForG.length;
+       const baseCount = Math.floor(total / targetCols.length);
+       let remainder = total % targetCols.length;
+       
+       let startIndex = 0;
+       targetCols.forEach(colIndex => {
+           const count = baseCount + (remainder > 0 ? 1 : 0);
+           if (remainder > 0) remainder--;
+           
+           finalCols[colIndex].push(...studentsForG.slice(startIndex, startIndex + count));
+           startIndex += count;
+       });
     });
 
     if (!isExisting) {
@@ -168,7 +171,7 @@ const SeatingPlanner: React.FC<Props> = ({ systemConfig }) => {
         
         committeeStudents.forEach(s => s.committee_number = (index + 1).toString());
 
-        const finalCols = distributeIntoColumns(committeeStudents, false);
+        const finalCols = distributeIntoColumns(committeeStudents, false, columnsCount);
 
         const stats: Record<string, number> = {};
         committeeStudents.forEach(s => {
@@ -206,7 +209,7 @@ const SeatingPlanner: React.FC<Props> = ({ systemConfig }) => {
 
     Object.keys(committeesMap).sort((a,b) => Number(a) - Number(b)).forEach(comNum => {
        const comStudents = committeesMap[comNum];
-       const finalCols = distributeIntoColumns(comStudents, true);
+       const finalCols = distributeIntoColumns(comStudents, true, columnsCount);
 
        const stats: Record<string, number> = {};
        comStudents.forEach(s => {
@@ -230,7 +233,7 @@ const SeatingPlanner: React.FC<Props> = ({ systemConfig }) => {
      } else {
        setCommittees([]); 
      }
-  }, [activeTab]);
+  }, [activeTab, columnsCount]);
 
   const handleSave = async () => {
     if (committees.length === 0) return;
@@ -444,12 +447,20 @@ const SeatingPlanner: React.FC<Props> = ({ systemConfig }) => {
             <div>
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-blue-500/20 border border-blue-400/30 text-blue-200 text-sm font-bold mb-6">
                 <ShieldCheck size={16} />
-                كروكي لجان الاختبارات الدقيق (6 مسارات)
+                كروكي لجان الاختبارات الدقيق ({columnsCount} مسارات)
               </div>
               <h2 className="text-3xl md:text-4xl font-black mb-4 tracking-tight">إدارة الكروكي وطباعة اللجان 🪑</h2>
             </div>
             
-            <div className="flex bg-white/10 p-2 rounded-2xl border border-white/10 flex-wrap gap-2">
+            <div className="flex bg-white/10 p-2 rounded-2xl border border-white/10 flex-wrap gap-2 items-center">
+               <div className="flex items-center gap-2 px-4 bg-white/5 rounded-xl h-12 border border-white/10 mr-2">
+                  <span className="text-sm font-bold text-slate-300">عدد المسارات:</span>
+                  <input 
+                    type="number" min="1" max="20" value={columnsCount}
+                    onChange={(e) => setColumnsCount(parseInt(e.target.value) || 1)}
+                    className="w-16 bg-transparent text-white text-center font-black outline-none border-b border-slate-500 focus:border-white pb-1"
+                  />
+               </div>
                <button 
                  onClick={() => setActiveTab('generator')}
                  className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-black transition-all ${activeTab === 'generator' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-300 hover:text-white hover:bg-white/5'}`}
@@ -478,7 +489,7 @@ const SeatingPlanner: React.FC<Props> = ({ systemConfig }) => {
                 <div className="space-y-6 bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
                      <Settings2 className="text-blue-500" />
-                     إعدادات التوزيع (6 مسارات)
+                     إعدادات التوزيع ({columnsCount} مسارات)
                    </h3>
                    
                    <div className="space-y-3">

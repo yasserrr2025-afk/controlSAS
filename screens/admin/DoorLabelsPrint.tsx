@@ -104,7 +104,7 @@ const DoorLabelsPrint: React.FC<Props> = ({ students, systemConfig }) => {
                   <div className="space-y-1 text-slate-800">
                     <p className="font-bold text-sm">المملكة العربية السعودية</p>
                     <p className="font-bold text-sm">وزارة التعليم</p>
-                    <p className="font-bold text-sm">{systemConfig?.directorate_name ? `إدارة التعليم بـ${systemConfig.directorate_name}` : 'إدارة التعليم'}</p>
+                    <p className="font-bold text-sm">{systemConfig?.directorate_name || 'إدارة التعليم'}</p>
                     <p className="font-bold text-sm">{systemConfig?.school_name || 'اسم المدرسة'}</p>
                   </div>
                   <img src={APP_CONFIG.LOGO_URL} alt="Ministry Logo" className="w-20 h-20 object-contain opacity-90" />

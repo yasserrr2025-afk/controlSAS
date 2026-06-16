@@ -11,9 +11,7 @@ interface OfficialHeaderProps {
 }
 
 const OfficialHeader: React.FC<OfficialHeaderProps> = ({ systemConfig, date, attachments, fileNumber }) => {
-  const directorateName = systemConfig?.directorate_name
-    ? `إدارة التعليم بـ${systemConfig.directorate_name}`
-    : APP_CONFIG.ADMINISTRATION_NAME;
+  const directorateName = systemConfig?.directorate_name || APP_CONFIG.ADMINISTRATION_NAME;
   const schoolName = systemConfig?.school_name || APP_CONFIG.SCHOOL_NAME;
   const displayDate = date
     ? new Date(date).toLocaleDateString('ar-SA')

@@ -55,9 +55,7 @@ function matchesDate(isoStr: string | undefined | null, date: string): boolean {
    مكوّن الكليشة الرسمية للطباعة
 ══════════════════════════════════════════════ */
 const PrintHeader: React.FC<{ date: string; subject?: string; systemConfig?: SystemConfig & { directorate_name?: string } }> = ({ date, subject, systemConfig }) => {
-  const directorateName = systemConfig?.directorate_name
-    ? `إدارة التعليم بـ${systemConfig.directorate_name}`
-    : 'إدارة التعليم';
+  const directorateName = systemConfig?.directorate_name || 'إدارة التعليم';
   const schoolName = systemConfig?.school_name || 'اسم المدرسة';
   return (
   <div className="w-full border-b-4 border-double border-slate-900 pb-3 mb-4">
