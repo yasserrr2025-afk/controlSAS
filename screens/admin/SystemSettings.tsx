@@ -16,7 +16,7 @@ interface Props {
   onAlert: (msg: string, type: any) => void;
 }
 
-const AdminSystemSettings: React.FC<Props> = ({ systemConfig, setSystemConfig, resetFunctions, onAlert }) => {
+const AdminSystemSettings: React.FC<Props> = ({ systemConfig, setSystemConfig, resetFunctions, onAlert, users }) => {
   const [tempStartTime, setTempStartTime] = useState(systemConfig.exam_start_time || '08:00');
   const [tempActiveDate, setTempActiveDate] = useState(systemConfig.active_exam_date || new Date().toISOString().split('T')[0]);
   const [tempAcademicYear, setTempAcademicYear] = useState(systemConfig.academic_year || '1446 / 1447');
