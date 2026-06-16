@@ -242,7 +242,7 @@ export const MasterPortfolio: React.FC<Props> = ({
           <div>
             <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-2">ملف إنجاز الاختبارات الشامل</h2>
             <p className="text-amber-200 font-bold text-sm md:text-base leading-relaxed max-w-xl">
-              {publicMode ? 'نسخة حية محدثة تلقائيًا للمشرفين و${(systemConfig?.directorate_name || 'إدارة التعليم')} بمحافظة جدة' : 'تصدير كتاب PDF متكامل يحتوي على جميع بيانات وإحصائيات الاختبارات الميدانية'}
+              {publicMode ? `نسخة حية محدثة تلقائيًا للمشرفين و${systemConfig?.directorate_name || 'إدارة التعليم'} بمحافظة جدة` : 'تصدير كتاب PDF متكامل يحتوي على جميع بيانات وإحصائيات الاختبارات الميدانية'}
             </p>
           </div>
         </div>

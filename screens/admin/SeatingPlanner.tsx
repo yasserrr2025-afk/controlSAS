@@ -10,8 +10,8 @@ const PrintHeader: React.FC<{ date: string }> = ({ date }) => (
       <div className="text-[10pt] font-black text-right leading-relaxed space-y-0.5">
         <p>المملكة العربية السعودية</p>
         <p>وزارة التعليم</p>
-        <p>${(systemConfig?.directorate_name || 'إدارة التعليم')} بمحافظة جدة</p>
-        <p>{(systemConfig?.school_name || 'مدرسة عماد الدين زنكي المتوسطة')}</p>
+        <p>{APP_CONFIG.ADMINISTRATION_NAME} بمحافظة جدة</p>
+        <p>{APP_CONFIG.SCHOOL_NAME}</p>
       </div>
       <div className="flex flex-col items-center justify-center">
         <img src={APP_CONFIG.LOGO_URL} alt="شعار" className="w-16 h-16 object-contain" />
