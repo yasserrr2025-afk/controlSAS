@@ -61,8 +61,8 @@ const PrintHeader: React.FC<{ date: string; subject?: string }> = ({ date, subje
       <div className="text-[9pt] font-black text-right leading-relaxed space-y-0.5">
         <p>المملكة العربية السعودية</p>
         <p>وزارة التعليم</p>
-        <p>إدارة التعليم بمحافظة جدة</p>
-        <p>مدرسة عماد الدين زنكي المتوسطة</p>
+        <p>${(systemConfig?.directorate_name || APP_CONFIG.ADMINISTRATION_NAME)} بمحافظة جدة</p>
+        <p>{(systemConfig?.school_name || APP_CONFIG.SCHOOL_NAME)}</p>
       </div>
       {/* وسط: شعار */}
       <div className="flex flex-col items-center justify-center">
@@ -184,7 +184,7 @@ const PrintableMonitorSheet: React.FC<{
 
     {/* فوتر */}
     <div style={{ marginTop: '8mm', borderTop: '1px dashed #ccc', paddingTop: '3mm', display: 'flex', justifyContent: 'space-between', fontSize: '7pt', color: '#777' }}>
-      <span>نظام الكنترول المطور — مدرسة عماد الدين زنكي المتوسطة</span>
+      <span>نظام الكنترول المطور — ${(systemConfig?.school_name || APP_CONFIG.SCHOOL_NAME)}</span>
       <span>طُبع بتاريخ: {new Date().toLocaleString('ar-SA')}</span>
     </div>
   </div>

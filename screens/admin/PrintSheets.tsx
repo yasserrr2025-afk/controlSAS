@@ -33,7 +33,7 @@ type SheetPage = {
   parts?: number;
 };
 
-const SCHOOL_NAME = 'مدرسة عماد الدين زنكي المتوسطة';
+const SCHOOL_NAME = (systemConfig?.school_name || APP_CONFIG.SCHOOL_NAME);
 const DEFAULT_ACADEMIC_YEAR = '1447 / 1448';
 const SIGNATURE_SINGLE_COLUMN_LIMIT = 34;
 const SIGNATURE_ROWS_PER_PAGE = 68;
@@ -98,7 +98,7 @@ const OfficialHeader = ({
     <div className="sheet-side sheet-side-right">
       <p>المملكة العربية السعودية</p>
       <p>وزارة التعليم</p>
-      <p>إدارة التعليم بمحافظة جدة</p>
+      <p>${(systemConfig?.directorate_name || APP_CONFIG.ADMINISTRATION_NAME)} بمحافظة جدة</p>
       <p>{SCHOOL_NAME}</p>
     </div>
 

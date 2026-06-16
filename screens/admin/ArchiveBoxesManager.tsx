@@ -441,7 +441,7 @@ export const ArchiveBoxesManager: React.FC<Props> = ({
         <div class="logo-wrap"><img src="${LOGO}" alt="شعار"/></div>
         <div>
           <div class="ministry">وزارة التعليم — المملكة العربية السعودية</div>
-          <div class="school-name">مدرسة عماد الدين زنكي المتوسطة</div>
+          <div class="school-name">{'${'مدرسة عماد الدين زنكي المتوسطة'}'}</div>
         </div>
       </div>
       <div class="box-badge">
@@ -501,7 +501,7 @@ export const ArchiveBoxesManager: React.FC<Props> = ({
     <!-- FOOTER -->
     <div class="footer-bar">
       <img src="${LOGO}" alt=""/>
-      <span class="footer-txt">نظام الكنترول الرقمي — مدرسة عماد الدين زنكي المتوسطة</span>
+      <span class="footer-txt">نظام الكنترول الرقمي — ${'مدرسة عماد الدين زنكي المتوسطة'}</span>
     </div>
   </div>
 

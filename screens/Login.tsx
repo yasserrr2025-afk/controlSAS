@@ -175,7 +175,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
             <div className="text-center space-y-1">
               <p className="text-white/35 font-black text-[9px] uppercase tracking-[0.35em]">المملكة العربية السعودية</p>
               <p className="text-white/75 font-black text-sm">وزارة التعليم</p>
-              <p className="text-white/50 font-bold text-xs">إدارة التعليم بمحافظة جدة</p>
+              <p className="text-white/50 font-bold text-xs">${APP_CONFIG.ADMINISTRATION_NAME} بمحافظة جدة</p>
               <p className="font-black text-xs mt-0.5"
                 style={{
                   background: 'linear-gradient(135deg, #60a5fa, #818cf8)',
@@ -183,7 +183,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
                   WebkitTextFillColor: 'transparent',
                   backgroundClip: 'text',
                 }}>
-                مدرسة عماد الدين زنكي المتوسطة
+                ${APP_CONFIG.SCHOOL_NAME}
               </p>
             </div>
           </div>
@@ -309,7 +309,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
 
       {/* نص سفلي */}
       <p className="relative z-10 mt-8 text-[10px] text-white/12 font-bold text-center tracking-[0.25em] animate-fade-in delay-300">
-        مدرسة عماد الدين زنكي المتوسطة · نظام كنترول الاختبارات الموحد
+        ${APP_CONFIG.SCHOOL_NAME} · نظام كنترول الاختبارات الموحد
       </p>
 
       <style>{`

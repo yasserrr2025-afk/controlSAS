@@ -275,23 +275,29 @@ const SmartProctorDistribution: React.FC<Props> = ({
 
     const getTeacherName = (id: string) => users.find(u => u.id === id)?.full_name || 'غير معروف';
 
+    const schoolName = systemConfig?.school_name || 'مدرسة عماد الدين زنكي المتوسطة';
+    const directorateName = systemConfig?.directorate_name || 'إدارة التعليم';
+
     const html = `
       <html dir="rtl">
         <head>
-          <title>تقرير المراقبين - ${dist.subject}</title>
+          <title>بيان اسماء الملاحظين - ${dist.subject}</title>
           <style>
-            body { font-family: 'Arial', sans-serif; padding: 20px; color: #000; }
-            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
-            .header-text { text-align: center; line-height: 1.5; font-size: 14px; }
-            .logo { width: 80px; height: 80px; object-fit: contain; }
-            .title { text-align: center; font-size: 20px; font-weight: bold; margin-bottom: 20px; }
-            .info-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; font-weight: bold; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-            th, td { border: 1px solid #000; padding: 10px; text-align: center; }
+            body { font-family: 'Arial', sans-serif; padding: 10px; color: #000; font-size: 9pt; }
+            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 5px; margin-bottom: 10px; }
+            .header-text { text-align: center; line-height: 1.3; font-size: 10pt; font-weight: bold; }
+            .logo { width: 60px; height: 60px; object-fit: contain; }
+            .title { text-align: center; font-size: 14pt; font-weight: bold; margin-bottom: 10px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+            th, td { border: 1px solid #000; padding: 4px; text-align: center; }
             th { background-color: #f0f0f0; font-weight: bold; }
+            .info-table th { width: 10%; }
+            .info-table td { width: 15%; font-weight: bold; }
             @media print {
-              @page { size: A4 portrait; margin: 10mm; }
-              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              @page { size: A4 portrait; margin: 5mm; }
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 8pt; }
+              .title { font-size: 12pt; }
+              th, td { padding: 3px; }
             }
           </style>
         </head>
@@ -300,8 +306,8 @@ const SmartProctorDistribution: React.FC<Props> = ({
             <div class="header-text">
               المملكة العربية السعودية<br/>
               وزارة التعليم<br/>
-              إدارة التعليم<br/>
-              مدرسة عماد الدين زنكي المتوسطة
+              ${directorateName}<br/>
+              ${schoolName}
             </div>
             <img src="${APP_CONFIG.LOGO_URL}" class="logo" />
             <div class="header-text">
@@ -312,14 +318,20 @@ const SmartProctorDistribution: React.FC<Props> = ({
             </div>
           </div>
           
-          <div class="title">بيان بأسماء السادة الملاحظين (المراقبين)</div>
+          <div class="title">بيان اسماء الملاحظين</div>
           
-          <div class="info-grid">
-            <div>اليوم: ${dayName}</div>
-            <div>التاريخ: ${dist.date}</div>
-            <div>الفترة: ${dist.period}</div>
-            <div>المادة: ${dist.subject}</div>
-          </div>
+          <table class="info-table">
+            <tr>
+              <th>اليوم</th>
+              <td>${dayName}</td>
+              <th>التاريخ</th>
+              <td>${dist.date}</td>
+              <th>المادة</th>
+              <td>${dist.subject}</td>
+              <th>الفترة</th>
+              <td>${dist.period}</td>
+            </tr>
+          </table>
 
           <table>
             <thead>
@@ -340,7 +352,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
             </tbody>
           </table>
 
-          <div class="title" style="font-size: 16px;">المراقبين الاحتياط</div>
+          <div class="title" style="font-size: 12pt; margin-top: -5px;">المراقبين الاحتياط</div>
           <table>
             <thead>
               <tr>
@@ -361,9 +373,9 @@ const SmartProctorDistribution: React.FC<Props> = ({
             </tbody>
           </table>
           
-          <div style="display: flex; justify-content: space-between; margin-top: 50px;">
-            <div>مدير المدرسة: ${users.find(u => u.role === 'ADMIN')?.full_name || '....................'}</div>
+          <div style="display: flex; justify-content: space-between; margin-top: 30px; font-weight: bold; font-size: 10pt;">
             <div>رئيس الكنترول: ${users.find(u => u.role === 'CONTROL_MANAGER')?.full_name || '....................'}</div>
+            <div>مدير المدرسة: ${users.find(u => u.role === 'ADMIN')?.full_name || '....................'}</div>
           </div>
         </body>
       </html>
