@@ -102,6 +102,10 @@ export interface SystemConfig {
   academic_year?: string;
   allow_manual_join?: boolean;
   openrouter_api_key?: string;
+  directorate_name?: string;
+  school_name?: string;
+  principal_name?: string;
+  control_chief_id?: string;
 }
 
 export interface EnvelopeOpening {

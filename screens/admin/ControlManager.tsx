@@ -437,7 +437,7 @@ const ControlManager: React.FC<ControlManagerProps> = ({
                                   <div className="w-14 h-14 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-2xl ring-4 ring-slate-50"><UserCheck size={32}/></div>
                                   <div className="min-w-0 flex-1">
                                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">المراقب المكلف</p>
-                                     <h4 className="text-lg font-black text-slate-900 truncate leading-tight">{com.proctor.full_name}</h4>
+                                     <h4 className="text-lg font-black text-slate-900 leading-tight">{com.proctor.full_name}</h4>
                                   </div>
                                </div>
                             ) : (
@@ -493,6 +493,20 @@ const ControlManager: React.FC<ControlManagerProps> = ({
                      />
                   </div>
 
+                  
+                  <div className="mb-2">
+                    {reserveCandidateIdsForTarget.size > 0 ? (
+                      <div className="bg-violet-50 text-violet-700 p-4 rounded-2xl font-bold flex items-center gap-3 border border-violet-100">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                        يوجد احتياط أولوية مخصص لهذه اللجنة، يُنصح باختياره
+                      </div>
+                    ) : (
+                      <div className="bg-orange-50 text-orange-700 p-4 rounded-2xl font-bold flex items-center gap-3 border border-orange-100">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                        لا يوجد احتياط مخصص لهذه اللجنة، يمكنك إسنادها لأي مراقب متاح
+                      </div>
+                    )}
+                  </div>
                   <div className="max-h-[400px] overflow-y-auto custom-scrollbar space-y-3 px-2">
                      {proctorsListForModal.map(u => {
                         const currentSv = supervisions.find(s => s.teacher_id === u.id);

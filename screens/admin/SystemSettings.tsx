@@ -5,6 +5,7 @@ import { SystemConfig } from '../../types';
 
 interface Props {
   systemConfig: SystemConfig & { active_exam_date?: string };
+  users?: any[];
   setSystemConfig: (cfg: Partial<SystemConfig>) => Promise<void>;
   resetFunctions: {
     students: () => void;
@@ -20,6 +21,10 @@ const AdminSystemSettings: React.FC<Props> = ({ systemConfig, setSystemConfig, r
   const [tempActiveDate, setTempActiveDate] = useState(systemConfig.active_exam_date || new Date().toISOString().split('T')[0]);
   const [tempAcademicYear, setTempAcademicYear] = useState(systemConfig.academic_year || '1446 / 1447');
   const [tempApiKey, setTempApiKey] = useState(systemConfig.openrouter_api_key || '');
+  const [tempSchoolName, setTempSchoolName] = useState(systemConfig.school_name || '');
+  const [tempDirectorate, setTempDirectorate] = useState(systemConfig.directorate_name || '');
+  const [tempPrincipal, setTempPrincipal] = useState(systemConfig.principal_name || '');
+  const [tempControlChief, setTempControlChief] = useState(systemConfig.control_chief_id || '');
   const [isSavingCfg, setIsSavingCfg] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const tv2Url = `${window.location.origin}${window.location.pathname}?tv2=1`;
@@ -84,7 +89,11 @@ ALTER TABLE control_requests ADD COLUMN IF NOT EXISTS assistant_name TEXT;`;
         exam_start_time: tempStartTime,
         active_exam_date: tempActiveDate,
         academic_year: tempAcademicYear,
-        openrouter_api_key: tempApiKey
+        openrouter_api_key: tempApiKey,
+        school_name: tempSchoolName,
+        directorate_name: tempDirectorate,
+        principal_name: tempPrincipal,
+        control_chief_id: tempControlChief
       } as any);
       onAlert('تم حفظ إعدادات النظام وتحديث التاريخ النشط بنجاح.', 'success');
     } catch (err: any) {
@@ -185,6 +194,38 @@ ALTER TABLE control_requests ADD COLUMN IF NOT EXISTS assistant_name TEXT;`;
                    <input type="password" placeholder="sk-or-v1-..." value={tempApiKey} onChange={(e) => setTempApiKey(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-[1.5rem] p-4 font-bold text-center outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 shadow-sm transition-all" />
                 </div>
              </div>
+             
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-slate-100 pt-6">
+                <div className="space-y-3">
+                   <label className="text-[10px] font-black text-slate-400 mr-2 uppercase flex items-center gap-2 tracking-widest"><Settings2 size={12}/> اسم المدرسة</label>
+                   <input type="text" value={tempSchoolName} onChange={(e) => setTempSchoolName(e.target.value)} placeholder="مثال: مدرسة عماد الدين زنكي المتوسطة" className="w-full bg-slate-50 border border-slate-200 rounded-[1.5rem] p-4 font-black text-xl text-center outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 shadow-sm transition-all" />
+                </div>
+                <div className="space-y-3">
+                   <label className="text-[10px] font-black text-slate-400 mr-2 uppercase flex items-center gap-2 tracking-widest"><Settings2 size={12}/> الإدارة التعليمية</label>
+                   <div className="flex items-center">
+                     <span className="bg-slate-200 text-slate-500 p-4 rounded-r-[1.5rem] font-bold border border-l-0 border-slate-200 h-[62px] flex items-center">إدارة التعليم بـ</span>
+                     <input type="text" value={tempDirectorate} onChange={(e) => setTempDirectorate(e.target.value)} placeholder="مثال: جدة" className="w-full bg-slate-50 border border-slate-200 border-r-0 rounded-l-[1.5rem] p-4 font-black text-xl text-center outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 shadow-sm transition-all h-[62px]" />
+                   </div>
+                </div>
+             </div>
+             
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-slate-100 pt-6">
+                <div className="space-y-3">
+                   <label className="text-[10px] font-black text-slate-400 mr-2 uppercase flex items-center gap-2 tracking-widest"><Users2 size={12}/> اسم مدير المدرسة</label>
+                   <input type="text" value={tempPrincipal} onChange={(e) => setTempPrincipal(e.target.value)} placeholder="مثال: فلان بن فلان" className="w-full bg-slate-50 border border-slate-200 rounded-[1.5rem] p-4 font-black text-xl text-center outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 shadow-sm transition-all" />
+                </div>
+                <div className="space-y-3">
+                   <label className="text-[10px] font-black text-slate-400 mr-2 uppercase flex items-center gap-2 tracking-widest"><Users2 size={12}/> رئيس الكنترول</label>
+                   <select value={tempControlChief} onChange={(e) => setTempControlChief(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-[1.5rem] p-4 font-black text-xl text-center outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 shadow-sm transition-all appearance-none cursor-pointer">
+                     <option value="">-- الافتراضي (المختار من الصلاحيات) --</option>
+                     {/* @ts-ignore */}
+                     {users && users.filter(u => ['ADMIN', 'CONTROL_MANAGER', 'CONTROL'].includes(u.role)).map(u => (
+                        <option key={u.id} value={u.id}>{u.full_name}</option>
+                     ))}
+                   </select>
+                </div>
+             </div>
+
              <button onClick={handleSaveConfig} disabled={isSavingCfg} className="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-5 rounded-[1.8rem] font-black text-xl shadow-lg shadow-blue-600/20 hover:shadow-blue-600/35 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-4 active:scale-[0.98] disabled:opacity-50">
                {isSavingCfg ? <RefreshCcw className="animate-spin" /> : <Save size={32} />} حفظ الإعدادات المركزية
              </button>

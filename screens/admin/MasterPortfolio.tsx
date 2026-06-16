@@ -160,7 +160,7 @@ export const MasterPortfolio: React.FC<Props> = ({
         <p>المملكة العربية السعودية</p>
         <p>{APP_CONFIG.MINISTRY_NAME}</p>
         <p>{APP_CONFIG.ADMINISTRATION_NAME}</p>
-        <p>مدرسة عماد الدين زنكي المتوسطة</p>
+        <p>{systemConfig?.school_name || 'اسم المدرسة'}</p>
       </div>
       <div className="official-center">
         <img src={APP_CONFIG.LOGO_URL} alt="الشعار" />
@@ -451,7 +451,7 @@ export const MasterPortfolio: React.FC<Props> = ({
               <p>المملكة العربية السعودية</p>
               <p>وزارة التعليم</p>
               <p>إدارة التعليم بمحافظة جدة</p>
-              <p>مدرسة عماد الدين زنكي المتوسطة</p>
+              <p>{systemConfig?.school_name || 'اسم المدرسة'}</p>
               <p style={{marginTop: '40px', fontSize: '24px', color: '#0f172a'}}>العام الدراسي: {systemConfig.academic_year || '1446 / 1447'}</p>
            </div>
            <div className="cover-signature-footer">
