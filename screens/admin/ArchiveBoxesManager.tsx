@@ -102,7 +102,7 @@ export const ArchiveBoxesManager: React.FC<Props> = ({
     try {
       const d = new Date(iso);
       if (isNaN(d.getTime())) return false;
-      const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0}-${String(d.getDate()).padStart(2, '0}`;
+      const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       return local === date;
     } catch {
       return false;

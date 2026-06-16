@@ -44,7 +44,7 @@ export const MasterPortfolio: React.FC<Props> = ({
       const d = new Date(isoStr);
       if (isNaN(d.getTime())) return false;
       // Compare as local date YYYY-MM-DD
-      const local = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0}-${String(d.getDate()).padStart(2,'0}`;
+      const local = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       return local === date || local.startsWith(date) || date.startsWith(local);
     } catch { return String(isoStr).startsWith(date); }
   };
