@@ -387,9 +387,9 @@ const SmartProctorDistribution: React.FC<Props> = ({
                       <button
                         key={exam.id}
                         onClick={() => { setSelectedExam(exam); setStep('EXCLUDE_PROCTORS'); }}
-                        className={\`w-full flex items-center justify-between p-4 rounded-xl border transition-all \${
+                        className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all ${
                           hasDistribution ? 'bg-slate-50 border-slate-200 opacity-75' : 'bg-white border-blue-100 hover:border-blue-300 hover:shadow-md'
-                        }\`}
+                        }`}
                       >
                         <div className="text-right">
                           <div className="font-black text-slate-800 text-sm mb-1">{exam.subject}</div>
@@ -494,7 +494,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
             {proctors.filter(p => p.full_name.includes(searchProctor)).map(proctor => {
               const isExcluded = excludedProctorIds.includes(proctor.id);
               return (
-                <label key={proctor.id} className={\`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors \${isExcluded ? 'bg-red-50 border border-red-200' : 'hover:bg-white border border-transparent'}\`}>
+                <label key={proctor.id} className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${isExcluded ? 'bg-red-50 border border-red-200' : 'hover:bg-white border border-transparent'}`}>
                   <input 
                     type="checkbox" 
                     checked={isExcluded}
@@ -505,7 +505,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
                     className="w-5 h-5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
                   />
                   <div>
-                    <div className={\`font-black \${isExcluded ? 'text-red-700' : 'text-slate-800'}\`}>{proctor.full_name}</div>
+                    <div className={`font-black ${isExcluded ? 'text-red-700' : 'text-slate-800'}`}>{proctor.full_name}</div>
                     {isExcluded && <div className="text-[10px] text-red-500 font-bold">مستبعد من هذا التوزيع</div>}
                   </div>
                 </label>
@@ -561,7 +561,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
                     onDragStart={(e) => handleDragStart(e, item.id)}
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, item.id)}
-                    className={\`bg-white border-2 rounded-2xl p-4 transition-all shadow-sm cursor-grab \${draggedItemId === item.id ? 'opacity-50 border-blue-400 border-dashed' : 'border-slate-100 hover:border-blue-300'}\`}
+                    className={`bg-white border-2 rounded-2xl p-4 transition-all shadow-sm cursor-grab ${draggedItemId === item.id ? 'opacity-50 border-blue-400 border-dashed' : 'border-slate-100 hover:border-blue-300'}`}
                   >
                     <div className="flex justify-between items-center mb-3">
                       <span className="bg-blue-100 text-blue-800 font-black px-3 py-1 rounded-lg text-sm">لجنة {item.committeeNumber}</span>
@@ -590,7 +590,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
                     onDragStart={(e) => handleDragStart(e, item.id)}
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, item.id)}
-                    className={\`bg-emerald-50 border-2 rounded-xl p-3 transition-all cursor-grab \${draggedItemId === item.id ? 'opacity-50 border-emerald-400 border-dashed' : 'border-emerald-100 hover:border-emerald-300'}\`}
+                    className={`bg-emerald-50 border-2 rounded-xl p-3 transition-all cursor-grab ${draggedItemId === item.id ? 'opacity-50 border-emerald-400 border-dashed' : 'border-emerald-100 hover:border-emerald-300'}`}
                   >
                     <div className="flex justify-between items-center mb-1">
                       <span className="text-emerald-800 font-black text-xs">احتياط {idx + 1}</span>
