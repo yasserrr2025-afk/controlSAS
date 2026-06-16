@@ -1,0 +1,615 @@
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>الكنترول المطور - إدارة الاختبارات</title>
+    <meta name="description" content="النظام الذكي الشامل لإدارة لجان الاختبارات والمراقبة الميدانية">
+    <meta name="keywords" content="كنترول, اختبارات, مراقبة, لجان, وزارة التعليم">
+    <meta name="author" content="وزارة التعليم">
+    
+    <!-- PWA Core -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#020617">
+    
+    <!-- Apple PWA Meta -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="الكنترول المطور">
+    <link rel="apple-touch-icon" href="https://www.raed.net/img?id=1488645">
+    <link rel="apple-touch-icon" sizes="152x152" href="https://www.raed.net/img?id=1488645">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://www.raed.net/img?id=1488645">
+    
+    <!-- Microsoft PWA -->
+    <meta name="msapplication-TileImage" content="https://www.raed.net/img?id=1488645">
+    <meta name="msapplication-TileColor" content="#020617">
+    <meta name="msapplication-tap-highlight" content="no">
+    
+    <!-- Open Graph -->
+    <meta property="og:title" content="الكنترول المطور">
+    <meta property="og:description" content="النظام الذكي الشامل لإدارة لجان الاختبارات">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="https://www.raed.net/img?id=1488645">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="https://www.raed.net/img?id=1488645">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@200;300;400;500;700;800;900&display=swap" rel="stylesheet">
+    
+    <style>
+        /* ══════════════════════════════════════════════
+           نظام التصميم العالمي - الكنترول المطور
+        ══════════════════════════════════════════════ */
+        :root {
+            /* ألوان الهوية */
+            --primary:          #2563eb;
+            --primary-light:    #3b82f6;
+            --primary-dark:     #1d4ed8;
+            --primary-glow:     rgba(37, 99, 235, 0.35);
+            --secondary:        #0f172a;
+            --accent-teal:      #0d9488;
+            --accent-violet:    #7c3aed;
+            --accent-rose:      #e11d48;
+            --accent-amber:     #d97706;
+            --accent-emerald:   #059669;
+
+            /* خلفية التطبيق */
+            --bg-base:          #f0f4ff;
+            --bg-card:          #ffffff;
+            --bg-muted:         #f8fafc;
+            --surface-1:        #f1f5f9;
+            --surface-2:        #e2e8f0;
+
+            /* النصوص */
+            --text-primary:     #0f172a;
+            --text-secondary:   #475569;
+            --text-muted:       #94a3b8;
+
+            /* الظلال */
+            --shadow-sm:        0 2px 8px rgba(15,23,42,0.06);
+            --shadow-md:        0 4px 24px rgba(15,23,42,0.10);
+            --shadow-lg:        0 8px 40px rgba(15,23,42,0.14);
+            --shadow-xl:        0 16px 64px rgba(15,23,42,0.18);
+            --shadow-blue:      0 8px 32px rgba(37,99,235,0.25);
+            --shadow-teal:      0 8px 32px rgba(13,148,136,0.25);
+            --shadow-emerald:   0 8px 32px rgba(5,150,105,0.25);
+            --shadow-rose:      0 8px 32px rgba(225,29,72,0.25);
+            --shadow-amber:     0 8px 32px rgba(217,119,6,0.25);
+
+            /* الزوايا */
+            --radius-sm:        0.75rem;
+            --radius-md:        1.25rem;
+            --radius-lg:        1.75rem;
+            --radius-xl:        2.5rem;
+            --radius-2xl:       3.5rem;
+            --radius-full:      9999px;
+
+            /* الحدود */
+            --border-light:     rgba(226,232,240,0.8);
+            --border-medium:    rgba(203,213,225,0.9);
+        }
+
+        /* ── الجسم ── */
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background: var(--bg-base);
+            background-image:
+                radial-gradient(ellipse 80% 50% at 20% -20%, rgba(37,99,235,0.06) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 40% at 80% 120%, rgba(13,148,136,0.05) 0%, transparent 60%);
+            background-attachment: fixed;
+            -webkit-tap-highlight-color: transparent;
+            overscroll-behavior-y: contain;
+            color: var(--text-primary);
+        }
+
+        /* ── شريط التمرير ── */
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #93c5fd, #6366f1);
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+
+        /* ── الطباعة ── */
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            .page-break-after-always { page-break-after: always; }
+        }
+        .print-only { display: none; }
+
+        /* ══════════════════════════════════════════════
+           Glassmorphism Classes
+        ══════════════════════════════════════════════ */
+        .glass-card {
+            background: rgba(255,255,255,0.72);
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            border: 1px solid rgba(255,255,255,0.55);
+            box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255,255,255,0.6);
+        }
+        .glass-dark {
+            background: rgba(15,23,42,0.75);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .glass-blue {
+            background: rgba(37,99,235,0.12);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(59,130,246,0.25);
+        }
+
+        /* ══════════════════════════════════════════════
+           بطاقات متطورة
+        ══════════════════════════════════════════════ */
+        .card-premium {
+            background: #ffffff;
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-md);
+            transition: box-shadow 0.3s ease, transform 0.3s ease;
+        }
+        .card-premium:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+        .card-dark {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-xl);
+        }
+
+        /* ══════════════════════════════════════════════
+           أزرار متطورة
+        ══════════════════════════════════════════════ */
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-light), var(--primary-dark));
+            color: white;
+            border: none;
+            border-radius: var(--radius-lg);
+            padding: 0.875rem 2rem;
+            font-weight: 900;
+            font-family: 'Tajawal', sans-serif;
+            box-shadow: var(--shadow-blue);
+            transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent);
+            opacity: 0;
+            transition: opacity 0.25s;
+        }
+        .btn-primary:hover::before { opacity: 1; }
+        .btn-primary:hover { box-shadow: 0 12px 40px rgba(37,99,235,0.4); transform: translateY(-1px); }
+        .btn-primary:active { transform: scale(0.97); }
+
+        .btn-emerald {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            border: none;
+            border-radius: var(--radius-lg);
+            padding: 0.875rem 2rem;
+            font-weight: 900;
+            font-family: 'Tajawal', sans-serif;
+            box-shadow: var(--shadow-emerald);
+            transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
+        }
+        .btn-emerald:hover { box-shadow: 0 12px 40px rgba(5,150,105,0.4); transform: translateY(-1px); }
+        .btn-emerald:active { transform: scale(0.97); }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #f43f5e, #e11d48);
+            color: white;
+            border: none;
+            border-radius: var(--radius-lg);
+            padding: 0.875rem 2rem;
+            font-weight: 900;
+            font-family: 'Tajawal', sans-serif;
+            box-shadow: var(--shadow-rose);
+            transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
+        }
+        .btn-danger:hover { box-shadow: 0 12px 40px rgba(225,29,72,0.4); transform: translateY(-1px); }
+
+        /* ══════════════════════════════════════════════
+           حقول الإدخال
+        ══════════════════════════════════════════════ */
+        .input-field {
+            background: var(--surface-1);
+            border: 2px solid transparent;
+            border-radius: var(--radius-md);
+            padding: 0.875rem 1.25rem;
+            font-family: 'Tajawal', sans-serif;
+            font-weight: 700;
+            color: var(--text-primary);
+            transition: all 0.2s ease;
+            outline: none;
+            width: 100%;
+        }
+        .input-field:focus {
+            border-color: var(--primary-light);
+            background: white;
+            box-shadow: 0 0 0 4px rgba(59,130,246,0.12);
+        }
+
+        /* ══════════════════════════════════════════════
+           شارات الحالة
+        ══════════════════════════════════════════════ */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.3rem 0.875rem;
+            border-radius: var(--radius-full);
+            font-size: 0.65rem;
+            font-weight: 900;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        .badge-blue   { background: rgba(59,130,246,0.12); color: #1d4ed8; border: 1px solid rgba(59,130,246,0.2); }
+        .badge-green  { background: rgba(16,185,129,0.12); color: #047857; border: 1px solid rgba(16,185,129,0.2); }
+        .badge-red    { background: rgba(244,63,94,0.12);  color: #be123c; border: 1px solid rgba(244,63,94,0.2); }
+        .badge-amber  { background: rgba(251,191,36,0.15); color: #b45309; border: 1px solid rgba(251,191,36,0.25); }
+
+        /* ══════════════════════════════════════════════
+           الحركات والانيميشن
+        ══════════════════════════════════════════════ */
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(24px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+        }
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.92); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+        @keyframes shimmer {
+            0%   { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 0 0 var(--primary-glow); }
+            50%       { box-shadow: 0 0 0 12px transparent; }
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50%       { transform: translateY(-8px); }
+        }
+        @keyframes spinSlow {
+            from { transform: rotate(0deg); }
+            to   { transform: rotate(360deg); }
+        }
+        @keyframes gradientShift {
+            0%   { background-position: 0% 50%; }
+            50%  { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        @keyframes scanLine {
+            0%   { top: 0%; }
+            50%  { top: 100%; }
+            100% { top: 0%; }
+        }
+        @keyframes numberUp {
+            from { opacity: 0; transform: translateY(8px) scale(0.8); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes borderGlow {
+            0%, 100% { border-color: rgba(59,130,246,0.3); }
+            50%       { border-color: rgba(59,130,246,0.8); }
+        }
+        @keyframes ticker-scroll {
+            0%   { transform: translateX(100%); }
+            100% { transform: translateX(-100%); }
+        }
+
+        /* كلاسات الحركة */
+        .animate-slide-up   { animation: slideUp   0.55s cubic-bezier(0.16,1,0.3,1) forwards; }
+        .animate-slide-down { animation: slideDown  0.45s cubic-bezier(0.16,1,0.3,1) forwards; }
+        .animate-fade-in    { animation: fadeIn     0.5s  ease-out both; }
+        .animate-scale-in   { animation: scaleIn    0.4s  cubic-bezier(0.16,1,0.3,1) both; }
+        .animate-float      { animation: float      3s    ease-in-out infinite; }
+        .animate-spin-slow  { animation: spinSlow   8s    linear infinite; }
+        .animate-pulse-glow { animation: pulseGlow  2s    ease-in-out infinite; }
+        .animate-number-up  { animation: numberUp   0.4s  cubic-bezier(0.16,1,0.3,1) both; }
+        .animate-border-glow{ animation: borderGlow 2s    ease-in-out infinite; }
+        .animate-scan-line  { animation: scanLine   2s    cubic-bezier(0.4,0,0.2,1) infinite; }
+        .animate-ticker     { animation: ticker-scroll 20s linear infinite; white-space: nowrap; display: inline-block; padding-left: 100%; }
+        .animate-ticker:hover { animation-play-state: paused; }
+        .animate-pulse-slow { animation: pulse 3s cubic-bezier(0.4,0,0.6,1) infinite; }
+
+        /* تأخيرات الحركة */
+        .delay-75  { animation-delay: 75ms; }
+        .delay-100 { animation-delay: 100ms; }
+        .delay-150 { animation-delay: 150ms; }
+        .delay-200 { animation-delay: 200ms; }
+        .delay-300 { animation-delay: 300ms; }
+        .delay-500 { animation-delay: 500ms; }
+
+        /* ══════════════════════════════════════════════
+           تأثيرات متقدمة
+        ══════════════════════════════════════════════ */
+        /* الهالة المضيئة */
+        .glow-blue   { box-shadow: 0 0 24px rgba(59,130,246,0.4), 0 0 60px rgba(59,130,246,0.15); }
+        .glow-green  { box-shadow: 0 0 24px rgba(16,185,129,0.4), 0 0 60px rgba(16,185,129,0.15); }
+        .glow-red    { box-shadow: 0 0 24px rgba(244,63,94,0.4),  0 0 60px rgba(244,63,94,0.15); }
+        .glow-amber  { box-shadow: 0 0 24px rgba(251,191,36,0.4), 0 0 60px rgba(251,191,36,0.15); }
+
+        /* الخط المتدرج */
+        .gradient-text-blue {
+            background: linear-gradient(135deg, #3b82f6, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .gradient-text-gold {
+            background: linear-gradient(135deg, #f59e0b, #fcd34d, #d97706);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .gradient-text-teal {
+            background: linear-gradient(135deg, #14b8a6, #0d9488);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* شيمر للتحميل */
+        .shimmer {
+            background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+
+        /* الشبكة الخلفية */
+        .bg-grid-pattern {
+            background-image:
+                linear-gradient(rgba(99,102,241,0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(99,102,241,0.04) 1px, transparent 1px);
+            background-size: 48px 48px;
+        }
+        .bg-grid-dark {
+            background-image:
+                linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 48px 48px;
+        }
+
+        /* تأثير الحدود المضيئة */
+        .border-glow-blue {
+            border: 1px solid rgba(59,130,246,0.4);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 0 20px rgba(59,130,246,0.15);
+        }
+        .border-glow-green {
+            border: 1px solid rgba(16,185,129,0.4);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 0 20px rgba(16,185,129,0.15);
+        }
+
+        /* نقطة الاتصال المتحركة */
+        .live-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 0 0 rgba(16,185,129,0.4);
+            animation: livePulse 1.8s ease-in-out infinite;
+        }
+        @keyframes livePulse {
+            0%   { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
+            70%  { box-shadow: 0 0 0 8px rgba(16,185,129,0); }
+            100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+        }
+
+        /* تأثير التضليل */
+        .overlay-gradient-top {
+            background: linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 100%);
+        }
+        .overlay-gradient-bottom {
+            background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 100%);
+        }
+
+        /* ── إطار توهج نيون ── */
+        .neon-blue {
+            box-shadow:
+                0 0 7px rgba(59,130,246,0.5),
+                0 0 14px rgba(59,130,246,0.3),
+                inset 0 0 7px rgba(59,130,246,0.1);
+        }
+        .neon-green {
+            box-shadow:
+                0 0 7px rgba(16,185,129,0.5),
+                0 0 14px rgba(16,185,129,0.3),
+                inset 0 0 7px rgba(16,185,129,0.1);
+        }
+        .neon-red {
+            box-shadow:
+                0 0 7px rgba(244,63,94,0.5),
+                0 0 14px rgba(244,63,94,0.3),
+                inset 0 0 7px rgba(244,63,94,0.1);
+        }
+
+        /* ── بطاقة إحصائية عالمية ── */
+        .stat-card {
+            background: white;
+            border-radius: var(--radius-xl);
+            border: 1px solid var(--border-light);
+            padding: 1.75rem;
+            box-shadow: var(--shadow-sm);
+            transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+            position: relative;
+            overflow: hidden;
+        }
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.5) 100%);
+            pointer-events: none;
+        }
+        .stat-card:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-3px);
+            border-color: rgba(59,130,246,0.2);
+        }
+
+        /* ── بطاقة داكنة عالمية ── */
+        .dark-card {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            border-radius: var(--radius-xl);
+            border: 1px solid rgba(255,255,255,0.07);
+            box-shadow: var(--shadow-xl), inset 0 1px 0 rgba(255,255,255,0.05);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* ── خلفية التطبيق المحسنة ── */
+        .app-bg {
+            background: var(--bg-base);
+            min-height: 100vh;
+        }
+
+        /* ── تأثير الضغط ── */
+        .press-effect {
+            transition: transform 0.15s ease;
+        }
+        .press-effect:active { transform: scale(0.96); }
+
+        /* ══════════════════════════════════════════════
+           مكونات خاصة
+        ══════════════════════════════════════════════ */
+        /* شريط التقدم المتحرك */
+        .progress-bar {
+            height: 4px;
+            border-radius: 999px;
+            background: var(--surface-2);
+            overflow: hidden;
+            position: relative;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, var(--primary-light), #818cf8);
+            transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
+            position: relative;
+        }
+        .progress-bar-fill::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        /* ── فاصل متدرج ── */
+        .divider-gradient {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--border-medium), transparent);
+        }
+
+        /* ── تأثير hover على البطاقات ── */
+        .hover-lift {
+            transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s ease;
+        }
+        .hover-lift:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        /* ── تأثير تلاشي العناصر عند الدخول ── */
+        .stagger-item {
+            opacity: 0;
+            animation: slideUp 0.5s cubic-bezier(0.16,1,0.3,1) forwards;
+        }
+        .stagger-item:nth-child(1) { animation-delay: 0ms; }
+        .stagger-item:nth-child(2) { animation-delay: 60ms; }
+        .stagger-item:nth-child(3) { animation-delay: 120ms; }
+        .stagger-item:nth-child(4) { animation-delay: 180ms; }
+        .stagger-item:nth-child(5) { animation-delay: 240ms; }
+        .stagger-item:nth-child(6) { animation-delay: 300ms; }
+    </style>
+
+    <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "xlsx": "https://esm.sh/xlsx@^0.18.5",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.89.0",
+    "html5-qrcode": "https://esm.sh/html5-qrcode@^2.3.8",
+    "react-dom": "https://esm.sh/react-dom@^19.2.3"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+    <div id="root"></div>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                  .then((reg) => {
+                    // كشف تحديثات SW جديدة
+                    reg.addEventListener('updatefound', () => {
+                        const newWorker = reg.installing;
+                        if (!newWorker) return;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                // إظهار بانر تحديث أنيق
+                                showUpdateBanner();
+                            }
+                        });
+                    });
+                  })
+                  .catch(err => console.warn('SW failed:', err));
+            });
+        }
+
+        function showUpdateBanner() {
+            const banner = document.createElement('div');
+            banner.id = 'update-banner';
+            banner.innerHTML = `
+              <div style="
+                position:fixed; bottom:80px; left:50%; transform:translateX(-50%);
+                background:#1e40af; color:white; padding:14px 24px;
+                border-radius:999px; font-family:'Tajawal',sans-serif; font-weight:800;
+                font-size:14px; direction:rtl; z-index:9999; white-space:nowrap;
+                box-shadow:0 8px 32px rgba(37,99,235,0.5); border:1px solid rgba(255,255,255,0.15);
+                display:flex; align-items:center; gap:12px; cursor:pointer;
+                animation: slideUp2 0.4s ease-out;
+              " onclick="window.location.reload()">
+                <span style="font-size:18px">⚡</span>
+                <span>يوجد تحديث جديد — اضغط للتحديث</span>
+                <span style="background:rgba(255,255,255,0.2); padding:4px 12px; border-radius:999px; font-size:12px">تحديث</span>
+              </div>
+              <style>@keyframes slideUp2 { from{transform:translate(-50%,20px);opacity:0} to{transform:translate(-50%,0);opacity:1} }</style>
+            `;
+            document.body.appendChild(banner);
+            // إخفاء البانر تلقائياً بعد 15 ثانية
+            setTimeout(() => banner.remove(), 15000);
+        }
+    </script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>

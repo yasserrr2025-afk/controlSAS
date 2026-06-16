@@ -1,0 +1,39 @@
+
+> نسحه3-نظام-إدارة-الاختبارات-واللجان-المطور@0.0.0 dev
+> vite --host 127.0.0.1
+
+[2m٨:١٣:٣٩ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m Re-optimizing dependencies because vite config has changed
+Port 3000 is in use, trying another one...
+
+  [32m[1mVITE[22m v6.4.2[39m  [2mready in [0m[1m1132[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m3001[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+[2m٨:١٤:٥٤ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/public/StudentCommitteeInquiry.tsx[22m
+[2m٨:٣١:٠٩ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlRoomMonitor.tsx[22m
+[2m٨:٣١:١٥ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlRoomMonitor.tsx[22m
+[2m٨:٣١:٤٩ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlRoomMonitor.tsx[22m
+[2m٨:٣٢:٠٣ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlRoomMonitor.tsx[22m
+[2m٨:٣٣:٢٠ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlRoomMonitor.tsx[22m
+[2m٨:٤٠:٠٨ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlRoomMonitor.tsx[22m
+[2m٨:٤٠:٤٤ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlRoomMonitor.tsx[22m
+[2m٨:٤٥:٣٤ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlRoomMonitor.tsx[22m
+[2m٨:٤٥:٥٩ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlRoomMonitor.tsx[22m
+[2m٨:٤٦:٣٥ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlRoomMonitor.tsx[22m
+[2m٨:٤٦:٤٦ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlRoomMonitor.tsx[22m
+[2m٨:٤٨:١٠ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlRoomMonitor.tsx[22m
+[2m٩:٠٥:٢٧ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlRoomMonitor.tsx[22m
+[2m٩:٠٥:٣٩ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlRoomMonitor.tsx[22m
+[2m٩:٠٥:٥٧ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlRoomMonitor.tsx[22m
+[2m٩:٠٦:٠٦ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlRoomMonitor.tsx[22m
+[2m٩:١٦:٠٢ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlManager.tsx[22m
+[2m٩:١٦:١٥ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlManager.tsx[22m
+[2m٩:١٦:٣١ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/App.tsx[22m
+[2m٩:١٧:١٥ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlManager.tsx[22m
+[2m٩:١٨:٣٦ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlManager.tsx[22m
+[2m٩:١٩:٣٣ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlManager.tsx[22m
+[2m٩:٢٠:١١ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlManager.tsx[22m
+[2m٩:٢٢:٠٤ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlManager.tsx[22m
+[2m٩:٢٢:٣٨ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/admin/ControlManager.tsx[22m
+[2m٩:٤٢:٣٥ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/public/StudentCommitteeInquiry.tsx[22m
+[2m٩:٥١:٠٠ ص[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/screens/public/StudentCommitteeInquiry.tsx[22m
