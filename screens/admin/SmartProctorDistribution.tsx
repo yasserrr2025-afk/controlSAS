@@ -22,6 +22,8 @@ interface Props {
   students: Student[];
   supervisions: Supervision[];
   examSchedule?: ExamSchedule[];
+  onUpsertExamSchedule?: (item: Partial<ExamSchedule>) => Promise<void>;
+  onDeleteExamSchedule?: (id: string) => Promise<void>;
   onCommit?: (items: any[], replaceExisting: boolean) => Promise<void>;
   onDeleteSupervisions?: (ids: string[]) => Promise<void>;
   systemConfig?: { academic_year?: string; [key: string]: any };
@@ -45,6 +47,8 @@ const SmartProctorDistribution: React.FC<Props> = ({
   supervisions,
   examSchedule = [],
   systemConfig,
+  onUpsertExamSchedule,
+  onDeleteExamSchedule,
   onCommit,
   onDeleteSupervisions,
 }) => {
@@ -57,6 +61,17 @@ const SmartProctorDistribution: React.FC<Props> = ({
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   
   const [distributionFilter, setDistributionFilter] = useState(''); // Used to view past distributions
+  
+  const today = new Date().toISOString().split('T')[0];
+  const [newExam, setNewExam] = useState<Partial<ExamSchedule>>({
+    exam_date: today,
+    subject: '',
+    period: 1,
+    start_time: '08:00',
+    end_time: '',
+    grades: [],
+    status: 'READY',
+  });
 
   const proctors = useMemo(() => users.filter(u => u.role === 'PROCTOR'), [users]);
   const committees = useMemo(() => {
@@ -185,6 +200,20 @@ const SmartProctorDistribution: React.FC<Props> = ({
 
     setDistribution(newDistribution);
     setStep('PREVIEW');
+  };
+
+  const saveExamSchedule = async () => {
+    if (!onUpsertExamSchedule || !newExam.exam_date || !newExam.subject?.trim()) return;
+    const payload: Partial<ExamSchedule> = {
+      ...newExam,
+      id: newExam.id || crypto.randomUUID(),
+      subject: newExam.subject.trim(),
+      period: Number(newExam.period) || 1,
+      start_time: newExam.start_time || '08:00',
+      status: newExam.status || 'READY',
+    };
+    await onUpsertExamSchedule(payload);
+    setNewExam({ exam_date: payload.exam_date, subject: '', period: 1, start_time: payload.start_time || '08:00', end_time: '', grades: [], status: 'READY' });
   };
 
   const handleCommit = async () => {
@@ -372,100 +401,171 @@ const SmartProctorDistribution: React.FC<Props> = ({
       </div>
 
       {step === 'SELECT_EXAM' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Create New Distribution */}
-          <div className="lg:col-span-1 space-y-4">
-            <h4 className="text-lg font-black text-slate-800">توزيع جديد</h4>
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-              {examSchedule.length === 0 ? (
-                <div className="text-center text-slate-500 py-8 font-bold">لا توجد اختبارات مجدولة حالياً. الرجاء إضافة جدول الاختبارات أولاً.</div>
-              ) : (
-                <div className="space-y-3">
-                  {examSchedule.map(exam => {
-                    const hasDistribution = pastDistributions.some(p => p.date === exam.exam_date && p.period === exam.period && p.subject === exam.subject);
-                    return (
-                      <button
-                        key={exam.id}
-                        onClick={() => { setSelectedExam(exam); setStep('EXCLUDE_PROCTORS'); }}
-                        className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all ${
-                          hasDistribution ? 'bg-slate-50 border-slate-200 opacity-75' : 'bg-white border-blue-100 hover:border-blue-300 hover:shadow-md'
-                        }`}
-                      >
-                        <div className="text-right">
-                          <div className="font-black text-slate-800 text-sm mb-1">{exam.subject}</div>
-                          <div className="flex gap-2 text-[10px] font-bold">
-                            <span className="bg-slate-200 text-slate-700 px-2 py-1 rounded-md">{exam.exam_date}</span>
-                            <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-md">فترة {exam.period}</span>
-                          </div>
-                        </div>
-                        {hasDistribution ? (
-                          <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg flex items-center gap-1">
-                            <Check size={14}/> موزع مسبقاً
-                          </span>
-                        ) : (
-                          <ArrowLeft size={18} className="text-blue-500" />
-                        )}
-                      </button>
-                    );
-                  })}
+        <div className="space-y-8">
+          
+          {/* Add Exam Form */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+            <h4 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
+              <CalendarDays className="text-blue-600" size={24} /> إضافة اختبار للجدول
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+              <div>
+                <label className="text-xs font-bold text-slate-500 mb-2 block">تاريخ الاختبار</label>
+                <input type="date" value={newExam.exam_date || ''} onChange={e => setNewExam(prev => ({ ...prev, exam_date: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold outline-none focus:border-blue-500 focus:bg-white transition-all" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 mb-2 block">المادة</label>
+                <input value={newExam.subject || ''} onChange={e => setNewExam(prev => ({ ...prev, subject: e.target.value }))} placeholder="مثال: الرياضيات" className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold outline-none focus:border-blue-500 focus:bg-white transition-all" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 mb-2 block">الفترة</label>
+                  <input type="number" min={1} value={newExam.period || 1} onChange={e => setNewExam(prev => ({ ...prev, period: Number(e.target.value) || 1 }))} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold outline-none focus:border-blue-500 focus:bg-white transition-all" />
                 </div>
-              )}
+                <div>
+                  <label className="text-xs font-bold text-slate-500 mb-2 block">البداية</label>
+                  <input type="time" value={newExam.start_time || '08:00'} onChange={e => setNewExam(prev => ({ ...prev, start_time: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold outline-none focus:border-blue-500 focus:bg-white transition-all" />
+                </div>
+              </div>
+              <button onClick={saveExamSchedule} disabled={!onUpsertExamSchedule || !newExam.subject?.trim()} className="w-full rounded-xl bg-blue-600 p-3 text-sm font-black text-white shadow-lg shadow-blue-200 disabled:opacity-40 hover:bg-blue-700 transition-all h-[46px] flex items-center justify-center gap-2">
+                 حفظ وإضافة للجدول
+              </button>
             </div>
           </div>
 
-          {/* Past Distributions */}
-          <div className="lg:col-span-2 space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-lg font-black text-slate-800">التوزيعات السابقة</h4>
-              <div className="relative">
-                <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                <input 
-                  type="text"
-                  placeholder="ابحث بالتاريخ أو المادة..."
-                  value={distributionFilter}
-                  onChange={e => setDistributionFilter(e.target.value)}
-                  className="pl-4 pr-10 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-blue-500 w-64"
-                />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            
+            {/* Exam Schedule Table */}
+            <div className="space-y-4">
+              <h4 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                <CalendarDays className="text-blue-600" size={24} /> الاختبارات المتاحة للتوزيع
+              </h4>
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                {examSchedule.length === 0 ? (
+                  <div className="text-center text-slate-500 py-12 font-bold">لا توجد اختبارات مجدولة. الرجاء إضافتها من الأعلى.</div>
+                ) : (
+                  <table className="w-full text-right text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-100 text-slate-600 font-black">
+                      <tr>
+                        <th className="p-4">المادة</th>
+                        <th className="p-4">التاريخ والفترة</th>
+                        <th className="p-4">الحالة</th>
+                        <th className="p-4 text-center">إجراءات</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-bold text-slate-800">
+                      {examSchedule.map(exam => {
+                        const hasDistribution = pastDistributions.some(p => p.date === exam.exam_date && p.period === exam.period && p.subject === exam.subject);
+                        return (
+                          <tr key={exam.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-4 text-slate-900">{exam.subject}</td>
+                            <td className="p-4">
+                              <div className="flex flex-col gap-1">
+                                <span className="text-xs text-slate-500">{exam.exam_date}</span>
+                                <span className="text-xs text-blue-600 bg-blue-50 w-fit px-2 py-0.5 rounded-md">فترة {exam.period}</span>
+                              </div>
+                            </td>
+                            <td className="p-4">
+                              {hasDistribution ? (
+                                <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg flex items-center gap-1 w-fit">
+                                  <Check size={14}/> تم التوزيع
+                                </span>
+                              ) : (
+                                <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg w-fit block">
+                                  بانتظار التوزيع
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-4 flex items-center justify-center gap-2">
+                              <button 
+                                onClick={() => { setSelectedExam(exam); setStep('EXCLUDE_PROCTORS'); }}
+                                className={`p-2 rounded-lg transition-all ${hasDistribution ? 'bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600' : 'bg-blue-100 text-blue-600 hover:bg-blue-200 shadow-sm'}`}
+                                title={hasDistribution ? "إعادة التوزيع" : "بدء التوزيع"}
+                              >
+                                <Wand2 size={16} />
+                              </button>
+                              {onDeleteExamSchedule && (
+                                <button 
+                                  onClick={async () => {
+                                    if(confirm('هل أنت متأكد من حذف هذا الاختبار من الجدول بالكامل؟')) {
+                                      await onDeleteExamSchedule(exam.id);
+                                    }
+                                  }}
+                                  className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100 transition-all"
+                                  title="حذف الاختبار"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
-            
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              {pastDistributions.filter(p => p.date.includes(distributionFilter) || p.subject.includes(distributionFilter)).length === 0 ? (
-                <div className="text-center text-slate-500 py-12 font-bold">لا توجد توزيعات سابقة.</div>
-              ) : (
-                <table className="w-full text-right text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-100 text-slate-600 font-black">
-                    <tr>
-                      <th className="p-4">التاريخ</th>
-                      <th className="p-4">الفترة</th>
-                      <th className="p-4">المادة</th>
-                      <th className="p-4">عدد المراقبين</th>
-                      <th className="p-4 text-center">إجراءات</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-bold text-slate-800">
-                    {pastDistributions.filter(p => p.date.includes(distributionFilter) || p.subject.includes(distributionFilter)).map(dist => (
-                      <tr key={dist.key} className="hover:bg-slate-50">
-                        <td className="p-4">{dist.date}</td>
-                        <td className="p-4">
-                          <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-md text-xs">فترة {dist.period}</span>
-                        </td>
-                        <td className="p-4">{dist.subject}</td>
-                        <td className="p-4 text-emerald-600">{dist.count} مراقب</td>
-                        <td className="p-4 flex items-center justify-center gap-2">
-                          <button onClick={() => printOfficialReport(dist)} className="p-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800" title="طباعة التقرير">
-                            <Printer size={16} />
-                          </button>
-                          <button onClick={() => handleDeleteDistribution(dist.key)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200" title="حذف التوزيع">
-                            <Trash2 size={16} />
-                          </button>
-                        </td>
+
+            {/* Past Distributions */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                  <Check className="text-emerald-600" size={24} /> التوزيعات المعتمدة
+                </h4>
+                <div className="relative">
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input 
+                    type="text"
+                    placeholder="ابحث بالتاريخ أو المادة..."
+                    value={distributionFilter}
+                    onChange={e => setDistributionFilter(e.target.value)}
+                    className="pl-4 pr-10 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-blue-500 w-56"
+                  />
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                {pastDistributions.filter(p => p.date.includes(distributionFilter) || p.subject.includes(distributionFilter)).length === 0 ? (
+                  <div className="text-center text-slate-500 py-12 font-bold">لا توجد توزيعات.</div>
+                ) : (
+                  <table className="w-full text-right text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-100 text-slate-600 font-black">
+                      <tr>
+                        <th className="p-4">التاريخ والمادة</th>
+                        <th className="p-4">العدد</th>
+                        <th className="p-4 text-center">إجراءات</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-bold text-slate-800">
+                      {pastDistributions.filter(p => p.date.includes(distributionFilter) || p.subject.includes(distributionFilter)).map(dist => (
+                        <tr key={dist.key} className="hover:bg-slate-50 transition-colors">
+                          <td className="p-4">
+                            <div className="flex flex-col gap-1">
+                              <span className="text-slate-900">{dist.subject}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-slate-500">{dist.date}</span>
+                                <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">فترة {dist.period}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-4 text-emerald-600">{dist.count} مراقب</td>
+                          <td className="p-4 flex items-center justify-center gap-2">
+                            <button onClick={() => printOfficialReport(dist)} className="p-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-all" title="طباعة التقرير">
+                              <Printer size={16} />
+                            </button>
+                            <button onClick={() => handleDeleteDistribution(dist.key)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-all" title="حذف التوزيع">
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </div>
+
           </div>
         </div>
       )}
