@@ -44,7 +44,7 @@ export const MasterPortfolio: React.FC<Props> = ({
       const d = new Date(isoStr);
       if (isNaN(d.getTime())) return false;
       // Compare as local date YYYY-MM-DD
-      const local = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const local = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0}-${String(d.getDate()).padStart(2,'0}`;
       return local === date || local.startsWith(date) || date.startsWith(local);
     } catch { return String(isoStr).startsWith(date); }
   };
@@ -160,7 +160,7 @@ export const MasterPortfolio: React.FC<Props> = ({
         <p>المملكة العربية السعودية</p>
         <p>{APP_CONFIG.MINISTRY_NAME}</p>
         <p>{APP_CONFIG.ADMINISTRATION_NAME}</p>
-        <p>{(systemConfig?.school_name || APP_CONFIG.SCHOOL_NAME)}</p>
+        <p>{(systemConfig?.school_name || 'مدرسة عماد الدين زنكي المتوسطة')}</p>
       </div>
       <div className="official-center">
         <img src={APP_CONFIG.LOGO_URL} alt="الشعار" />
@@ -205,7 +205,7 @@ export const MasterPortfolio: React.FC<Props> = ({
         <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-md shadow-sm border-b border-slate-200 p-3 overflow-x-auto print:hidden no-scrollbar">
           <div className="flex gap-2 min-w-max">
             <button 
-              onClick={() => setActiveTab('COVER')}
+              onClick={() => setActiveTab('COVER}
               className={`px-4 py-2 rounded-xl text-sm font-black transition-all ${activeTab === 'COVER' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
             >
               الغلاف والإحصائيات
@@ -242,7 +242,7 @@ export const MasterPortfolio: React.FC<Props> = ({
           <div>
             <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-2">ملف إنجاز الاختبارات الشامل</h2>
             <p className="text-amber-200 font-bold text-sm md:text-base leading-relaxed max-w-xl">
-              {publicMode ? 'نسخة حية محدثة تلقائيًا للمشرفين و${(systemConfig?.directorate_name || APP_CONFIG.ADMINISTRATION_NAME)} بمحافظة جدة' : 'تصدير كتاب PDF متكامل يحتوي على جميع بيانات وإحصائيات الاختبارات الميدانية'}
+              {publicMode ? 'نسخة حية محدثة تلقائيًا للمشرفين و${(systemConfig?.directorate_name || 'إدارة التعليم')} بمحافظة جدة' : 'تصدير كتاب PDF متكامل يحتوي على جميع بيانات وإحصائيات الاختبارات الميدانية'}
             </p>
           </div>
         </div>
@@ -450,8 +450,8 @@ export const MasterPortfolio: React.FC<Props> = ({
              <div className="cover-details">
               <p>المملكة العربية السعودية</p>
               <p>وزارة التعليم</p>
-              <p>${(systemConfig?.directorate_name || APP_CONFIG.ADMINISTRATION_NAME)} بمحافظة جدة</p>
-              <p>{(systemConfig?.school_name || APP_CONFIG.SCHOOL_NAME)}</p>
+              <p>${(systemConfig?.directorate_name || 'إدارة التعليم')} بمحافظة جدة</p>
+              <p>{(systemConfig?.school_name || 'مدرسة عماد الدين زنكي المتوسطة')}</p>
               <p style={{marginTop: '40px', fontSize: '24px', color: '#0f172a'}}>العام الدراسي: {systemConfig.academic_year || '1446 / 1447'}</p>
            </div>
            <div className="cover-signature-footer">
@@ -582,7 +582,7 @@ export const MasterPortfolio: React.FC<Props> = ({
                   <td>{row.committee}</td>
                   <td>{row.person}</td>
                   <td>
-                    {new Date(row.time).toLocaleDateString('ar-SA')}
+                    {new Date(row.time).toLocaleDateString('ar-SA}
                     <br />
                     <span style={{fontFamily: 'monospace'}}>{safeTime(row.time)}</span>
                   </td>
@@ -634,7 +634,7 @@ export const MasterPortfolio: React.FC<Props> = ({
                <div className="portfolio-page material-summary-page">
                  <OfficialPortfolioHeader
                    title="التقرير الشامل للجان المادة"
-                   meta={<>{exam.subject}<br />{new Date(exam.exam_date).toLocaleDateString('ar-SA')}</>}
+                   meta={<>{exam.subject}<br />{new Date(exam.exam_date).toLocaleDateString('ar-SA}</>}
                  />
                  
                  <div className="material-summary-title">

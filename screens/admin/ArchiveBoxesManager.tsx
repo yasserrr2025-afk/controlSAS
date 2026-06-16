@@ -102,7 +102,7 @@ export const ArchiveBoxesManager: React.FC<Props> = ({
     try {
       const d = new Date(iso);
       if (isNaN(d.getTime())) return false;
-      const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0}-${String(d.getDate()).padStart(2, '0}`;
       return local === date;
     } catch {
       return false;
@@ -792,7 +792,7 @@ export const ArchiveBoxesManager: React.FC<Props> = ({
                           className={`px-5 py-3 rounded-2xl font-black text-sm transition-all border-2 ${form.subject === e.subject ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
                         >
                           {e.subject}
-                          {e.grades && e.grades.length > 0 && <span className="mr-2 text-[10px] opacity-70">({e.grades.join(', ')})</span>}
+                          {e.grades && e.grades.length > 0 && <span className="mr-2 text-[10px] opacity-70">({e.grades.join(', })</span>}
                         </button>
                       ))}
                     </div>

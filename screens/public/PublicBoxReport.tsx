@@ -61,7 +61,7 @@ export const PublicBoxReport: React.FC<Props> = ({
     try {
       const d = new Date(iso);
       if (isNaN(d.getTime())) return false;
-      const local = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const local = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0}-${String(d.getDate()).padStart(2,'0}`;
       return local === date;
     } catch { return false; }
   };
@@ -127,7 +127,7 @@ export const PublicBoxReport: React.FC<Props> = ({
               </div>
               <div>
                 <p className="text-indigo-200 text-xs font-black tracking-wider">وزارة التعليم</p>
-                <p className="text-white font-black text-sm leading-tight">{(systemConfig?.school_name || (systemConfig?.school_name || '${(systemConfig?.school_name || 'مدرسة عماد الدين زنكي المتوسطة')}'))}</p>
+                <p className="text-white font-black text-sm leading-tight">{(systemConfig?.school_name || 'مدرسة عماد الدين زنكي المتوسطة')}</p>
               </div>
             </div>
             <div className="text-left">
