@@ -183,7 +183,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
                   WebkitTextFillColor: 'transparent',
                   backgroundClip: 'text',
                 }}>
-                {systemConfig?.school_name || 'اسم المدرسة'}
+                مدرسة عماد الدين زنكي المتوسطة
               </p>
             </div>
           </div>
@@ -309,7 +309,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
 
       {/* نص سفلي */}
       <p className="relative z-10 mt-8 text-[10px] text-white/12 font-bold text-center tracking-[0.25em] animate-fade-in delay-300">
-        {systemConfig?.school_name || 'اسم المدرسة'} · نظام كنترول الاختبارات الموحد
+        مدرسة عماد الدين زنكي المتوسطة · نظام كنترول الاختبارات الموحد
       </p>
 
       <style>{`

@@ -33,7 +33,7 @@ type SheetPage = {
   parts?: number;
 };
 
-const SCHOOL_NAME = systemConfig?.school_name || 'اسم المدرسة';
+const SCHOOL_NAME = 'مدرسة عماد الدين زنكي المتوسطة';
 const DEFAULT_ACADEMIC_YEAR = '1447 / 1448';
 const SIGNATURE_SINGLE_COLUMN_LIMIT = 34;
 const SIGNATURE_ROWS_PER_PAGE = 68;

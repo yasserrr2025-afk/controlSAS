@@ -11,7 +11,7 @@ const PrintHeader: React.FC<{ date: string }> = ({ date }) => (
         <p>المملكة العربية السعودية</p>
         <p>وزارة التعليم</p>
         <p>إدارة التعليم بمحافظة جدة</p>
-        <p>{systemConfig?.school_name || 'اسم المدرسة'}</p>
+        <p>مدرسة عماد الدين زنكي المتوسطة</p>
       </div>
       <div className="flex flex-col items-center justify-center">
         <img src={APP_CONFIG.LOGO_URL} alt="شعار" className="w-16 h-16 object-contain" />
