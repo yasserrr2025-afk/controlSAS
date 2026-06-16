@@ -6,6 +6,7 @@ import { db } from '../supabase';
 
 interface Props {
   users: User[];
+  systemConfig?: any;
   onLogin: (user: User) => void;
   onAlert: (msg: string, type: any) => void;
 }
@@ -18,7 +19,7 @@ const normalizeNationalId = (value: string) =>
     .replace(/[\u06f0-\u06f9]/g, digit => String(digit.charCodeAt(0) - 1776))
     .replace(/\D/g, '');
 
-const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
+const Login: React.FC<Props> = ({ users, systemConfig, onLogin, onAlert }) => {
   const [loginId, setLoginId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -175,7 +176,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
             <div className="text-center space-y-1">
               <p className="text-white/35 font-black text-[9px] uppercase tracking-[0.35em]">المملكة العربية السعودية</p>
               <p className="text-white/75 font-black text-sm">وزارة التعليم</p>
-              <p className="text-white/50 font-bold text-xs">إدارة التعليم بمحافظة جدة</p>
+              <p className="text-white/50 font-bold text-xs">{systemConfig?.directorate_name || 'إدارة التعليم بمحافظة جدة'}</p>
               <p className="font-black text-xs mt-0.5"
                 style={{
                   background: 'linear-gradient(135deg, #60a5fa, #818cf8)',
@@ -183,7 +184,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
                   WebkitTextFillColor: 'transparent',
                   backgroundClip: 'text',
                 }}>
-                مدرسة عماد الدين زنكي المتوسطة
+                {systemConfig?.school_name || 'مدرسة عماد الدين زنكي المتوسطة'}
               </p>
             </div>
           </div>
@@ -309,7 +310,7 @@ const Login: React.FC<Props> = ({ onLogin, onAlert }) => {
 
       {/* نص سفلي */}
       <p className="relative z-10 mt-8 text-[10px] text-white/12 font-bold text-center tracking-[0.25em] animate-fade-in delay-300">
-        مدرسة عماد الدين زنكي المتوسطة · نظام كنترول الاختبارات الموحد
+        {systemConfig?.school_name || 'مدرسة عماد الدين زنكي المتوسطة'} · نظام كنترول الاختبارات الموحد
       </p>
 
       <style>{`

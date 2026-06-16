@@ -602,7 +602,7 @@ const App: React.FC = () => {
       case 'my-tasks': return <ProctorDailyAssignmentFlow user={currentUser} supervisions={supervisions} setSupervisions={fetchData} students={students} absences={absences} setAbsences={fetchData} deliveryLogs={deliveryLogs} setDeliveryLogs={async (log) => { await db.deliveryLogs.upsert(log); await fetchData(); }} sendRequest={async (txt, com) => { await db.controlRequests.insert({ from: currentUser.full_name, committee: com, text: txt, time: new Date().toISOString(), status: 'PENDING' }); await fetchData(); }} controlRequests={controlRequests} users={users} systemConfig={systemConfig} committeeReports={committeeReports} onReportUpsert={async (report) => { await db.committeeReports.upsert(report); await fetchData(); }} onAlert={addLocalNotification} />;
       case 'envelope-opening': return <EnvelopeOpeningView user={currentUser} systemConfig={systemConfig} users={users} />;
       case 'envelope-labels': return <EnvelopeLabelsPrint students={students} />;
-      case 'door-labels': return <DoorLabelsPrint students={students} />;
+      case 'door-labels': return <DoorLabelsPrint students={students} systemConfig={systemConfig} />;
       default: return <div className="p-20 text-center animate-pulse text-slate-400 font-bold">جاري تحميل المحتوى المخصص...</div>;
     }
   };
@@ -742,7 +742,7 @@ const App: React.FC = () => {
         style={{ paddingTop: currentUser ? 'calc(env(safe-area-inset-top) + 80px)' : undefined }}
         className={`transition-all duration-300 min-h-screen ${currentUser ? (isSidebarCollapsed ? 'lg:mr-24' : 'lg:mr-80') : ''} ${currentUser ? 'px-4 pb-6 lg:p-10 lg:pt-10' : ''}`}
       >
-        {currentUser ? renderContent() : <Login users={users} onLogin={handleLoginSuccess} onAlert={addLocalNotification} />}
+        {currentUser ? renderContent() : <Login users={users} systemConfig={systemConfig} onLogin={handleLoginSuccess} onAlert={addLocalNotification} />}
       </main>
 
       {/* 

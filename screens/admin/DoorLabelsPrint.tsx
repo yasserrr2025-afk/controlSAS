@@ -1,13 +1,14 @@
 import React, { useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Student } from '../../types';
+import { Student, SystemConfig } from '../../types';
 import { APP_CONFIG } from '../../constants';
 
 interface Props {
   students: Student[];
+  systemConfig?: SystemConfig & { directorate_name?: string };
 }
 
-const DoorLabelsPrint: React.FC<Props> = ({ students }) => {
+const DoorLabelsPrint: React.FC<Props> = ({ students, systemConfig }) => {
   const committees = useMemo(() => {
     const nums = Array.from(new Set(students.map(s => s.committee_number)))
       .filter(Boolean)
@@ -103,7 +104,8 @@ const DoorLabelsPrint: React.FC<Props> = ({ students }) => {
                   <div className="space-y-1 text-slate-800">
                     <p className="font-bold text-sm">المملكة العربية السعودية</p>
                     <p className="font-bold text-sm">وزارة التعليم</p>
-                    <p className="font-bold text-sm">إدارة التعليم</p>
+                    <p className="font-bold text-sm">{systemConfig?.directorate_name ? `إدارة التعليم بـ${systemConfig.directorate_name}` : 'إدارة التعليم'}</p>
+                    <p className="font-bold text-sm">{systemConfig?.school_name || 'اسم المدرسة'}</p>
                   </div>
                   <img src={APP_CONFIG.LOGO_URL} alt="Ministry Logo" className="w-20 h-20 object-contain opacity-90" />
                 </div>

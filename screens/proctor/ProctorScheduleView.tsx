@@ -12,6 +12,8 @@ const dateKey = (value: string) => (value || '').slice(0, 10);
 const isReserveAssignment = (item: Supervision) => String(item.subject || '').includes('[RESERVE]');
 const cleanSubject = (subject?: string) => String(subject || 'اختبار').replace('[RESERVE]', '').trim() || 'اختبار';
 
+import { isPlaceholderProctorStart } from '../../utils/proctorTime';
+
 const formatDate = (value: string) => {
   const key = dateKey(value);
   if (!key) return 'غير محدد';
@@ -21,11 +23,6 @@ const formatDate = (value: string) => {
     month: 'long',
     day: 'numeric',
   });
-};
-
-const isStartedAssignment = (value: string) => {
-  const d = new Date(value);
-  return value && !Number.isNaN(d.getTime()) && !(d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0);
 };
 
 const formatTime = (value: string) => {
@@ -52,7 +49,7 @@ const ProctorScheduleView: React.FC<Props> = ({ user, supervisions, systemConfig
   const todayAssignments = myAssignments.filter(item => dateKey(item.date) === today);
   const primaryAssignments = myAssignments.filter(item => !isReserveAssignment(item));
   const reserveAssignments = myAssignments.filter(isReserveAssignment);
-  const startedAssignments = primaryAssignments.filter(item => isStartedAssignment(item.date));
+  const startedAssignments = primaryAssignments.filter(item => !isPlaceholderProctorStart(item.date));
   const emergencyAssignments = primaryAssignments.filter(item => String(item.subject || '').includes('بديل'));
 
   const stats = [
@@ -117,7 +114,7 @@ const ProctorScheduleView: React.FC<Props> = ({ user, supervisions, systemConfig
             const isPast = key < today;
             const isReserve = isReserveAssignment(item);
             const isEmergency = String(item.subject || '').includes('بديل');
-            const isStarted = !isReserve && isStartedAssignment(item.date);
+            const isStarted = !isReserve && !isPlaceholderProctorStart(item.date);
             const status = isReserve ? 'احتياط' : isEmergency ? 'بديل طارئ' : isStarted ? 'تمت المباشرة' : isToday ? 'لجنة اليوم' : isPast ? 'منتهية' : 'قادمة';
 
             return (
