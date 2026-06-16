@@ -163,6 +163,14 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     ? assignmentStartTimes[activeAssignment.id] || activeAssignment.date
     : null;
   const isEmergencyAssignment = !!activeAssignment && /بديل|طوارئ|احتياط|\[RESERVE\]/.test(String(activeAssignment.subject || ''));
+  // احتياط: يفتح الاعتماد عند اعتماد اللجنة من الكنترول (delivery_log مؤكد CONFIRMED)
+  const isReserveCommitteeConfirmedByControl = useMemo(() => {
+    if (!isEmergencyAssignment || !activeAssignment) return false;
+    const committeeDelivery = deliveryLogs.find(
+      (l) => l.committee_number === activeAssignment.committee_number && l.status === 'CONFIRMED'
+    );
+    return !!committeeDelivery;
+  }, [isEmergencyAssignment, activeAssignment, deliveryLogs]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setGateNow(new Date()), 30000);
@@ -763,17 +771,44 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
               <p className="font-black text-slate-900 mt-1">{activeAssignment.period || 1}</p>
             </div>
           </div>
-          <button
-            onClick={confirmActiveAssignment}
-            disabled={!assignmentGate.canConfirm}
-            className="w-full p-8 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-[2.5rem] font-black text-2xl shadow-xl shadow-emerald-500/20 hover:from-emerald-500 hover:to-emerald-400 transition-all flex items-center justify-center gap-4 active:scale-[0.97] disabled:bg-none disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed"
-          >
-            <UserCheck size={32} />
-            {assignmentGate.canConfirm ? 'تأكيد اعتماد اللجنة' : `يفتح الاعتماد عند ${gateTimeLabel}`}
-          </button>
-          <p className="mt-4 text-xs font-black text-slate-400">
-            اعتماد اللجنة يظهر قبل بداية الاختبار بـ 15 دقيقة حسب وقت بداية الجلسة في إعدادات النظام.
-          </p>
+          {isEmergencyAssignment ? (
+            // المراقب احتياط: يفتح الاعتماد عند اعتماد اللجنة من الكنترول
+            isReserveCommitteeConfirmedByControl ? (
+              <button
+                onClick={confirmActiveAssignment}
+                className="w-full p-8 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-[2.5rem] font-black text-2xl shadow-xl shadow-emerald-500/20 hover:from-emerald-500 hover:to-emerald-400 transition-all flex items-center justify-center gap-4 active:scale-[0.97]"
+              >
+                <UserCheck size={32} />
+                تأكيد المباشرة كاحتياط
+              </button>
+            ) : (
+              <div className="w-full p-8 bg-violet-50 border-2 border-violet-100 rounded-[2.5rem] flex flex-col items-center gap-3 text-center">
+                <div className="w-16 h-16 bg-violet-100 text-violet-600 rounded-2xl flex items-center justify-center">
+                  <Shield size={32} />
+                </div>
+                <p className="font-black text-violet-800 text-xl">في حالة استعداد تام</p>
+                <p className="text-violet-600 font-bold text-sm leading-relaxed">
+                  أنت مراقب احتياط للجنة {activeAssignment.committee_number}.<br/>
+                  سوف يتم إسنادها إليك في حال اعتمادها من الكنترول.
+                </p>
+              </div>
+            )
+          ) : (
+            // المراقب عادي: يفتح الاعتماد قبل 15 دقيقة من بداية الاختبار
+            <>
+              <button
+                onClick={confirmActiveAssignment}
+                disabled={!assignmentGate.canConfirm}
+                className="w-full p-8 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-[2.5rem] font-black text-2xl shadow-xl shadow-emerald-500/20 hover:from-emerald-500 hover:to-emerald-400 transition-all flex items-center justify-center gap-4 active:scale-[0.97] disabled:bg-none disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none disabled:cursor-not-allowed"
+              >
+                <UserCheck size={32} />
+                {assignmentGate.canConfirm ? 'تأكيد اعتماد اللجنة' : `يفتح الاعتماد عند ${gateTimeLabel}`}
+              </button>
+              <p className="mt-4 text-xs font-black text-slate-400">
+                كن مستعداً في موقعك، سيفتح زر الاعتماد قبيل انطلاق الاختبار تلقائياً. تحلَّ بالهدوء والجاهزية التامة.
+              </p>
+            </>
+          )}
         </div>
       </div>
     );
@@ -1129,6 +1164,15 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     );
   }
 
+  // تحقق من كون المراقب احتياطاً بدون لجنة معينة (ليس لديه إسناد في اليوم الحالي)
+  const isReserveProctor = useMemo(() => {
+    if (!user.assigned_committees || user.assigned_committees.length === 0) return false;
+    // إذا لم يكن لديه إسناد في اليوم، ويمتلك لجنة مخصصة كاحتياط
+    return !supervisions.some(
+      (s) => s.teacher_id === user.id && matchesActiveDate(s.date)
+    ) && user.assigned_committees.length > 0;
+  }, [user, supervisions, activeDate]);
+
   // واجهة مسح الكود للمباشرة
   if (!activeCommittee) {
     return (
@@ -1146,12 +1190,34 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
               <div className="text-right">
                 <h3 className="text-3xl font-black">{user.full_name}</h3>
                 <span className="bg-blue-600 text-white px-4 py-1 rounded-full font-black text-[10px] mt-2 inline-block uppercase tracking-widest">
-                  بانتظار المباشرة
+                  {user.assigned_committees && user.assigned_committees.length > 0 ? 'احتياط · في حالة استعداد' : 'بانتظار المباشرة'}
                 </span>
               </div>
             </div>
           </div>
         </div>
+
+        {/* بطاقة الاحتياط المخصص */}
+        {user.assigned_committees && user.assigned_committees.length > 0 && (
+          <div className="bg-violet-50 border-2 border-violet-200 rounded-[3rem] p-8 shadow-lg">
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-16 h-16 bg-violet-600 text-white rounded-2xl flex items-center justify-center shadow-xl">
+                <Shield size={32} />
+              </div>
+              <h3 className="text-2xl font-black text-violet-900">مراقب احتياط</h3>
+              <p className="text-violet-700 font-bold leading-relaxed">
+                أنت مُعيَّن احتياطاً للجنة <span className="font-black text-violet-900">{user.assigned_committees.join('، ')}</span>.
+              </p>
+              <p className="text-violet-600 text-sm font-bold">
+                سوف يتم إسنادها إليك في حال اعتمادها من الكنترول. كن جاهزاً في موقعك.
+              </p>
+              <div className="mt-2 flex items-center gap-2 bg-violet-100 px-5 py-3 rounded-2xl">
+                <div className="w-3 h-3 rounded-full bg-violet-500 animate-pulse"></div>
+                <span className="font-black text-violet-700 text-sm">في حالة استعداد تام</span>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="bg-white p-12 rounded-[4rem] shadow-2xl border-b-[12px] border-slate-950">
           <div className="space-y-4 mb-12">
             <div className="bg-slate-950 w-24 h-24 rounded-[2rem] flex items-center justify-center mx-auto shadow-2xl text-blue-400">

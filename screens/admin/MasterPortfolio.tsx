@@ -79,8 +79,11 @@ export const MasterPortfolio: React.FC<Props> = ({
   }, [supervisions]);
 
   const printDate = new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  const controlHeadName = users.find(u => u.role === 'CONTROL_MANAGER')?.full_name || 'رئيس الكنترول';
-  const schoolManagerName = users.find(u => u.role === 'ADMIN')?.full_name || 'مدير المدرسة';
+  const controlChiefFromSettings = systemConfig?.control_chief_id
+    ? users.find(u => u.id === systemConfig.control_chief_id)?.full_name
+    : null;
+  const controlHeadName = controlChiefFromSettings || users.find(u => u.role === 'CONTROL_MANAGER')?.full_name || 'رئيس الكنترول';
+  const schoolManagerName = systemConfig?.principal_name || users.find(u => u.role === 'ADMIN')?.full_name || 'مدير المدرسة';
 
   const getStudentExamStatus = (student: Student, committeeNumber: string, date: string, period?: number) => {
     return absences.find(a =>
@@ -154,12 +157,17 @@ export const MasterPortfolio: React.FC<Props> = ({
     return [...reportRows, ...requestRows].sort((a, b) => String(a.time).localeCompare(String(b.time)));
   }, [committeeReports, controlRequests, supervisions, users]);
 
-  const OfficialPortfolioHeader = ({ title, meta }: { title: string; meta?: React.ReactNode }) => (
+  const OfficialPortfolioHeader = ({ title, meta }: { title: string; meta?: React.ReactNode }) => {
+    const directorateName = (systemConfig as any)?.directorate_name
+      ? `إدارة التعليم بـ${(systemConfig as any).directorate_name}`
+      : APP_CONFIG.ADMINISTRATION_NAME;
+
+    return (
     <div className="official-report-header">
       <div className="official-side official-side-right">
         <p>المملكة العربية السعودية</p>
         <p>{APP_CONFIG.MINISTRY_NAME}</p>
-        <p>{APP_CONFIG.ADMINISTRATION_NAME}</p>
+        <p>{directorateName}</p>
         <p>{systemConfig?.school_name || 'اسم المدرسة'}</p>
       </div>
       <div className="official-center">
@@ -170,10 +178,10 @@ export const MasterPortfolio: React.FC<Props> = ({
       <div className="official-side official-side-left">
         <p>تاريخ الطباعة: {printDate}</p>
         <p>العام الدراسي: {systemConfig.academic_year || '1446 / 1447'}</p>
-        <p>{meta || 'رقم الملف: إنجاز الاختبارات'}</p>
       </div>
     </div>
   );
+  };
 
   const SignatureFooter = () => (
     <div className="signature-footer">

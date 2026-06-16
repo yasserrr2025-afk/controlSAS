@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Absence, Student, Supervision, User } from '../../types';
+import { Absence, Student, Supervision, User, SystemConfig } from '../../types';
 import { Printer, Calendar, AlertTriangle, FileCheck, Info, Loader2, ListChecks, History, UserMinus, Clock } from 'lucide-react';
 import OfficialHeader from '../../components/OfficialHeader';
 
@@ -10,9 +10,10 @@ interface Props {
   students: Student[];
   supervisions: Supervision[];
   users: User[];
+  systemConfig?: SystemConfig & { directorate_name?: string };
 }
 
-const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions, users }) => {
+const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions, users, systemConfig }) => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [isPrinting, setIsPrinting] = useState(false);
   const [printQueue, setPrintQueue] = useState<Absence[]>([]);
@@ -86,7 +87,11 @@ const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions,
   const AbsenceForm = ({ absence }: { absence: Absence }) => {
     const student = students.find(s => s.national_id === absence.student_id);
     const proctorName = getProctorName(absence.committee_number, absence.date);
-    const headName = getRandomUserByRole('CONTROL_MANAGER');
+    // رئيس الكنترول: من الإعدادات أولاً ثم من الأدوار
+    const controlChiefFromSettings = systemConfig?.control_chief_id
+      ? users.find(u => u.id === systemConfig.control_chief_id)?.full_name
+      : null;
+    const headName = controlChiefFromSettings || getRandomUserByRole('CONTROL_MANAGER');
     const controlName = getControlMemberForGrade(student?.grade || '');
     const counselorName = getRandomUserByRole('COUNSELOR');
     const dayName = getArabicDayName(absence.date);
@@ -94,7 +99,7 @@ const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions,
     return (
       <div className="official-page-container">
         <div className="official-a4-page relative flex flex-col border-[1.5pt] border-slate-900 p-4 pt-2">
-          <OfficialHeader />
+          <OfficialHeader systemConfig={systemConfig} date={absence.date} />
           <div className="text-center mb-4">
             <p className="text-[7pt] font-black text-slate-500 mb-1">النموذج الموحد رقم: 36</p>
             <h2 className="text-[10pt] font-black mb-1 border-b-2 border-slate-900 inline-block px-8">محضر إثبات غياب طالب</h2>
@@ -176,6 +181,7 @@ const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions,
              <div className="text-center space-y-12">
                 <p className="font-black underline underline-offset-4 text-[10pt]">مدير المدرسة</p>
                 <div className="space-y-1">
+                  {systemConfig?.principal_name && <p className="font-black">{systemConfig.principal_name}</p>}
                   <p className="font-bold">.........................</p>
                   <p className="text-slate-400 italic text-[7pt]">(الختم الرسمي)</p>
                 </div>
@@ -190,13 +196,16 @@ const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions,
   const DelayForm = ({ absence }: { absence: Absence }) => {
     const student = students.find(s => s.national_id === absence.student_id);
     const proctorName = getProctorName(absence.committee_number, absence.date);
-    const headName = getRandomUserByRole('CONTROL_MANAGER');
+    const controlChiefFromSettings = systemConfig?.control_chief_id
+      ? users.find(u => u.id === systemConfig.control_chief_id)?.full_name
+      : null;
+    const headName = controlChiefFromSettings || getRandomUserByRole('CONTROL_MANAGER');
     const dayName = getArabicDayName(absence.date);
 
     return (
       <div className="official-page-container">
         <div className="official-a4-page relative flex flex-col border-[1.5pt] border-slate-900 p-4 pt-2">
-          <OfficialHeader />
+          <OfficialHeader systemConfig={systemConfig} date={absence.date} />
           <div className="text-center mb-8">
             <p className="text-[7pt] font-black text-slate-500 mb-1">النموذج الموحد رقم: 31</p>
             <h2 className="text-[10pt] font-black mb-1 border-b-2 border-slate-900 inline-block px-8">تعهد تأخر طالب عن اختبار</h2>
@@ -251,7 +260,7 @@ const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions,
             <thead className="table-header-group">
               <tr>
                 <th colSpan={6} className="p-0 font-normal border-none">
-                  <OfficialHeader />
+                  <OfficialHeader systemConfig={systemConfig} />
                   <div className="text-center mb-6">
                     <h2 className="text-[10pt] font-black mb-1 border-b-2 border-slate-900 inline-block px-8 uppercase">
                       سجل الحالات التراكمي الشامل

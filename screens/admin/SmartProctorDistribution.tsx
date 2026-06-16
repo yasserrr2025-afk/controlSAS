@@ -373,9 +373,19 @@ const SmartProctorDistribution: React.FC<Props> = ({
             </tbody>
           </table>
           
-          <div style="display: flex; justify-content: space-between; margin-top: 30px; font-weight: bold; font-size: 10pt;">
-            <div>رئيس الكنترول: ${users.find(u => u.role === 'CONTROL_MANAGER')?.full_name || '....................'}</div>
-            <div>مدير المدرسة: ${users.find(u => u.role === 'ADMIN')?.full_name || '....................'}</div>
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 50px; font-size: 10pt;">
+            <div style="text-align: center;">
+              <div style="font-weight: bold; font-size: 10pt; margin-bottom: 6px;">رئيس الكنترول</div>
+              <div style="font-size: 10pt;">${
+                systemConfig?.control_chief_id
+                  ? users.find(u => u.id === systemConfig.control_chief_id)?.full_name
+                  : users.find(u => u.role === 'CONTROL_MANAGER' || u.role === 'CONTROL')?.full_name || '....................'
+              }</div>
+            </div>
+            <div style="text-align: center;">
+              <div style="font-weight: bold; font-size: 10pt; margin-bottom: 6px;">مدير المدرسة</div>
+              <div style="font-size: 10pt;">${systemConfig?.principal_name || '....................'}</div>
+            </div>
           </div>
         </body>
       </html>
@@ -669,17 +679,30 @@ const SmartProctorDistribution: React.FC<Props> = ({
                 {distribution.filter(d => d.assignmentType === 'PRIMARY').map(item => (
                   <div 
                     key={item.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, item.id)}
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, item.id)}
-                    className={`bg-white border-2 rounded-2xl p-4 transition-all shadow-sm cursor-grab ${draggedItemId === item.id ? 'opacity-50 border-blue-400 border-dashed' : 'border-slate-100 hover:border-blue-300'}`}
+                    className={`bg-white border-2 rounded-2xl p-4 transition-all shadow-sm ${
+                      draggedItemId && draggedItemId !== item.id
+                        ? 'border-blue-300 bg-blue-50 border-dashed scale-[1.01]'
+                        : 'border-slate-100 hover:border-blue-200'
+                    }`}
                   >
                     <div className="flex justify-between items-center mb-3">
                       <span className="bg-blue-100 text-blue-800 font-black px-3 py-1 rounded-lg text-sm">لجنة {item.committeeNumber}</span>
-                      <GripVertical size={16} className="text-slate-300" />
                     </div>
-                    <div className="font-black text-slate-800 text-lg">{item.teacherName}</div>
+                    {/* فقط اسم المراقب هو القابل للسحب */}
+                    <div
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, item.id)}
+                      className={`flex items-center gap-2 font-black text-slate-800 text-lg cursor-grab select-none py-2 px-3 rounded-xl transition-all ${
+                        draggedItemId === item.id
+                          ? 'opacity-40 bg-slate-100'
+                          : 'hover:bg-slate-50 hover:shadow-sm'
+                      }`}
+                    >
+                      <GripVertical size={16} className="text-slate-400 shrink-0" />
+                      <span>{item.teacherName}</span>
+                    </div>
                     <div className="mt-2 flex gap-2 text-[10px] font-bold">
                       <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded">أساسي سابقاً: {item.previousPrimaryCount}</span>
                       <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded">احتياط سابقاً: {item.previousReserveCount}</span>
@@ -698,17 +721,30 @@ const SmartProctorDistribution: React.FC<Props> = ({
                 {distribution.filter(d => d.assignmentType === 'RESERVE').map((item, idx) => (
                   <div 
                     key={item.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, item.id)}
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, item.id)}
-                    className={`bg-emerald-50 border-2 rounded-xl p-3 transition-all cursor-grab ${draggedItemId === item.id ? 'opacity-50 border-emerald-400 border-dashed' : 'border-emerald-100 hover:border-emerald-300'}`}
+                    className={`bg-emerald-50 border-2 rounded-xl p-3 transition-all ${
+                      draggedItemId && draggedItemId !== item.id
+                        ? 'border-emerald-400 bg-emerald-100 border-dashed'
+                        : 'border-emerald-100 hover:border-emerald-300'
+                    }`}
                   >
                     <div className="flex justify-between items-center mb-1">
                       <span className="text-emerald-800 font-black text-xs">احتياط {idx + 1}</span>
-                      <GripVertical size={14} className="text-emerald-300" />
                     </div>
-                    <div className="font-black text-slate-800 text-sm">{item.teacherName}</div>
+                    {/* فقط اسم المراقب هو القابل للسحب */}
+                    <div
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, item.id)}
+                      className={`flex items-center gap-2 font-black text-slate-800 text-sm cursor-grab select-none py-1.5 px-2 rounded-lg transition-all ${
+                        draggedItemId === item.id
+                          ? 'opacity-40 bg-emerald-100'
+                          : 'hover:bg-emerald-100'
+                      }`}
+                    >
+                      <GripVertical size={14} className="text-emerald-400 shrink-0" />
+                      <span>{item.teacherName}</span>
+                    </div>
                     <div className="mt-1 text-[10px] text-slate-500 font-bold flex gap-2">
                       <span>أساسي: {item.previousPrimaryCount}</span>
                       <span>احتياط: {item.previousReserveCount}</span>

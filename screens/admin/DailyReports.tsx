@@ -54,15 +54,20 @@ function matchesDate(isoStr: string | undefined | null, date: string): boolean {
 /* ══════════════════════════════════════════════
    مكوّن الكليشة الرسمية للطباعة
 ══════════════════════════════════════════════ */
-const PrintHeader: React.FC<{ date: string; subject?: string }> = ({ date, subject }) => (
+const PrintHeader: React.FC<{ date: string; subject?: string; systemConfig?: SystemConfig & { directorate_name?: string } }> = ({ date, subject, systemConfig }) => {
+  const directorateName = systemConfig?.directorate_name
+    ? `إدارة التعليم بـ${systemConfig.directorate_name}`
+    : 'إدارة التعليم';
+  const schoolName = systemConfig?.school_name || 'اسم المدرسة';
+  return (
   <div className="w-full border-b-4 border-double border-slate-900 pb-3 mb-4">
     <div className="grid grid-cols-3 items-center gap-2">
       {/* يمين: البيانات الرسمية */}
       <div className="text-[9pt] font-black text-right leading-relaxed space-y-0.5">
         <p>المملكة العربية السعودية</p>
         <p>وزارة التعليم</p>
-        <p>إدارة التعليم بمحافظة جدة</p>
-        <p>مدرسة عماد الدين زنكي المتوسطة</p>
+        <p>{directorateName}</p>
+        <p>{schoolName}</p>
       </div>
       {/* وسط: شعار */}
       <div className="flex flex-col items-center justify-center">
@@ -74,11 +79,12 @@ const PrintHeader: React.FC<{ date: string; subject?: string }> = ({ date, subje
         <p>التاريخ: <span className="font-black tabular-nums">{new Date(date).toLocaleDateString('ar-SA')}</span></p>
         <p>اليوم: <span className="font-black">{new Intl.DateTimeFormat('ar-SA', { weekday: 'long' }).format(new Date(date))}</span></p>
         {subject && <p>المادة: <span className="font-black">{subject}</span></p>}
-        <p>العام الدراسي: <span className="font-black">{systemConfig.academic_year || '1446 / 1447'}</span></p>
+        <p>العام الدراسي: <span className="font-black">{systemConfig?.academic_year || '1446 / 1447'}</span></p>
       </div>
     </div>
   </div>
-);
+  );
+};
 
 /* ══════════════════════════════════════════════
    مكوّن الطباعة: مسير المراقبة والاستلام الميداني
@@ -87,9 +93,10 @@ const PrintableMonitorSheet: React.FC<{
   rows: any[];
   date: string;
   subject: string;
-}> = ({ rows, date, subject }) => (
+  systemConfig?: SystemConfig & { directorate_name?: string };
+}> = ({ rows, date, subject, systemConfig }) => (
   <div className="print-page" style={{ fontFamily: "'Tajawal', Arial", direction: 'rtl', padding: '8mm', color: '#000' }}>
-    <PrintHeader date={date} subject={subject} />
+    <PrintHeader date={date} subject={subject} systemConfig={systemConfig} />
 
     {/* عنوان المستند */}
     <div style={{ textAlign: 'center', marginBottom: '6mm' }}>
@@ -171,9 +178,9 @@ const PrintableMonitorSheet: React.FC<{
     {/* خانات التوقيع الرسمية */}
     <div style={{ marginTop: '10mm', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10mm', textAlign: 'center', fontSize: '9pt' }}>
       {[
-        { title: 'رئيس لجنة الكنترول', sub: '.............................' },
+        { title: 'رئيس لجنة الكنترول', sub: systemConfig?.control_chief_id ? (systemConfig as any).control_chief_name || '.............................' : '.............................' },
         { title: 'وكيل شؤون الطلاب', sub: '.............................' },
-        { title: 'مدير المدرسة', sub: '(الختم الرسمي)' },
+        { title: 'مدير المدرسة', sub: systemConfig?.principal_name ? systemConfig.principal_name : '(الختم الرسمي)' },
       ].map(sig => (
         <div key={sig.title} style={{ borderTop: '1px solid #000', paddingTop: '10mm' }}>
           <p style={{ fontWeight: 900 }}>{sig.title}</p>
@@ -184,7 +191,7 @@ const PrintableMonitorSheet: React.FC<{
 
     {/* فوتر */}
     <div style={{ marginTop: '8mm', borderTop: '1px dashed #ccc', paddingTop: '3mm', display: 'flex', justifyContent: 'space-between', fontSize: '7pt', color: '#777' }}>
-      <span>نظام الكنترول المطور — مدرسة عماد الدين زنكي المتوسطة</span>
+      <span>نظام الكنترول المطوّر — {systemConfig?.school_name || 'اسم المدرسة'}</span>
       <span>طُبع بتاريخ: {new Date().toLocaleString('ar-SA')}</span>
     </div>
   </div>
@@ -604,7 +611,7 @@ const AdminDailyReports: React.FC<Props> = ({
               .print-page { page-break-after: always; }
             }
           `}</style>
-          <PrintableMonitorSheet rows={reportData} date={reportDate} subject={subject} />
+          <PrintableMonitorSheet rows={reportData} date={reportDate} subject={subject} systemConfig={systemConfig} />
         </div>,
         document.body
       )}

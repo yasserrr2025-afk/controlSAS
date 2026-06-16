@@ -33,7 +33,6 @@ type SheetPage = {
   parts?: number;
 };
 
-const SCHOOL_NAME = 'مدرسة عماد الدين زنكي المتوسطة';
 const DEFAULT_ACADEMIC_YEAR = '1447 / 1448';
 const SIGNATURE_SINGLE_COLUMN_LIMIT = 34;
 const SIGNATURE_ROWS_PER_PAGE = 68;
@@ -87,19 +86,23 @@ const OfficialHeader = ({
   subject,
   meta,
   academicYear,
+  schoolName,
+  directorateName,
 }: {
   title: string;
   date?: string;
   subject?: string;
   meta?: string;
   academicYear?: string;
+  schoolName?: string;
+  directorateName?: string;
 }) => (
   <header className="sheet-header">
     <div className="sheet-side sheet-side-right">
       <p>المملكة العربية السعودية</p>
       <p>وزارة التعليم</p>
-      <p>إدارة التعليم بمحافظة جدة</p>
-      <p>{SCHOOL_NAME}</p>
+      <p>{directorateName || 'إدارة التعليم'}</p>
+      <p>{schoolName || 'اسم المدرسة'}</p>
     </div>
 
     <div className="sheet-center">
@@ -116,9 +119,9 @@ const OfficialHeader = ({
   </header>
 );
 
-const PageFooter = ({ page }: { page: number }) => (
+const PageFooter = ({ page, schoolName }: { page: number; schoolName?: string }) => (
   <footer className="sheet-footer">
-    <span>تم إنشاء الكشف آلياً عبر نظام الكنترول الرقمي - مدرسة عماد الدين زنكي - بواسطة ياسر الحميدي</span>
+    <span>تم إنشاء الكشف آلياً عبر نظام الكنترول الرقمي - {schoolName || 'نظام كنترول الاختبارات'}</span>
     <span>صفحة {page}</span>
   </footer>
 );
@@ -152,9 +155,10 @@ const GenericSheetPage = ({
   rows,
   page,
   academicYear,
-}: GenericPage & { page: number; academicYear?: string }) => (
+  systemConfig,
+}: GenericPage & { page: number; academicYear?: string; systemConfig?: SystemConfig & { directorate_name?: string } }) => (
   <section className="sheet-page generic-page">
-    <OfficialHeader title={title} date={date} subject={subject} meta={meta} academicYear={academicYear} />
+    <OfficialHeader title={title} date={date} subject={subject} meta={meta} academicYear={academicYear} schoolName={systemConfig?.school_name} directorateName={systemConfig?.directorate_name} />
 
     <div className="sheet-band">
       <span>{meta || title}</span>
@@ -189,11 +193,11 @@ const GenericSheetPage = ({
     </table>
 
     <div className="sheet-signatures">
-      <SignatureBlock title="رئيس الكنترول" name="" />
-      <SignatureBlock title="مدير المدرسة" name="" />
+      <SignatureBlock title="رئيس الكنترول" name={systemConfig?.control_chief_id ? (systemConfig as any).control_chief_name : ''} />
+      <SignatureBlock title="مدير المدرسة" name={systemConfig?.principal_name || ''} />
       <SignatureBlock title="الختم" name="" />
     </div>
-    <PageFooter page={page} />
+    <PageFooter page={page} schoolName={systemConfig?.school_name} />
   </section>
 );
 
@@ -219,6 +223,7 @@ const SignatureSheetPage = ({
   academicYear?: string;
   users?: User[];
   supervisions?: Supervision[];
+  systemConfig?: SystemConfig & { directorate_name?: string };
 }) => {
   const rows = students;
   const useTwoColumn = rows.length > SIGNATURE_SINGLE_COLUMN_LIMIT;
@@ -247,8 +252,11 @@ const SignatureSheetPage = ({
     sameDate(item.date, date)
   );
   const proctorName = resolveUserName(users, supervision?.teacher_id);
-  const controlHeadName = users.find(user => user.role === 'CONTROL_MANAGER')?.full_name || '';
-  const schoolManagerName = users.find(user => user.role === 'ADMIN')?.full_name || '';
+  const controlChiefFromSettings = systemConfig?.control_chief_id
+    ? users.find(user => user.id === systemConfig.control_chief_id)?.full_name
+    : null;
+  const controlHeadName = controlChiefFromSettings || users.find(user => user.role === 'CONTROL_MANAGER')?.full_name || '';
+  const schoolManagerName = systemConfig?.principal_name || users.find(user => user.role === 'ADMIN')?.full_name || '';
 
   return (
     <section className="sheet-page signature-page">
@@ -258,6 +266,8 @@ const SignatureSheetPage = ({
         subject={subject}
         meta={`اللجنة: ${committee} - الصف: ${grade}`}
         academicYear={academicYear}
+        schoolName={systemConfig?.school_name}
+        directorateName={systemConfig?.directorate_name}
       />
 
       <div className="sheet-band">
@@ -323,7 +333,7 @@ const SignatureSheetPage = ({
         <SignatureBlock title="رئيس الكنترول" name={controlHeadName} />
         <SignatureBlock title="مدير المدرسة" name={schoolManagerName} />
       </div>
-      <PageFooter page={page} />
+      <PageFooter page={page} schoolName={systemConfig?.school_name} />
     </section>
   );
 };
@@ -354,6 +364,7 @@ const MarksSheetPage = ({
   users?: User[];
   supervisions?: Supervision[];
   deliveryLogs?: DeliveryLog[];
+  systemConfig?: SystemConfig & { directorate_name?: string };
 }) => {
   const displayedRows = students;
   const matchingLogs = deliveryLogs.filter(log =>
@@ -375,7 +386,10 @@ const MarksSheetPage = ({
   ) || users.find(user => user.role === 'CONTROL');
   const subjectTeacherName = '';
   const reviewerName = '';
-  const controlHeadName = users.find(user => user.role === 'CONTROL_MANAGER')?.full_name || '';
+  const controlChiefFromSettings = systemConfig?.control_chief_id
+    ? users.find(user => user.id === systemConfig.control_chief_id)?.full_name
+    : null;
+  const controlHeadName = controlChiefFromSettings || users.find(user => user.role === 'CONTROL_MANAGER')?.full_name || '';
 
   return (
     <section className="sheet-page marks-page">
@@ -385,6 +399,8 @@ const MarksSheetPage = ({
         subject={subject}
         meta={groupMode === 'grade-alpha' ? `كشف أبجدي للصف: ${grade}` : `اللجنة: ${committee} - الصف: ${grade}`}
         academicYear={academicYear}
+        schoolName={systemConfig?.school_name}
+        directorateName={systemConfig?.directorate_name}
       />
 
       <div className="sheet-band">
@@ -434,7 +450,7 @@ const MarksSheetPage = ({
         <SignatureBlock title="المراجع" name={reviewerName} />
         <SignatureBlock title="رئيس الكنترول" name={controlHeadName} />
       </div>
-      <PageFooter page={page} />
+      <PageFooter page={page} schoolName={systemConfig?.school_name} />
     </section>
   );
 };
@@ -1009,6 +1025,7 @@ const PrintSheets: React.FC<Props> = ({
             {...page}
             page={index + 1}
             academicYear={systemConfig.academic_year}
+            systemConfig={systemConfig}
           />
         ) : page.type === 'signature' ? (
           <SignatureSheetPage
@@ -1023,6 +1040,7 @@ const PrintSheets: React.FC<Props> = ({
             academicYear={systemConfig.academic_year}
             users={users}
             supervisions={supervisions}
+            systemConfig={systemConfig}
           />
         ) : (
           <MarksSheetPage
@@ -1039,6 +1057,7 @@ const PrintSheets: React.FC<Props> = ({
             users={users}
             supervisions={supervisions}
             deliveryLogs={deliveryLogs}
+            systemConfig={systemConfig}
           />
         ))}
       </div>
