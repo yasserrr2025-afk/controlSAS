@@ -93,7 +93,8 @@ const PrintableMonitorSheet: React.FC<{
   date: string;
   period: number | null;
   systemConfig?: SystemConfig & { directorate_name?: string };
-}> = ({ rows, date, period, systemConfig }) => (
+  controlChiefName?: string;
+}> = ({ rows, date, period, systemConfig, controlChiefName }) => (
   <div className="print-page" style={{ fontFamily: "'Tajawal', Arial", direction: 'rtl', padding: '8mm', color: '#000' }}>
     <PrintHeader date={date} period={period || undefined} systemConfig={systemConfig} />
 
@@ -130,33 +131,33 @@ const PrintableMonitorSheet: React.FC<{
       </thead>
       <tbody>
         {rows.map((row, idx) => (
-          <tr key={idx} style={{ height: '22px', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontWeight: 700 }}>{idx + 1}</td>
-            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontWeight: 900 }}>{row.committee}</td>
-            <td style={{ border: '1px solid #000', padding: '3px 6px', fontWeight: 700 }}>{row.proctorName}</td>
-            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontSize: '7pt', fontWeight: 700 }}>{row.subject}</td>
-            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontSize: '7pt', fontWeight: 700 }}>{row.gradeName}</td>
-            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700 }}>{row.joinTime}</td>
-            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700 }}>{row.closeTime}</td>
-            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700 }}>{row.receiptTime}</td>
-            <td style={{ border: '1px solid #000', padding: '3px 6px', fontWeight: row.receiverName !== '—' ? 900 : 400, color: row.receiverName !== '—' ? '#000' : '#999' }}>
+          <tr key={idx} style={{ height: '40px', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
+            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontWeight: 700, background: '#e2e8f0' }}>{idx + 1}</td>
+            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontWeight: 900, verticalAlign: 'middle' }}>{row.committee}</td>
+            <td style={{ border: '1px solid #000', padding: '3px 6px', fontWeight: 700, verticalAlign: 'middle' }}>{row.proctorName}</td>
+            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontSize: '7pt', fontWeight: 700, verticalAlign: 'middle' }}>{row.subject}</td>
+            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontSize: '7pt', fontWeight: 700, verticalAlign: 'middle' }}>{row.gradeName}</td>
+            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, verticalAlign: 'middle' }}>{row.joinTime}</td>
+            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, verticalAlign: 'middle' }}>{row.closeTime}</td>
+            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, verticalAlign: 'middle' }}>{row.receiptTime}</td>
+            <td style={{ border: '1px solid #000', padding: '3px 6px', fontWeight: row.receiverName !== '—' ? 900 : 400, color: row.receiverName !== '—' ? '#000' : '#999', verticalAlign: 'middle' }}>
               {row.receiverName !== '—' ? row.receiverName : '.....................'}
             </td>
             {/* خانة توقيع المراقب */}
             <td style={{ border: '1px solid #000', padding: '1px', verticalAlign: 'middle', textAlign: 'center' }}>
-              {row.proctorSignature ? <img src={row.proctorSignature} style={{ maxHeight: '20px', maxWidth: '100%', display: 'block', margin: '0 auto' }} /> : <>&nbsp;</>}
+              {row.proctorSignature ? <img src={row.proctorSignature} style={{ maxHeight: '25px', maxWidth: '100%', display: 'block', margin: '0 auto' }} /> : <>&nbsp;</>}
             </td>
             {/* خانة توقيع المستلم */}
             <td style={{ border: '1px solid #000', padding: '1px', verticalAlign: 'middle', textAlign: 'center' }}>
-              {row.receiverSignature ? <img src={row.receiverSignature} style={{ maxHeight: '20px', maxWidth: '100%', display: 'block', margin: '0 auto' }} /> : <>&nbsp;</>}
+              {row.receiverSignature ? <img src={row.receiverSignature} style={{ maxHeight: '25px', maxWidth: '100%', display: 'block', margin: '0 auto' }} /> : <>&nbsp;</>}
             </td>
           </tr>
         ))}
         {/* صفوف فارغة للاحتياط */}
         {Array.from({ length: Math.max(0, 4 - rows.length) }).map((_, i) => (
-          <tr key={`empty-${i}`} style={{ height: '22px' }}>
+          <tr key={`empty-${i}`} style={{ height: '40px' }}>
             {Array.from({ length: 11 }).map((__, j) => (
-              <td key={j} style={{ border: '1px solid #000', padding: '3px' }}>&nbsp;</td>
+              <td key={j} style={{ border: '1px solid #000', padding: '3px', background: j === 0 ? '#e2e8f0' : 'transparent' }}>&nbsp;</td>
             ))}
           </tr>
         ))}
@@ -181,21 +182,20 @@ const PrintableMonitorSheet: React.FC<{
     </div>
 
     {/* خانات التوقيع الرسمية */}
-    <div style={{ marginTop: '10mm', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10mm', textAlign: 'center', fontSize: '9pt' }}>
+    <div style={{ marginTop: '10mm', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10mm', textAlign: 'center', fontSize: '9pt' }}>
       {[
-        { title: 'رئيس لجنة الكنترول', sub: systemConfig?.control_chief_id ? (systemConfig as any).control_chief_name || '.............................' : '.............................' },
-        { title: 'وكيل شؤون الطلاب', sub: '.............................' },
+        { title: 'رئيس لجنة الكنترول', sub: controlChiefName || '.............................' },
         { title: 'مدير المدرسة', sub: systemConfig?.principal_name ? systemConfig.principal_name : '(الختم الرسمي)' },
       ].map(sig => (
         <div key={sig.title} style={{ borderTop: '1px solid #000', paddingTop: '10mm' }}>
           <p style={{ fontWeight: 900 }}>{sig.title}</p>
-          <p style={{ marginTop: '12mm', color: '#777', fontSize: '8pt' }}>{sig.sub}</p>
+          <p style={{ marginTop: '12mm', color: '#000', fontSize: '8pt' }}>{sig.sub}</p>
         </div>
       ))}
     </div>
 
     {/* فوتر */}
-    <div style={{ marginTop: '8mm', borderTop: '1px dashed #ccc', paddingTop: '3mm', display: 'flex', justifyContent: 'space-between', fontSize: '7pt', color: '#777' }}>
+    <div style={{ marginTop: '8mm', borderTop: '1px dashed #ccc', paddingTop: '3mm', display: 'flex', justifyContent: 'space-between', fontSize: '7pt', color: '#000' }}>
       <span>نظام الكنترول المطوّر — {systemConfig?.school_name || 'اسم المدرسة'}</span>
       <span>طُبع بتاريخ: {new Date().toLocaleString('ar-SA')}</span>
     </div>
@@ -671,7 +671,7 @@ const AdminDailyReports: React.FC<Props> = ({
               .print-page { page-break-after: always; }
             }
           `}</style>
-          <PrintableMonitorSheet rows={reportData} date={reportDate} period={selectedPeriod} systemConfig={systemConfig} />
+          <PrintableMonitorSheet rows={reportData} date={reportDate} period={selectedPeriod} systemConfig={systemConfig} controlChiefName={users.find(u => u.id === systemConfig?.control_chief_id)?.full_name || ''} />
         </div>,
         document.body
       )}
