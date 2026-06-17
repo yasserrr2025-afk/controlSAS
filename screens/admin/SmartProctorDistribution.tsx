@@ -51,6 +51,7 @@ type DistributionPeriod = {
 };
 
 type WizardStep = 'SELECT_EXAM' | 'EXCLUDE_PROCTORS' | 'PREVIEW';
+type DistributionMode = 'AUTO' | 'MANUAL';
 
 const SmartProctorDistribution: React.FC<Props> = ({
   users,
@@ -68,8 +69,10 @@ const SmartProctorDistribution: React.FC<Props> = ({
   const [excludedProctorIds, setExcludedProctorIds] = useState<string[]>([]);
   const [distribution, setDistribution] = useState<SmartDistributionItem[]>([]);
   const [searchProctor, setSearchProctor] = useState('');
+  const [reserveSearch, setReserveSearch] = useState('');
   const [isCommitting, setIsCommitting] = useState(false);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const [distributionMode, setDistributionMode] = useState<DistributionMode>('AUTO');
   
   const [distributionFilter, setDistributionFilter] = useState(''); // Used to view past distributions
   
@@ -135,6 +138,30 @@ const SmartProctorDistribution: React.FC<Props> = ({
     e.dataTransfer.dropEffect = 'move';
   };
 
+  const getActiveCommittees = (period: DistributionPeriod) => {
+    const involvedStudents = period.grades.length
+      ? students.filter(s => period.grades.includes(s.grade))
+      : students;
+    return (Array.from(new Set(involvedStudents.map(s => s.committee_number).filter(Boolean))) as string[])
+      .sort((a, b) => Number(a) - Number(b));
+  };
+
+  const getProctorLoads = (period: DistributionPeriod) => proctors.map(p => {
+    const pastSupervisions = supervisions.filter(s =>
+      s.teacher_id === p.id &&
+      (s.date < period.date || (s.date === period.date && Number(s.period) < period.period))
+    );
+    const primaryCount = pastSupervisions.filter(s => s.assignment_type !== 'RESERVE').length;
+    const reserveCount = pastSupervisions.filter(s => s.assignment_type === 'RESERVE').length;
+    return {
+      id: p.id,
+      name: p.full_name,
+      primaryCount,
+      reserveCount,
+      weight: (primaryCount * 2) + reserveCount + Math.random(),
+    };
+  });
+
   const handleDrop = (e: React.DragEvent, targetId: string) => {
     e.preventDefault();
     if (!draggedItemId || draggedItemId === targetId) return;
@@ -173,29 +200,49 @@ const SmartProctorDistribution: React.FC<Props> = ({
     setDraggedItemId(null);
   };
 
+  const handleDropToReserve = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!draggedItemId || distributionMode !== 'MANUAL') return;
+
+    setDistribution(prev => {
+      const sourceIdx = prev.findIndex(item => item.id === draggedItemId);
+      if (sourceIdx === -1) return prev;
+
+      const sourceItem = prev[sourceIdx];
+      if (sourceItem.assignmentType !== 'PRIMARY' || !sourceItem.teacherId) return prev;
+
+      const returnedTeacher = {
+        teacherId: sourceItem.teacherId,
+        teacherName: sourceItem.teacherName,
+        previousPrimaryCount: sourceItem.previousPrimaryCount,
+        previousReserveCount: sourceItem.previousReserveCount,
+      };
+
+      return [
+        ...prev.map((item, idx) => idx === sourceIdx ? {
+          ...item,
+          teacherId: '',
+          teacherName: '',
+          previousPrimaryCount: 0,
+          previousReserveCount: 0,
+        } : item),
+        {
+          ...sourceItem,
+          id: crypto.randomUUID(),
+          ...returnedTeacher,
+          committeeNumber: 'احتياط',
+          assignmentType: 'RESERVE' as const,
+        },
+      ];
+    });
+    setDraggedItemId(null);
+  };
+
   const runDistributionAlgorithm = () => {
     if (!selectedPeriod) return;
 
-    const involvedStudents = students.filter(s => selectedPeriod.grades.includes(s.grade));
-    const activeCommittees = (Array.from(new Set(involvedStudents.map(s => s.committee_number).filter(Boolean))) as string[]).sort((a, b) => Number(a) - Number(b));
-
-    // 1. Calculate previous load for each proctor before this exam date, OR earlier period today
-    const previousLoads = proctors.map(p => {
-      const pastSupervisions = supervisions.filter(s => 
-        s.teacher_id === p.id && 
-        (s.date < selectedPeriod.date || (s.date === selectedPeriod.date && Number(s.period) < selectedPeriod.period))
-      );
-      const primaryCount = pastSupervisions.filter(s => s.assignment_type !== 'RESERVE').length;
-      const reserveCount = pastSupervisions.filter(s => s.assignment_type === 'RESERVE').length;
-      return { 
-        id: p.id, 
-        name: p.full_name, 
-        primaryCount, 
-        reserveCount, 
-        // Weight: Primary is heavier than Reserve
-        weight: (primaryCount * 2) + reserveCount + Math.random() // Math.random() for tie-breaking
-      };
-    });
+    const activeCommittees = getActiveCommittees(selectedPeriod);
+    const previousLoads = getProctorLoads(selectedPeriod);
 
     // 2. Filter out excluded
     const available = previousLoads.filter(p => !excludedProctorIds.includes(p.id));
@@ -249,6 +296,51 @@ const SmartProctorDistribution: React.FC<Props> = ({
     });
 
     setDistribution(newDistribution);
+    setDistributionMode('AUTO');
+    setReserveSearch('');
+    setDraggedItemId(null);
+    setStep('PREVIEW');
+  };
+
+  const runManualDistribution = () => {
+    if (!selectedPeriod) return;
+
+    const activeCommittees = getActiveCommittees(selectedPeriod);
+    const available = getProctorLoads(selectedPeriod)
+      .filter(p => !excludedProctorIds.includes(p.id))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+
+    const subject = selectedPeriod.subjects.join('، ');
+    const primarySlots: SmartDistributionItem[] = activeCommittees.map(committeeNumber => ({
+      id: crypto.randomUUID(),
+      teacherId: '',
+      teacherName: '',
+      committeeNumber,
+      assignmentType: 'PRIMARY',
+      previousPrimaryCount: 0,
+      previousReserveCount: 0,
+      date: selectedPeriod.date,
+      period: selectedPeriod.period,
+      subject,
+    }));
+
+    const reserveList: SmartDistributionItem[] = available.map(proctor => ({
+      id: crypto.randomUUID(),
+      teacherId: proctor.id,
+      teacherName: proctor.name,
+      committeeNumber: 'احتياط',
+      assignmentType: 'RESERVE',
+      previousPrimaryCount: proctor.primaryCount,
+      previousReserveCount: proctor.reserveCount,
+      date: selectedPeriod.date,
+      period: selectedPeriod.period,
+      subject,
+    }));
+
+    setDistribution([...primarySlots, ...reserveList]);
+    setDistributionMode('MANUAL');
+    setReserveSearch('');
+    setDraggedItemId(null);
     setStep('PREVIEW');
   };
 
@@ -289,13 +381,23 @@ const SmartProctorDistribution: React.FC<Props> = ({
 
   const handleCommit = async () => {
     if (!selectedPeriod || !distribution.length) return;
+    const emptyPrimaryCount = distribution.filter(d => d.assignmentType === 'PRIMARY' && !d.teacherId).length;
+    if (emptyPrimaryCount > 0) {
+      alert(`تبقى ${emptyPrimaryCount} لجنة بدون مراقب. أكمل السحب والإفلات قبل اعتماد التوزيع.`);
+      return;
+    }
+    const committedDistribution = distribution.filter(d => d.teacherId);
+    if (!committedDistribution.length) {
+      alert('لا يوجد مراقبون لاعتمادهم في هذا التوزيع.');
+      return;
+    }
     setIsCommitting(true);
     
     try {
       if (!onCommit) throw new Error('لا توجد دالة اعتماد للتوزيع.');
       const combinedSubject = selectedPeriod.subjects.join('، ');
       await onCommit?.(
-        distribution.map(d => ({
+        committedDistribution.map(d => ({
           ...d,
           date: selectedPeriod.date,
           period: selectedPeriod.period,
@@ -458,6 +560,15 @@ const SmartProctorDistribution: React.FC<Props> = ({
       printWindow.close();
     }, 500);
   };
+
+  const primaryDistribution = distribution.filter(d => d.assignmentType === 'PRIMARY');
+  const reserveDistribution = distribution
+    .filter(d => d.assignmentType === 'RESERVE' && d.teacherId)
+    .sort((a, b) => a.teacherName.localeCompare(b.teacherName, 'ar'));
+  const visibleReserveDistribution = reserveDistribution.filter(item =>
+    item.teacherName.includes(reserveSearch.trim())
+  );
+  const emptyPrimaryCount = primaryDistribution.filter(item => !item.teacherId).length;
 
   return (
     <div className="space-y-6">
@@ -725,16 +836,24 @@ const SmartProctorDistribution: React.FC<Props> = ({
             })}
           </div>
 
-          <div className="flex justify-between items-center bg-slate-50 p-4 rounded-xl">
+          <div className="flex flex-col lg:flex-row justify-between items-center gap-4 bg-slate-50 p-4 rounded-xl">
             <div className="font-bold text-slate-600">
               إجمالي المراقبين: {proctors.length} | المتاحين: <span className="text-emerald-600 font-black">{proctors.length - excludedProctorIds.length}</span>
             </div>
-            <button 
-              onClick={runDistributionAlgorithm}
-              className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black flex items-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-200"
-            >
-              <Wand2 size={20} /> توزيع اللجان الآن
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+              <button 
+                onClick={runManualDistribution}
+                className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-slate-800 shadow-lg shadow-slate-200"
+              >
+                <Users size={20} /> توزيع يدوي
+              </button>
+              <button 
+                onClick={runDistributionAlgorithm}
+                className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-200"
+              >
+                <Wand2 size={20} /> توزيع آلي
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -744,8 +863,12 @@ const SmartProctorDistribution: React.FC<Props> = ({
           <div className="bg-orange-50 border border-orange-200 p-4 rounded-xl flex gap-3 text-orange-800 font-bold items-start">
             <AlertTriangle size={24} className="shrink-0" />
             <div>
-              <h4 className="font-black text-lg">معاينة التوزيع الذكي</h4>
-              <p className="text-sm mt-1">قم بمراجعة التوزيع ويمكنك سحب المراقب وإفلاته فوق مراقب آخر لتبديل المهام بينهم. بعد الانتهاء اضغط على زر الحفظ.</p>
+              <h4 className="font-black text-lg">{distributionMode === 'MANUAL' ? 'معاينة التوزيع اليدوي' : 'معاينة التوزيع الذكي'}</h4>
+              <p className="text-sm mt-1">
+                {distributionMode === 'MANUAL'
+                  ? `اسحب اسم المراقب من قائمة الاحتياط إلى اللجنة المطلوبة. اللجان الفارغة المتبقية: ${emptyPrimaryCount}.`
+                  : 'قم بمراجعة التوزيع ويمكنك سحب المراقب وإفلاته فوق مراقب آخر لتبديل المهام بينهم. بعد الانتهاء اضغط على زر الحفظ.'}
+              </p>
             </div>
             <div className="mr-auto">
               <button 
@@ -766,7 +889,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
                 <Users size={24} className="text-blue-600" /> اللجان (أساسي)
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {distribution.filter(d => d.assignmentType === 'PRIMARY').map(item => (
+                {primaryDistribution.map(item => (
                   <div 
                     key={item.id}
                     onDragOver={handleDragOver}
@@ -782,21 +905,25 @@ const SmartProctorDistribution: React.FC<Props> = ({
                     </div>
                     {/* فقط اسم المراقب هو القابل للسحب */}
                     <div
-                      draggable
+                      draggable={!!item.teacherId}
                       onDragStart={(e) => handleDragStart(e, item.id)}
-                      className={`flex items-center gap-2 font-black text-slate-800 text-lg cursor-grab select-none py-2 px-3 rounded-xl transition-all ${
+                      className={`flex items-center gap-2 font-black text-lg select-none py-2 px-3 rounded-xl transition-all ${
                         draggedItemId === item.id
                           ? 'opacity-40 bg-slate-100'
-                          : 'hover:bg-slate-50 hover:shadow-sm'
+                          : item.teacherId
+                          ? 'text-slate-800 cursor-grab hover:bg-slate-50 hover:shadow-sm'
+                          : 'min-h-[48px] border-2 border-dashed border-slate-200 bg-slate-50 text-slate-400 justify-center'
                       }`}
                     >
-                      <GripVertical size={16} className="text-slate-400 shrink-0" />
-                      <span>{item.teacherName}</span>
+                      {item.teacherId && <GripVertical size={16} className="text-slate-400 shrink-0" />}
+                      <span>{item.teacherName || 'اسحب مراقباً هنا'}</span>
                     </div>
-                    <div className="mt-2 flex gap-2 text-[10px] font-bold">
-                      <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded">أساسي سابقاً: {item.previousPrimaryCount}</span>
-                      <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded">احتياط سابقاً: {item.previousReserveCount}</span>
-                    </div>
+                    {item.teacherId && (
+                      <div className="mt-2 flex gap-2 text-[10px] font-bold">
+                        <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded">أساسي سابقاً: {item.previousPrimaryCount}</span>
+                        <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded">احتياط سابقاً: {item.previousReserveCount}</span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -807,8 +934,23 @@ const SmartProctorDistribution: React.FC<Props> = ({
               <h4 className="font-black text-slate-800 text-xl flex items-center gap-2">
                 <Users size={24} className="text-emerald-600" /> الاحتياط
               </h4>
-              <div className="space-y-3">
-                {distribution.filter(d => d.assignmentType === 'RESERVE').map((item, idx) => (
+              {distributionMode === 'MANUAL' && (
+                <div className="relative">
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input
+                    value={reserveSearch}
+                    onChange={e => setReserveSearch(e.target.value)}
+                    placeholder="ابحث في الاحتياط..."
+                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-9 text-sm font-bold outline-none focus:border-emerald-500"
+                  />
+                </div>
+              )}
+              <div
+                onDragOver={handleDragOver}
+                onDrop={handleDropToReserve}
+                className={`space-y-3 rounded-2xl ${distributionMode === 'MANUAL' ? 'min-h-[260px] border-2 border-dashed border-emerald-100 bg-emerald-50/30 p-2' : ''}`}
+              >
+                {visibleReserveDistribution.map((item, idx) => (
                   <div 
                     key={item.id}
                     onDragOver={handleDragOver}
@@ -841,9 +983,14 @@ const SmartProctorDistribution: React.FC<Props> = ({
                     </div>
                   </div>
                 ))}
-                {distribution.filter(d => d.assignmentType === 'RESERVE').length === 0 && (
+                {visibleReserveDistribution.length === 0 && (
                   <div className="text-center p-6 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 font-bold text-sm">
-                    لا يوجد مراقبين احتياط (العدد يكفي اللجان فقط)
+                    {distributionMode === 'MANUAL' ? 'لا توجد أسماء مطابقة في قائمة الاحتياط.' : 'لا يوجد مراقبين احتياط (العدد يكفي اللجان فقط)'}
+                  </div>
+                )}
+                {distributionMode === 'MANUAL' && visibleReserveDistribution.length > 0 && (
+                  <div className="text-center text-[10px] font-black text-emerald-700/70 pt-1">
+                    اسحب أي اسم إلى بطاقة اللجنة، أو أعده هنا من اللجنة.
                   </div>
                 )}
               </div>
