@@ -125,6 +125,11 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   );
   const [optimisticAssignment, setOptimisticAssignment] = useState<Supervision | null>(null);
 
+  const matchesCurrentProctor = useCallback(
+    (teacherId?: string | null) => !!teacherId && (teacherId === user.id || teacherId === user.national_id),
+    [user.id, user.national_id],
+  );
+
   const isSupervisionFullyDone = useCallback((s: any) => {
     if (!s || !s.committee_number) return false;
     const committeeGrades = Array.from(new Set(students.filter(st => st.committee_number === s.committee_number).map(st => st.grade)));
@@ -142,11 +147,11 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   const activeAssignment = useMemo(
     () => {
       const todaySupervisions = supervisions.filter(
-        (s: any) => s.teacher_id === user.id && matchesActiveDate(s.date)
+        (s: any) => matchesCurrentProctor(s.teacher_id) && matchesActiveDate(s.date)
       ).sort((a, b) => Number(a.period) - Number(b.period));
 
       if (todaySupervisions.length === 0) {
-        if (optimisticAssignment?.teacher_id === user.id && matchesActiveDate(optimisticAssignment.date)) {
+        if (matchesCurrentProctor(optimisticAssignment?.teacher_id) && matchesActiveDate(optimisticAssignment?.date)) {
           return optimisticAssignment;
         }
         return undefined;
@@ -155,17 +160,17 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       const active = todaySupervisions.find(s => !isSupervisionFullyDone(s));
       return active || todaySupervisions[todaySupervisions.length - 1];
     },
-    [supervisions, user.id, activeDate, optimisticAssignment, isSupervisionFullyDone],
+    [supervisions, matchesCurrentProctor, activeDate, optimisticAssignment, isSupervisionFullyDone],
   );
 
   // تحقق مما إذا كانت جميع المهام اليومية منتهية بالكامل لإظهار بطاقة الشكر الكبرى
   const isAllSupervisionsFullyDone = useMemo(() => {
     const todaySupervisions = supervisions.filter(
-      (s: any) => s.teacher_id === user.id && matchesActiveDate(s.date)
+      (s: any) => matchesCurrentProctor(s.teacher_id) && matchesActiveDate(s.date)
     );
     if (todaySupervisions.length === 0) return false;
     return todaySupervisions.every(s => isSupervisionFullyDone(s));
-  }, [supervisions, user.id, activeDate, isSupervisionFullyDone]);
+  }, [supervisions, matchesCurrentProctor, activeDate, isSupervisionFullyDone]);
 
   const activeCommittee = activeAssignment?.committee_number || null;
   const isAssignmentStarted = (value?: string | null) => {
@@ -526,6 +531,14 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       return true;
     });
   }, [myStudents, myAbsences, filter]);
+
+  const isReserveProctor = useMemo(() => {
+    const assignedCommittees = user.assigned_committees || [];
+    if (assignedCommittees.length === 0) return false;
+    return !supervisions.some(
+      (s) => matchesCurrentProctor(s.teacher_id) && matchesActiveDate(s.date)
+    );
+  }, [user.assigned_committees, supervisions, matchesCurrentProctor, activeDate]);
 
   const joinCommittee = async (committeeNum: string) => {
     const cleanedNum = committeeNum.trim();
@@ -1192,15 +1205,6 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       </div>
     );
   }
-
-  // تحقق من كون المراقب احتياطاً بدون لجنة معينة (ليس لديه إسناد في اليوم الحالي)
-  const isReserveProctor = useMemo(() => {
-    if (!user.assigned_committees || user.assigned_committees.length === 0) return false;
-    // إذا لم يكن لديه إسناد في اليوم، ويمتلك لجنة مخصصة كاحتياط
-    return !supervisions.some(
-      (s) => s.teacher_id === user.id && matchesActiveDate(s.date)
-    ) && user.assigned_committees.length > 0;
-  }, [user, supervisions, activeDate]);
 
   // واجهة مسح الكود للمباشرة
   if (!activeCommittee) {

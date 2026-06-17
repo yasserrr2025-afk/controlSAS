@@ -454,10 +454,8 @@ const App: React.FC = () => {
       ? nextOrUpdater(previousUsers)
       : nextOrUpdater;
 
-    const changedUsers = nextUsers.filter(next => {
-      const prev = previousUsers.find(user => user.id === next.id);
-      return !prev || JSON.stringify(prev) !== JSON.stringify(next);
-    });
+    const previousById = new Map(previousUsers.map(user => [user.id, user]));
+    const changedUsers = nextUsers.filter(next => previousById.get(next.id) !== next);
 
     setUsers(nextUsers);
 
@@ -465,7 +463,7 @@ const App: React.FC = () => {
       ? nextUsers.find(user => user.id === currentUser.id) || currentUser
       : null;
 
-    if (refreshedCurrentUser && currentUser && JSON.stringify(refreshedCurrentUser) !== JSON.stringify(currentUser)) {
+    if (refreshedCurrentUser && currentUser && refreshedCurrentUser !== currentUser) {
       setCurrentUser(refreshedCurrentUser);
       localStorage.setItem('currentUser', JSON.stringify(refreshedCurrentUser));
     }

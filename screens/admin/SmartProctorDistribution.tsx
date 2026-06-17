@@ -2,19 +2,19 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   CalendarDays,
   Check,
+  Edit2,
   Printer,
   RefreshCcw,
   Search,
   Trash2,
+  UserX,
   Users,
   Wand2,
   ArrowRight,
-  ArrowLeft,
   AlertTriangle,
   GripVertical
 } from 'lucide-react';
 import { ExamSchedule, Student, Supervision, User } from '../../types';
-import { supabase } from '../../supabase';
 import { APP_CONFIG } from '../../constants';
 
 interface Props {
@@ -37,7 +37,18 @@ export interface SmartDistributionItem {
   assignmentType: 'PRIMARY' | 'RESERVE';
   previousPrimaryCount: number;
   previousReserveCount: number;
+  date: string;
+  period: number;
+  subject: string;
 }
+
+type DistributionPeriod = {
+  date: string;
+  period: number;
+  subjects: string[];
+  grades: string[];
+  scheduleIds: string[];
+};
 
 type WizardStep = 'SELECT_EXAM' | 'EXCLUDE_PROCTORS' | 'PREVIEW';
 
@@ -53,7 +64,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
   onDeleteSupervisions,
 }) => {
   const [step, setStep] = useState<WizardStep>('SELECT_EXAM');
-  const [selectedPeriod, setSelectedPeriod] = useState<{ date: string; period: number; subjects: string[]; grades: string[] } | null>(null);
+  const [selectedPeriod, setSelectedPeriod] = useState<DistributionPeriod | null>(null);
   const [excludedProctorIds, setExcludedProctorIds] = useState<string[]>([]);
   const [distribution, setDistribution] = useState<SmartDistributionItem[]>([]);
   const [searchProctor, setSearchProctor] = useState('');
@@ -74,11 +85,6 @@ const SmartProctorDistribution: React.FC<Props> = ({
   });
 
   const proctors = useMemo(() => users.filter(u => u.role === 'PROCTOR'), [users]);
-  const committees = useMemo(() => {
-    const unique = Array.from(new Set(students.map(s => s.committee_number).filter(Boolean)));
-    return unique.sort((a, b) => Number(a) - Number(b));
-  }, [students]);
-
   const allGrades = useMemo(() => {
     const unique = Array.from(new Set(students.map(s => s.grade).filter(Boolean)));
     return unique.sort();
@@ -100,13 +106,14 @@ const SmartProctorDistribution: React.FC<Props> = ({
   }, [supervisions]);
 
   const availablePeriods = useMemo(() => {
-    const groups = new Map<string, { date: string; period: number; subjects: string[]; grades: string[] }>();
+    const groups = new Map<string, DistributionPeriod>();
     examSchedule.forEach(e => {
       const key = `${e.exam_date}__${e.period}`;
       if (!groups.has(key)) {
-        groups.set(key, { date: e.exam_date, period: e.period, subjects: [], grades: [] });
+        groups.set(key, { date: e.exam_date, period: e.period, subjects: [], grades: [], scheduleIds: [] });
       }
       const g = groups.get(key)!;
+      if (e.id && !g.scheduleIds.includes(e.id)) g.scheduleIds.push(e.id);
       if (e.subject && !g.subjects.includes(e.subject)) g.subjects.push(e.subject);
       if (e.grades) {
         e.grades.forEach(gr => {
@@ -141,15 +148,22 @@ const SmartProctorDistribution: React.FC<Props> = ({
       const sourceItem = { ...newDist[sourceIdx] };
       const targetItem = { ...newDist[targetIdx] };
 
-      // Swap roles and committees
-      const tempCommittee = sourceItem.committeeNumber;
-      const tempType = sourceItem.assignmentType;
+      const sourceTeacher = {
+        teacherId: sourceItem.teacherId,
+        teacherName: sourceItem.teacherName,
+        previousPrimaryCount: sourceItem.previousPrimaryCount,
+        previousReserveCount: sourceItem.previousReserveCount,
+      };
 
-      sourceItem.committeeNumber = targetItem.committeeNumber;
-      sourceItem.assignmentType = targetItem.assignmentType;
+      sourceItem.teacherId = targetItem.teacherId;
+      sourceItem.teacherName = targetItem.teacherName;
+      sourceItem.previousPrimaryCount = targetItem.previousPrimaryCount;
+      sourceItem.previousReserveCount = targetItem.previousReserveCount;
 
-      targetItem.committeeNumber = tempCommittee;
-      targetItem.assignmentType = tempType;
+      targetItem.teacherId = sourceTeacher.teacherId;
+      targetItem.teacherName = sourceTeacher.teacherName;
+      targetItem.previousPrimaryCount = sourceTeacher.previousPrimaryCount;
+      targetItem.previousReserveCount = sourceTeacher.previousReserveCount;
 
       newDist[sourceIdx] = sourceItem;
       newDist[targetIdx] = targetItem;
@@ -206,7 +220,10 @@ const SmartProctorDistribution: React.FC<Props> = ({
         committeeNumber: shuffledCommittees[index] || String(index + 1),
         assignmentType: 'PRIMARY',
         previousPrimaryCount: proctor.primaryCount,
-        previousReserveCount: proctor.reserveCount
+        previousReserveCount: proctor.reserveCount,
+        date: selectedPeriod.date,
+        period: selectedPeriod.period,
+        subject: selectedPeriod.subjects.join('، ')
       });
     });
 
@@ -218,7 +235,10 @@ const SmartProctorDistribution: React.FC<Props> = ({
         committeeNumber: 'احتياط',
         assignmentType: 'RESERVE',
         previousPrimaryCount: proctor.primaryCount,
-        previousReserveCount: proctor.reserveCount
+        previousReserveCount: proctor.reserveCount,
+        date: selectedPeriod.date,
+        period: selectedPeriod.period,
+        subject: selectedPeriod.subjects.join('، ')
       });
     });
 
@@ -246,41 +266,49 @@ const SmartProctorDistribution: React.FC<Props> = ({
     setNewExam({ exam_date: payload.exam_date, subject: '', period: 1, start_time: payload.start_time || '08:00', end_time: '', grades: [], status: 'READY' });
   };
 
+  const editPeriod = (period: DistributionPeriod) => {
+    const schedule = examSchedule.find(item => period.scheduleIds.includes(item.id));
+    setNewExam({
+      id: schedule?.id,
+      exam_date: period.date,
+      subject: schedule?.subject || period.subjects.join('، '),
+      period: period.period,
+      start_time: schedule?.start_time || '08:00',
+      end_time: schedule?.end_time || '',
+      grades: schedule?.grades?.length ? schedule.grades : period.grades,
+      status: schedule?.status || 'READY',
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const deletePeriod = async (period: DistributionPeriod) => {
+    if (!onDeleteExamSchedule || period.scheduleIds.length === 0) return;
+    if (!confirm('هل تريد حذف هذا الاختبار من قائمة الاختبارات المتاحة للتوزيع؟')) return;
+    await Promise.all(period.scheduleIds.map(id => onDeleteExamSchedule(id)));
+  };
+
   const handleCommit = async () => {
     if (!selectedPeriod || !distribution.length) return;
     setIsCommitting(true);
     
     try {
-      // Delete existing supervisions for this exam to replace them
-      const existingIds = supervisions
-        .filter(s => s.date === selectedPeriod.date && Number(s.period) === Number(selectedPeriod.period))
-        .map(s => s.id);
-        
-      if (existingIds.length > 0 && onDeleteSupervisions) {
-        await onDeleteSupervisions(existingIds);
-      }
-
+      if (!onCommit) throw new Error('لا توجد دالة اعتماد للتوزيع.');
       const combinedSubject = selectedPeriod.subjects.join('، ');
-
-      const payload = distribution.map(d => ({
-        teacher_id: d.teacherId,
-        committee_number: d.committeeNumber,
-        date: selectedPeriod.date,
-        period: selectedPeriod.period,
-        subject: combinedSubject,
-        assignment_type: d.assignmentType
-      }));
-
-      const { error } = await supabase.from('supervision').insert(payload);
-      if (error) throw error;
-      
-      alert('تم الحفظ بنجاح!');
+      await onCommit?.(
+        distribution.map(d => ({
+          ...d,
+          date: selectedPeriod.date,
+          period: selectedPeriod.period,
+          subject: combinedSubject,
+        })),
+        true,
+      );
       setStep('SELECT_EXAM');
       setSelectedPeriod(null);
       setDistribution([]);
       setExcludedProctorIds([]);
     } catch (err: any) {
-      alert('حدث خطأ أثناء الحفظ: ' + err.message);
+      alert('تعذر حفظ التوزيع: ' + err.message);
     } finally {
       setIsCommitting(false);
     }
@@ -507,7 +535,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
                 </div>
               </div>
               <button onClick={saveExamSchedule} disabled={!onUpsertExamSchedule || !newExam.subject?.trim()} className="md:col-span-4 w-full rounded-xl bg-blue-600 p-3 text-sm font-black text-white shadow-lg shadow-blue-200 disabled:opacity-40 hover:bg-blue-700 transition-all h-[46px] flex items-center justify-center gap-2">
-                 حفظ وإضافة للجدول
+                 {newExam.id ? 'حفظ تعديل الاختبار' : 'حفظ وإضافة للجدول'}
               </button>
             </div>
           </div>
@@ -558,11 +586,25 @@ const SmartProctorDistribution: React.FC<Props> = ({
                             </td>
                             <td className="p-4 flex items-center justify-center gap-2">
                               <button 
+                                onClick={() => editPeriod(period)}
+                                className="p-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 transition-all"
+                                title="تعديل الاختبار"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              <button 
                                 onClick={() => { setSelectedPeriod(period); setStep('EXCLUDE_PROCTORS'); }}
                                 className={`p-2 rounded-lg transition-all ${hasDistribution ? 'bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600' : 'bg-blue-100 text-blue-600 hover:bg-blue-200 shadow-sm'}`}
                                 title={hasDistribution ? "إعادة التوزيع" : "بدء التوزيع"}
                               >
                                 <Wand2 size={16} />
+                              </button>
+                              <button 
+                                onClick={() => deletePeriod(period)}
+                                className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-all"
+                                title="حذف الاختبار"
+                              >
+                                <Trash2 size={16} />
                               </button>
                             </td>
                           </tr>
@@ -661,21 +703,24 @@ const SmartProctorDistribution: React.FC<Props> = ({
             {proctors.filter(p => p.full_name.includes(searchProctor)).map(proctor => {
               const isExcluded = excludedProctorIds.includes(proctor.id);
               return (
-                <label key={proctor.id} className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${isExcluded ? 'bg-red-50 border border-red-200' : 'hover:bg-white border border-transparent'}`}>
-                  <input 
-                    type="checkbox" 
-                    checked={isExcluded}
-                    onChange={(e) => {
-                      if (e.target.checked) setExcludedProctorIds(prev => [...prev, proctor.id]);
-                      else setExcludedProctorIds(prev => prev.filter(id => id !== proctor.id));
-                    }}
-                    className="w-5 h-5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
-                  />
+                <button
+                  key={proctor.id}
+                  type="button"
+                  onClick={() => {
+                    setExcludedProctorIds(prev => (
+                      prev.includes(proctor.id)
+                        ? prev.filter(id => id !== proctor.id)
+                        : [...prev, proctor.id]
+                    ));
+                  }}
+                  className={`w-full text-right flex items-center justify-between gap-3 p-3 rounded-xl cursor-pointer transition-all border ${isExcluded ? 'bg-red-950/10 border-red-900/20 shadow-sm' : 'bg-white/70 hover:bg-white border-transparent hover:border-slate-200'}`}
+                >
                   <div>
-                    <div className={`font-black ${isExcluded ? 'text-red-700' : 'text-slate-800'}`}>{proctor.full_name}</div>
-                    {isExcluded && <div className="text-[10px] text-red-500 font-bold">مستبعد من هذا التوزيع</div>}
+                    <div className={`font-black ${isExcluded ? 'text-red-900' : 'text-slate-800'}`}>{proctor.full_name}</div>
+                    {isExcluded && <div className="text-[10px] text-red-800/80 font-bold">مستبعد من هذا التوزيع</div>}
                   </div>
-                </label>
+                  {isExcluded && <UserX size={18} className="text-red-900 shrink-0" />}
+                </button>
               );
             })}
           </div>
