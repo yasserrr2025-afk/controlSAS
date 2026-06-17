@@ -53,7 +53,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
   onDeleteSupervisions,
 }) => {
   const [step, setStep] = useState<WizardStep>('SELECT_EXAM');
-  const [selectedExam, setSelectedExam] = useState<ExamSchedule | null>(null);
+  const [selectedPeriod, setSelectedPeriod] = useState<{ date: string; period: number; subjects: string[]; grades: string[] } | null>(null);
   const [excludedProctorIds, setExcludedProctorIds] = useState<string[]>([]);
   const [distribution, setDistribution] = useState<SmartDistributionItem[]>([]);
   const [searchProctor, setSearchProctor] = useState('');
@@ -88,15 +88,34 @@ const SmartProctorDistribution: React.FC<Props> = ({
   const pastDistributions = useMemo(() => {
     const groups = new Map<string, Supervision[]>();
     supervisions.forEach(s => {
-      const key = `${s.date}__${s.period}__${s.subject}`;
+      const key = `${s.date}__${s.period}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(s);
     });
     return Array.from(groups.entries()).map(([key, items]) => {
-      const [date, period, subject] = key.split('__');
+      const [date, period] = key.split('__');
+      const subject = Array.from(new Set(items.map(i => i.subject).filter(Boolean))).join('، ');
       return { key, date, period: Number(period), subject, count: items.length, items };
     }).sort((a, b) => b.date.localeCompare(a.date));
   }, [supervisions]);
+
+  const availablePeriods = useMemo(() => {
+    const groups = new Map<string, { date: string; period: number; subjects: string[]; grades: string[] }>();
+    examSchedule.forEach(e => {
+      const key = `${e.exam_date}__${e.period}`;
+      if (!groups.has(key)) {
+        groups.set(key, { date: e.exam_date, period: e.period, subjects: [], grades: [] });
+      }
+      const g = groups.get(key)!;
+      if (e.subject && !g.subjects.includes(e.subject)) g.subjects.push(e.subject);
+      if (e.grades) {
+        e.grades.forEach(gr => {
+          if (!g.grades.includes(gr)) g.grades.push(gr);
+        });
+      }
+    });
+    return Array.from(groups.values()).sort((a, b) => a.date.localeCompare(b.date) || a.period - b.period);
+  }, [examSchedule]);
 
   // Handlers for Drag and Drop
   const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -141,11 +160,17 @@ const SmartProctorDistribution: React.FC<Props> = ({
   };
 
   const runDistributionAlgorithm = () => {
-    if (!selectedExam) return;
+    if (!selectedPeriod) return;
 
-    // 1. Calculate previous load for each proctor before this exam date
+    const involvedStudents = students.filter(s => selectedPeriod.grades.includes(s.grade));
+    const activeCommittees = (Array.from(new Set(involvedStudents.map(s => s.committee_number).filter(Boolean))) as string[]).sort((a, b) => Number(a) - Number(b));
+
+    // 1. Calculate previous load for each proctor before this exam date, OR earlier period today
     const previousLoads = proctors.map(p => {
-      const pastSupervisions = supervisions.filter(s => s.teacher_id === p.id && s.date < selectedExam.exam_date);
+      const pastSupervisions = supervisions.filter(s => 
+        s.teacher_id === p.id && 
+        (s.date < selectedPeriod.date || (s.date === selectedPeriod.date && Number(s.period) < selectedPeriod.period))
+      );
       const primaryCount = pastSupervisions.filter(s => s.assignment_type !== 'RESERVE').length;
       const reserveCount = pastSupervisions.filter(s => s.assignment_type === 'RESERVE').length;
       return { 
@@ -164,12 +189,12 @@ const SmartProctorDistribution: React.FC<Props> = ({
     // 3. Sort by weight ascending (Least loaded first)
     available.sort((a, b) => a.weight - b.weight);
 
-    const neededPrimary = committees.length;
+    const neededPrimary = activeCommittees.length;
     const draftedPrimary = available.slice(0, neededPrimary);
     const draftedReserve = available.slice(neededPrimary);
 
     // Shuffle committees to avoid assigning the same proctor to the same committee number always if loads match
-    const shuffledCommittees = [...committees].sort(() => Math.random() - 0.5);
+    const shuffledCommittees = [...activeCommittees].sort(() => Math.random() - 0.5);
 
     const newDistribution: SmartDistributionItem[] = [];
 
@@ -222,25 +247,27 @@ const SmartProctorDistribution: React.FC<Props> = ({
   };
 
   const handleCommit = async () => {
-    if (!selectedExam || !distribution.length) return;
+    if (!selectedPeriod || !distribution.length) return;
     setIsCommitting(true);
     
     try {
       // Delete existing supervisions for this exam to replace them
       const existingIds = supervisions
-        .filter(s => s.date === selectedExam.exam_date && Number(s.period) === Number(selectedExam.period) && s.subject === selectedExam.subject)
+        .filter(s => s.date === selectedPeriod.date && Number(s.period) === Number(selectedPeriod.period))
         .map(s => s.id);
         
       if (existingIds.length > 0 && onDeleteSupervisions) {
         await onDeleteSupervisions(existingIds);
       }
 
+      const combinedSubject = selectedPeriod.subjects.join('، ');
+
       const payload = distribution.map(d => ({
         teacher_id: d.teacherId,
         committee_number: d.committeeNumber,
-        date: selectedExam.exam_date,
-        period: selectedExam.period,
-        subject: selectedExam.subject,
+        date: selectedPeriod.date,
+        period: selectedPeriod.period,
+        subject: combinedSubject,
         assignment_type: d.assignmentType
       }));
 
@@ -249,7 +276,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
       
       alert('تم الحفظ بنجاح!');
       setStep('SELECT_EXAM');
-      setSelectedExam(null);
+      setSelectedPeriod(null);
       setDistribution([]);
       setExcludedProctorIds([]);
     } catch (err: any) {
@@ -419,7 +446,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
         </div>
         {step !== 'SELECT_EXAM' && (
           <button 
-            onClick={() => { setStep('SELECT_EXAM'); setSelectedExam(null); }}
+            onClick={() => { setStep('SELECT_EXAM'); setSelectedPeriod(null); }}
             className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold text-sm bg-slate-50 px-4 py-2 rounded-xl"
           >
             <ArrowRight size={16} /> العودة للقائمة
@@ -493,7 +520,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
                 <CalendarDays className="text-blue-600" size={24} /> الاختبارات المتاحة للتوزيع
               </h4>
               <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                {examSchedule.length === 0 ? (
+                {availablePeriods.length === 0 ? (
                   <div className="text-center text-slate-500 py-12 font-bold">لا توجد اختبارات مجدولة. الرجاء إضافتها من الأعلى.</div>
                 ) : (
                   <table className="w-full text-right text-sm">
@@ -506,15 +533,16 @@ const SmartProctorDistribution: React.FC<Props> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-bold text-slate-800">
-                      {examSchedule.map(exam => {
-                        const hasDistribution = pastDistributions.some(p => p.date === exam.exam_date && p.period === exam.period && p.subject === exam.subject);
+                      {availablePeriods.map(period => {
+                        const hasDistribution = pastDistributions.some(p => p.date === period.date && p.period === period.period);
+                        const combinedSubject = period.subjects.join('، ') || 'متعدد';
                         return (
-                          <tr key={exam.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="p-4 text-slate-900">{exam.subject}</td>
+                          <tr key={`${period.date}_${period.period}`} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-4 text-slate-900">{combinedSubject}</td>
                             <td className="p-4">
                               <div className="flex flex-col gap-1">
-                                <span className="text-xs text-slate-500">{exam.exam_date}</span>
-                                <span className="text-xs text-blue-600 bg-blue-50 w-fit px-2 py-0.5 rounded-md">فترة {exam.period}</span>
+                                <span className="text-xs text-slate-500">{period.date}</span>
+                                <span className="text-xs text-blue-600 bg-blue-50 w-fit px-2 py-0.5 rounded-md">فترة {period.period}</span>
                               </div>
                             </td>
                             <td className="p-4">
@@ -530,25 +558,12 @@ const SmartProctorDistribution: React.FC<Props> = ({
                             </td>
                             <td className="p-4 flex items-center justify-center gap-2">
                               <button 
-                                onClick={() => { setSelectedExam(exam); setStep('EXCLUDE_PROCTORS'); }}
+                                onClick={() => { setSelectedPeriod(period); setStep('EXCLUDE_PROCTORS'); }}
                                 className={`p-2 rounded-lg transition-all ${hasDistribution ? 'bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600' : 'bg-blue-100 text-blue-600 hover:bg-blue-200 shadow-sm'}`}
                                 title={hasDistribution ? "إعادة التوزيع" : "بدء التوزيع"}
                               >
                                 <Wand2 size={16} />
                               </button>
-                              {onDeleteExamSchedule && (
-                                <button 
-                                  onClick={async () => {
-                                    if(confirm('هل أنت متأكد من حذف هذا الاختبار من الجدول بالكامل؟')) {
-                                      await onDeleteExamSchedule(exam.id);
-                                    }
-                                  }}
-                                  className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100 transition-all"
-                                  title="حذف الاختبار"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              )}
                             </td>
                           </tr>
                         );
@@ -622,12 +637,12 @@ const SmartProctorDistribution: React.FC<Props> = ({
         </div>
       )}
 
-      {step === 'EXCLUDE_PROCTORS' && selectedExam && (
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 max-w-3xl mx-auto">
-          <div className="text-center mb-6 border-b pb-6">
-            <h3 className="text-2xl font-black text-slate-800 mb-2">تحديد المستبعدين</h3>
-            <p className="text-slate-500 font-bold">
-              لاختبار مادة <span className="text-blue-600">{selectedExam.subject}</span> يوم {selectedExam.exam_date} فترة {selectedExam.period}
+      {step === 'EXCLUDE_PROCTORS' && selectedPeriod && (
+        <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200">
+          <div className="mb-8">
+            <h3 className="text-xl font-black text-slate-800 mb-2">استثناء معلمين من التوزيع</h3>
+            <p className="text-sm font-bold text-slate-500">
+              لاختبار <span className="text-blue-600">{selectedPeriod.subjects.join('، ')}</span> يوم {selectedPeriod.date} فترة {selectedPeriod.period}
             </p>
           </div>
 
@@ -679,7 +694,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
         </div>
       )}
 
-      {step === 'PREVIEW' && selectedExam && (
+      {step === 'PREVIEW' && selectedPeriod && (
         <div className="space-y-6">
           <div className="bg-orange-50 border border-orange-200 p-4 rounded-xl flex gap-3 text-orange-800 font-bold items-start">
             <AlertTriangle size={24} className="shrink-0" />

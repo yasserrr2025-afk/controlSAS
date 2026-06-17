@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import {
   User,
   Supervision,
@@ -125,20 +125,47 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   );
   const [optimisticAssignment, setOptimisticAssignment] = useState<Supervision | null>(null);
 
+  const isSupervisionFullyDone = useCallback((s: any) => {
+    if (!s || !s.committee_number) return false;
+    const committeeGrades = Array.from(new Set(students.filter(st => st.committee_number === s.committee_number).map(st => st.grade)));
+    if (committeeGrades.length === 0) return false;
+    
+    const confirmedLogs = deliveryLogs.filter(l => l.committee_number === s.committee_number && matchesActiveDate(l.time) && l.status === 'CONFIRMED');
+    const reportedGrades = confirmedLogs.map(l => l.grade);
+    
+    const allConfirmed = committeeGrades.every(g => reportedGrades.includes(g));
+    const proctorSignature = findStoredSignature(controlRequests, 'proctor', s.committee_number, ALL_GRADES_SIGNATURE);
+    
+    return allConfirmed && !!proctorSignature;
+  }, [students, deliveryLogs, controlRequests, activeDate]);
+
   const activeAssignment = useMemo(
     () => {
-      const fromServer = supervisions.find(
-        (s: any) =>
-          s.teacher_id === user.id && matchesActiveDate(s.date),
-      );
-      if (fromServer) return fromServer;
-      if (optimisticAssignment?.teacher_id === user.id && matchesActiveDate(optimisticAssignment.date)) {
-        return optimisticAssignment;
+      const todaySupervisions = supervisions.filter(
+        (s: any) => s.teacher_id === user.id && matchesActiveDate(s.date)
+      ).sort((a, b) => Number(a.period) - Number(b.period));
+
+      if (todaySupervisions.length === 0) {
+        if (optimisticAssignment?.teacher_id === user.id && matchesActiveDate(optimisticAssignment.date)) {
+          return optimisticAssignment;
+        }
+        return undefined;
       }
-      return undefined;
+
+      const active = todaySupervisions.find(s => !isSupervisionFullyDone(s));
+      return active || todaySupervisions[todaySupervisions.length - 1];
     },
-    [supervisions, user.id, activeDate, optimisticAssignment],
+    [supervisions, user.id, activeDate, optimisticAssignment, isSupervisionFullyDone],
   );
+
+  // تحقق مما إذا كانت جميع المهام اليومية منتهية بالكامل لإظهار بطاقة الشكر الكبرى
+  const isAllSupervisionsFullyDone = useMemo(() => {
+    const todaySupervisions = supervisions.filter(
+      (s: any) => s.teacher_id === user.id && matchesActiveDate(s.date)
+    );
+    if (todaySupervisions.length === 0) return false;
+    return todaySupervisions.every(s => isSupervisionFullyDone(s));
+  }, [supervisions, user.id, activeDate, isSupervisionFullyDone]);
 
   const activeCommittee = activeAssignment?.committee_number || null;
   const isAssignmentStarted = (value?: string | null) => {
@@ -980,9 +1007,11 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
 
                 {/* العنوان */}
                 <div className="space-y-2">
-                  <p className="text-amber-400/70 font-black text-xs uppercase tracking-[0.4em]">اللجنة الميدانية رقم</p>
+                  <p className="text-amber-400/70 font-black text-xs uppercase tracking-[0.4em]">
+                    {isAllSupervisionsFullyDone ? "جميع المهام الميدانية لليوم" : "اللجنة الميدانية رقم"}
+                  </p>
                   <h2 className="text-7xl font-black text-white tracking-tighter leading-none" style={{textShadow: '0 0 40px rgba(251,191,36,0.3)'}}>
-                    {activeCommittee}
+                    {isAllSupervisionsFullyDone ? <CheckCircle size={72} className="inline-block text-emerald-400" /> : activeCommittee}
                   </h2>
                   <p className="text-2xl font-black text-emerald-400 tracking-tight">مكتملة ومستلمة بنجاح تام</p>
                 </div>
@@ -1003,9 +1032,9 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
                     {user.full_name}
                   </p>
                   <p className="text-slate-400 font-bold text-base leading-relaxed italic">
-                    على إتمام مهمته الميدانية باحتراف وأمانة.
-                    وقد صادق الكنترول على استلام جميع مظاريف هذه اللجنة.
-                    جزاك الله خير الجزاء على عطائك وإخلاصك.
+                    {isAllSupervisionsFullyDone 
+                      ? "على إتمام جميع فترات المراقبة الميدانية لهذا اليوم باحتراف وأمانة. جزاك الله خير الجزاء على عطائك وإخلاصك." 
+                      : "على إتمام مهمته الميدانية باحتراف وأمانة. وقد صادق الكنترول على استلام جميع مظاريف هذه اللجنة."}
                   </p>
                 </div>
 
