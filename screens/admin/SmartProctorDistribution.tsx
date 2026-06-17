@@ -79,6 +79,11 @@ const SmartProctorDistribution: React.FC<Props> = ({
     return unique.sort((a, b) => Number(a) - Number(b));
   }, [students]);
 
+  const allGrades = useMemo(() => {
+    const unique = Array.from(new Set(students.map(s => s.grade).filter(Boolean)));
+    return unique.sort();
+  }, [students]);
+
   // View Past Distributions
   const pastDistributions = useMemo(() => {
     const groups = new Map<string, Supervision[]>();
@@ -449,7 +454,32 @@ const SmartProctorDistribution: React.FC<Props> = ({
                   <input type="time" value={newExam.start_time || '08:00'} onChange={e => setNewExam(prev => ({ ...prev, start_time: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold outline-none focus:border-blue-500 focus:bg-white transition-all" />
                 </div>
               </div>
-              <button onClick={saveExamSchedule} disabled={!onUpsertExamSchedule || !newExam.subject?.trim()} className="w-full rounded-xl bg-blue-600 p-3 text-sm font-black text-white shadow-lg shadow-blue-200 disabled:opacity-40 hover:bg-blue-700 transition-all h-[46px] flex items-center justify-center gap-2">
+              <div className="md:col-span-4">
+                <label className="text-xs font-bold text-slate-500 mb-2 block">الصفوف المستهدفة (لهذه المادة)</label>
+                <div className="flex flex-wrap gap-2">
+                  {allGrades.map(g => {
+                    const isSelected = newExam.grades?.includes(g);
+                    return (
+                      <button
+                        key={g}
+                        onClick={() => {
+                          setNewExam(prev => ({
+                            ...prev,
+                            grades: isSelected 
+                              ? (prev.grades || []).filter(x => x !== g)
+                              : [...(prev.grades || []), g]
+                          }));
+                        }}
+                        className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border ${isSelected ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                      >
+                        {g}
+                      </button>
+                    )
+                  })}
+                  {allGrades.length === 0 && <span className="text-xs text-amber-600 font-bold">يرجى إضافة طلاب أولاً لتظهر الصفوف هنا.</span>}
+                </div>
+              </div>
+              <button onClick={saveExamSchedule} disabled={!onUpsertExamSchedule || !newExam.subject?.trim()} className="md:col-span-4 w-full rounded-xl bg-blue-600 p-3 text-sm font-black text-white shadow-lg shadow-blue-200 disabled:opacity-40 hover:bg-blue-700 transition-all h-[46px] flex items-center justify-center gap-2">
                  حفظ وإضافة للجدول
               </button>
             </div>

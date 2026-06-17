@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { APP_CONFIG } from '../../constants';
 import { formatActualProctorStart, isPlaceholderProctorStart } from '../../utils/proctorTime';
-import { isInternalSignatureRecord, isSignatureRequest } from '../../services/signatures';
+import { isInternalSignatureRecord, isSignatureRequest, findStoredSignature, ALL_GRADES_SIGNATURE } from '../../services/signatures';
 
 interface Props {
   supervisions?: Supervision[];
@@ -19,6 +19,7 @@ interface Props {
   committeeReports?: CommitteeReport[];
   absences?: Absence[];
   controlRequests?: ControlRequest[];
+  examSchedule?: ExamSchedule[];
 }
 
 /* ── تصدير CSV ── */
@@ -113,7 +114,7 @@ const PrintableMonitorSheet: React.FC<{
             { label: 'اللجنة', w: '6%' },
             { label: 'اسم المراقب', w: '16%' },
             { label: 'المادة', w: '14%' },
-            { label: 'الصفوف', w: '8%' },
+            { label: 'الصف', w: '8%' },
             { label: 'وقت الدخول', w: '8%' },
             { label: 'وقت الإغلاق', w: '8%' },
             { label: 'وقت الاستلام', w: '8%' },
@@ -134,7 +135,7 @@ const PrintableMonitorSheet: React.FC<{
             <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontWeight: 900 }}>{row.committee}</td>
             <td style={{ border: '1px solid #000', padding: '3px 6px', fontWeight: 700 }}>{row.proctorName}</td>
             <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontSize: '7pt', fontWeight: 700 }}>{row.subject}</td>
-            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontSize: '7pt', fontWeight: 700 }}>{row.grades > 1 ? `${row.grades} صفوف` : 'صف واحد'}</td>
+            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontSize: '7pt', fontWeight: 700 }}>{row.gradeName}</td>
             <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700 }}>{row.joinTime}</td>
             <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700 }}>{row.closeTime}</td>
             <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700 }}>{row.receiptTime}</td>
@@ -142,9 +143,13 @@ const PrintableMonitorSheet: React.FC<{
               {row.receiverName !== '—' ? row.receiverName : '.....................'}
             </td>
             {/* خانة توقيع المراقب */}
-            <td style={{ border: '1px solid #000', padding: '3px' }}>&nbsp;</td>
+            <td style={{ border: '1px solid #000', padding: '1px', verticalAlign: 'middle', textAlign: 'center' }}>
+              {row.proctorSignature ? <img src={row.proctorSignature} style={{ maxHeight: '20px', maxWidth: '100%', display: 'block', margin: '0 auto' }} /> : <>&nbsp;</>}
+            </td>
             {/* خانة توقيع المستلم */}
-            <td style={{ border: '1px solid #000', padding: '3px' }}>&nbsp;</td>
+            <td style={{ border: '1px solid #000', padding: '1px', verticalAlign: 'middle', textAlign: 'center' }}>
+              {row.receiverSignature ? <img src={row.receiverSignature} style={{ maxHeight: '20px', maxWidth: '100%', display: 'block', margin: '0 auto' }} /> : <>&nbsp;</>}
+            </td>
           </tr>
         ))}
         {/* صفوف فارغة للاحتياط */}
@@ -234,34 +239,52 @@ const AdminDailyReports: React.FC<Props> = ({
     const committees = Array.from(new Set(students.map(s => s?.committee_number)))
       .filter(Boolean).sort((a, b) => Number(a) - Number(b)) as string[];
 
-    return committees.map(num => {
+    return committees.flatMap(num => {
       const sv = supervisions.find(s => String(s?.committee_number) === String(num) && matchesDate(s?.date, reportDate) && s.period === selectedPeriod);
-      if (!sv) return null;
+      if (!sv) return [];
 
       const proctor = users.find(u => u?.id === sv?.teacher_id);
       const closeLog = deliveryLogs.find(l => String(l?.committee_number) === String(num) && matchesDate(l?.time, reportDate) && l?.type === 'RECEIVE' && l?.period === selectedPeriod);
       const receiptLog = deliveryLogs.find(l => String(l?.committee_number) === String(num) && matchesDate(l?.time, reportDate) && l?.status === 'CONFIRMED' && l?.period === selectedPeriod);
       const detailedReport = committeeReports.find(r => String(r?.committee_number) === String(num) && r?.date === reportDate);
       const committeeStudents = students.filter(s => String(s.committee_number) === String(num));
-      const gradeSet = Array.from(new Set(committeeStudents.map(s => s.grade)));
+      const gradeSet = Array.from(new Set(committeeStudents.map(s => s.grade))).filter(Boolean);
 
-      return {
-        committee: String(num),
-        proctorName: proctor?.full_name || '—',
-        subject: sv?.subject || '—',
-        joinTime: formatActualProctorStart(sv?.date),
-        closeTime: safeTime(closeLog?.time),
-        receiptTime: safeTime(receiptLog?.time),
-        receiverName: receiptLog?.teacher_name || '—',
-        joinAt: sv?.date || '',
-        closeAt: closeLog?.time || '',
-        receiptAt: receiptLog?.time || '',
-        status: receiptLog ? 'CONFIRMED' : closeLog ? 'CLOSED' : (sv && !isPlaceholderProctorStart(sv.date)) ? 'ACTIVE' : 'NOT_STARTED',
-        totalStudents: committeeStudents.length,
-        grades: gradeSet.length,
-        observations: detailedReport?.observations || '',
-        resolutions: detailedReport?.resolutions || '',
-      };
+      if (gradeSet.length === 0) gradeSet.push('غير محدد');
+
+      return gradeSet.map(grade => {
+        // Find subject from exam schedule
+        const scheduleItem = examSchedule?.find(exam => 
+          matchesDate(exam.exam_date, reportDate) && 
+          exam.period === selectedPeriod && 
+          exam.grades?.includes(grade)
+        );
+        const resolvedSubject = scheduleItem?.subject || sv?.subject || '—';
+
+        // Retrieve digital signatures
+        const proctorSig = findStoredSignature(controlRequests, 'proctor', num, grade)?.[0] || findStoredSignature(controlRequests, 'proctor', num, ALL_GRADES_SIGNATURE)?.[0];
+        const receiverSig = findStoredSignature(controlRequests, 'receiver', num, grade)?.[0] || findStoredSignature(controlRequests, 'receiver', num, ALL_GRADES_SIGNATURE)?.[0];
+
+        return {
+          committee: String(num),
+          gradeName: grade,
+          proctorName: proctor?.full_name || '—',
+          subject: resolvedSubject,
+          joinTime: formatActualProctorStart(sv?.date),
+          closeTime: safeTime(closeLog?.time),
+          receiptTime: safeTime(receiptLog?.time),
+          receiverName: receiptLog?.teacher_name || '—',
+          joinAt: sv?.date || '',
+          closeAt: closeLog?.time || '',
+          receiptAt: receiptLog?.time || '',
+          status: receiptLog ? 'CONFIRMED' : closeLog ? 'CLOSED' : (sv && !isPlaceholderProctorStart(sv.date)) ? 'ACTIVE' : 'NOT_STARTED',
+          totalStudents: committeeStudents.filter(s => s.grade === grade).length || committeeStudents.length,
+          observations: detailedReport?.observations || '',
+          resolutions: detailedReport?.resolutions || '',
+          proctorSignature: proctorSig?.signature || null,
+          receiverSignature: receiverSig?.signature || null,
+        };
+      });
     }).filter(row => {
       if (!row) return false;
       if (!searchTerm) return true;
