@@ -212,6 +212,7 @@ const SignatureSheetPage = ({
   academicYear,
   users = [],
   supervisions = [],
+  systemConfig,
 }: {
   students: Student[];
   committee: string;
@@ -351,6 +352,7 @@ const MarksSheetPage = ({
   users = [],
   supervisions = [],
   deliveryLogs = [],
+  systemConfig,
 }: {
   students: Student[];
   committee: string;
