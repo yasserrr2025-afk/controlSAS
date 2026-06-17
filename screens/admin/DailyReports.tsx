@@ -54,7 +54,7 @@ function matchesDate(isoStr: string | undefined | null, date: string): boolean {
 /* ══════════════════════════════════════════════
    مكوّن الكليشة الرسمية للطباعة
 ══════════════════════════════════════════════ */
-const PrintHeader: React.FC<{ date: string; subject?: string; systemConfig?: SystemConfig & { directorate_name?: string } }> = ({ date, subject, systemConfig }) => {
+const PrintHeader: React.FC<{ date: string; period?: number; systemConfig?: SystemConfig & { directorate_name?: string } }> = ({ date, period, systemConfig }) => {
   const directorateName = systemConfig?.directorate_name || 'إدارة التعليم';
   const schoolName = systemConfig?.school_name || 'اسم المدرسة';
   return (
@@ -76,7 +76,7 @@ const PrintHeader: React.FC<{ date: string; subject?: string; systemConfig?: Sys
       <div className="text-[9pt] font-bold text-left leading-relaxed space-y-0.5">
         <p>التاريخ: <span className="font-black tabular-nums">{new Date(date).toLocaleDateString('ar-SA')}</span></p>
         <p>اليوم: <span className="font-black">{new Intl.DateTimeFormat('ar-SA', { weekday: 'long' }).format(new Date(date))}</span></p>
-        {subject && <p>المادة: <span className="font-black">{subject}</span></p>}
+        {period ? <p>الفترة: <span className="font-black">{period}</span></p> : null}
         <p>العام الدراسي: <span className="font-black">{systemConfig?.academic_year || '1446 / 1447'}</span></p>
       </div>
     </div>
@@ -90,11 +90,11 @@ const PrintHeader: React.FC<{ date: string; subject?: string; systemConfig?: Sys
 const PrintableMonitorSheet: React.FC<{
   rows: any[];
   date: string;
-  subject: string;
+  period: number | null;
   systemConfig?: SystemConfig & { directorate_name?: string };
-}> = ({ rows, date, subject, systemConfig }) => (
+}> = ({ rows, date, period, systemConfig }) => (
   <div className="print-page" style={{ fontFamily: "'Tajawal', Arial", direction: 'rtl', padding: '8mm', color: '#000' }}>
-    <PrintHeader date={date} subject={subject} systemConfig={systemConfig} />
+    <PrintHeader date={date} period={period || undefined} systemConfig={systemConfig} />
 
     {/* عنوان المستند */}
     <div style={{ textAlign: 'center', marginBottom: '6mm' }}>
@@ -109,16 +109,17 @@ const PrintableMonitorSheet: React.FC<{
       <thead>
         <tr style={{ background: '#f1f5f9' }}>
           {[
-            { label: 'م', w: '5%' },
-            { label: 'اللجنة', w: '7%' },
-            { label: 'اسم المراقب', w: '18%' },
-            { label: 'الصنف', w: '12%' },
-            { label: 'وقت الدخول', w: '9%' },
-            { label: 'وقت الإغلاق', w: '9%' },
-            { label: 'وقت الاستلام', w: '9%' },
-            { label: 'المستلم بالكنترول', w: '16%' },
-            { label: 'توقيع المراقب', w: '8%' },
-            { label: 'توقيع المستلم', w: '8%' },
+            { label: 'م', w: '4%' },
+            { label: 'اللجنة', w: '6%' },
+            { label: 'اسم المراقب', w: '16%' },
+            { label: 'المادة', w: '14%' },
+            { label: 'الصفوف', w: '8%' },
+            { label: 'وقت الدخول', w: '8%' },
+            { label: 'وقت الإغلاق', w: '8%' },
+            { label: 'وقت الاستلام', w: '8%' },
+            { label: 'المستلم بالكنترول', w: '14%' },
+            { label: 'توقيع المراقب', w: '7%' },
+            { label: 'توقيع المستلم', w: '7%' },
           ].map(h => (
             <th key={h.label} style={{ border: '1px solid #000', padding: '5px 4px', fontWeight: 900, textAlign: 'center', width: h.w }}>
               {h.label}
@@ -132,6 +133,7 @@ const PrintableMonitorSheet: React.FC<{
             <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontWeight: 700 }}>{idx + 1}</td>
             <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontWeight: 900 }}>{row.committee}</td>
             <td style={{ border: '1px solid #000', padding: '3px 6px', fontWeight: 700 }}>{row.proctorName}</td>
+            <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontSize: '7pt', fontWeight: 700 }}>{row.subject}</td>
             <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontSize: '7pt', fontWeight: 700 }}>{row.grades > 1 ? `${row.grades} صفوف` : 'صف واحد'}</td>
             <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700 }}>{row.joinTime}</td>
             <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700 }}>{row.closeTime}</td>
@@ -148,7 +150,7 @@ const PrintableMonitorSheet: React.FC<{
         {/* صفوف فارغة للاحتياط */}
         {Array.from({ length: Math.max(0, 4 - rows.length) }).map((_, i) => (
           <tr key={`empty-${i}`} style={{ height: '22px' }}>
-            {Array.from({ length: 10 }).map((__, j) => (
+            {Array.from({ length: 11 }).map((__, j) => (
               <td key={j} style={{ border: '1px solid #000', padding: '3px' }}>&nbsp;</td>
             ))}
           </tr>
@@ -204,22 +206,41 @@ const AdminDailyReports: React.FC<Props> = ({
   absences = [], controlRequests = []
 }) => {
   const [reportDate, setReportDate] = useState(systemConfig.active_exam_date || new Date().toISOString().split('T')[0]);
-  const [subject, setSubject] = useState('');
+  const [selectedPeriod, setSelectedPeriod] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'SUMMARY' | 'NOTES'>('SUMMARY');
   const [isPrinting, setIsPrinting] = useState(false);
 
+  const availablePeriods = useMemo(() => {
+    const periods = supervisions
+      .filter(s => matchesDate(s?.date, reportDate) && s.period)
+      .map(s => s.period);
+    return Array.from(new Set(periods)).sort((a, b) => a - b);
+  }, [supervisions, reportDate]);
+
+  useEffect(() => {
+    if (availablePeriods.length > 0) {
+      if (!selectedPeriod || !availablePeriods.includes(selectedPeriod)) {
+        setSelectedPeriod(availablePeriods[0]);
+      }
+    } else {
+      setSelectedPeriod(null);
+    }
+  }, [availablePeriods, selectedPeriod]);
+
   /* ── بناء بيانات التقرير ── */
   const reportData = useMemo(() => {
-    if (!students.length) return [];
+    if (!students.length || !selectedPeriod) return [];
     const committees = Array.from(new Set(students.map(s => s?.committee_number)))
       .filter(Boolean).sort((a, b) => Number(a) - Number(b)) as string[];
 
     return committees.map(num => {
-      const sv = supervisions.find(s => String(s?.committee_number) === String(num) && matchesDate(s?.date, reportDate));
+      const sv = supervisions.find(s => String(s?.committee_number) === String(num) && matchesDate(s?.date, reportDate) && s.period === selectedPeriod);
+      if (!sv) return null;
+
       const proctor = users.find(u => u?.id === sv?.teacher_id);
-      const closeLog = deliveryLogs.find(l => String(l?.committee_number) === String(num) && matchesDate(l?.time, reportDate) && l?.type === 'RECEIVE');
-      const receiptLog = deliveryLogs.find(l => String(l?.committee_number) === String(num) && matchesDate(l?.time, reportDate) && l?.status === 'CONFIRMED');
+      const closeLog = deliveryLogs.find(l => String(l?.committee_number) === String(num) && matchesDate(l?.time, reportDate) && l?.type === 'RECEIVE' && l?.period === selectedPeriod);
+      const receiptLog = deliveryLogs.find(l => String(l?.committee_number) === String(num) && matchesDate(l?.time, reportDate) && l?.status === 'CONFIRMED' && l?.period === selectedPeriod);
       const detailedReport = committeeReports.find(r => String(r?.committee_number) === String(num) && r?.date === reportDate);
       const committeeStudents = students.filter(s => String(s.committee_number) === String(num));
       const gradeSet = Array.from(new Set(committeeStudents.map(s => s.grade)));
@@ -227,6 +248,7 @@ const AdminDailyReports: React.FC<Props> = ({
       return {
         committee: String(num),
         proctorName: proctor?.full_name || '—',
+        subject: sv?.subject || '—',
         joinTime: formatActualProctorStart(sv?.date),
         closeTime: safeTime(closeLog?.time),
         receiptTime: safeTime(receiptLog?.time),
@@ -241,11 +263,12 @@ const AdminDailyReports: React.FC<Props> = ({
         resolutions: detailedReport?.resolutions || '',
       };
     }).filter(row => {
+      if (!row) return false;
       if (!searchTerm) return true;
       const s = searchTerm.toLowerCase();
-      return row.committee.includes(s) || row.proctorName.toLowerCase().includes(s);
+      return row.committee.includes(s) || row.proctorName.toLowerCase().includes(s) || row.subject.toLowerCase().includes(s);
     });
-  }, [students, supervisions, users, deliveryLogs, reportDate, searchTerm, committeeReports]);
+  }, [students, supervisions, users, deliveryLogs, reportDate, selectedPeriod, searchTerm, committeeReports]);
 
   const stats = useMemo(() => ({
     total: reportData.length,
@@ -389,7 +412,23 @@ const AdminDailyReports: React.FC<Props> = ({
           {/* فلاتر */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <input type="date" className="p-4 bg-white/5 border border-white/10 rounded-2xl font-black outline-none focus:border-blue-500 text-white" value={reportDate} onChange={e => setReportDate(e.target.value)} />
-            <input type="text" placeholder="اسم المادة (للطباعة)..." className="p-4 bg-white/5 border border-white/10 rounded-2xl font-bold outline-none focus:border-blue-500 text-white placeholder:text-slate-500" value={subject} onChange={e => setSubject(e.target.value)} />
+            
+            {availablePeriods.length > 0 ? (
+              <select 
+                className="p-4 bg-white/5 border border-white/10 rounded-2xl font-bold outline-none focus:border-blue-500 text-white"
+                value={selectedPeriod || ''}
+                onChange={e => setSelectedPeriod(Number(e.target.value))}
+              >
+                {availablePeriods.map(p => (
+                  <option key={p} value={p} className="text-slate-900">الفترة {p}</option>
+                ))}
+              </select>
+            ) : (
+              <div className="p-4 bg-white/5 border border-white/10 rounded-2xl font-bold text-slate-400 flex items-center justify-center text-sm">
+                لا يوجد اختبارات في هذا التاريخ
+              </div>
+            )}
+
             <div className="relative">
               <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
               <input type="text" placeholder="بحث بمراقب أو لجنة..." className="w-full p-4 pr-11 bg-white/5 border border-white/10 rounded-2xl font-bold outline-none focus:border-blue-500 text-white placeholder:text-slate-500" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
@@ -609,7 +648,7 @@ const AdminDailyReports: React.FC<Props> = ({
               .print-page { page-break-after: always; }
             }
           `}</style>
-          <PrintableMonitorSheet rows={reportData} date={reportDate} subject={subject} systemConfig={systemConfig} />
+          <PrintableMonitorSheet rows={reportData} date={reportDate} period={selectedPeriod} systemConfig={systemConfig} />
         </div>,
         document.body
       )}
