@@ -208,7 +208,7 @@ const PrintableMonitorSheet: React.FC<{
 const AdminDailyReports: React.FC<Props> = ({
   supervisions = [], users = [], students = [],
   deliveryLogs = [], systemConfig, committeeReports = [],
-  absences = [], controlRequests = []
+  absences = [], controlRequests = [], examSchedule = []
 }) => {
   const [reportDate, setReportDate] = useState(systemConfig.active_exam_date || new Date().toISOString().split('T')[0]);
   const [selectedPeriod, setSelectedPeriod] = useState<number | null>(null);
