@@ -122,6 +122,37 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
     .replace(/ى/g, 'ي')
     .replace(/\s+/g, ' ');
 
+  const normalizeKeySafe = (value: unknown) => String(value || '')
+    .trim()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/[ط£ط¥ط¢]/g, 'ط§')
+    .replace(/ط©/g, 'ظ‡')
+    .replace(/ظ‰/g, 'ظٹ')
+    .replace(/\s+/g, '')
+    .toLowerCase();
+
+  const normalizeNameSafe = (value: unknown) => String(value || '')
+    .trim()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/[ط£ط¥ط¢]/g, 'ط§')
+    .replace(/ط©/g, 'ظ‡')
+    .replace(/ظ‰/g, 'ظٹ')
+    .replace(/\s+/g, ' ');
+
+  const getSmartRowValueSafe = (row: any, kind: 'id' | 'name' | 'phone') => {
+    const entry = Object.entries(row || {}).find(([rawKey]) => {
+      const key = normalizeKeySafe(rawKey);
+      if (kind === 'phone') return key.includes('جوال') || key.includes('هاتف') || key.includes('mobile') || key.includes('phone');
+      if (kind === 'name') return key.includes('اسم') || key.includes('name');
+      return key.includes('هويه') || key.includes('سجل') || key.includes('رقمالطالب') || key.includes('studentid') || key.includes('nationalid');
+    });
+    return entry?.[1] ?? '';
+  };
+
   const grades = useMemo(() => [...new Set(students.map(s => s.grade))].filter(Boolean).sort(), [students]);
 
   const filtered = useMemo(() => students.filter(s => {
@@ -224,9 +255,9 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
     try {
       const phoneRows = (await parseExcel(file))
         .map((row: any) => ({
-          id: digitsOnly(getSmartRowValue(row, 'id')),
-          name: normalizePersonName(getSmartRowValue(row, 'name')),
-          phone: normalizePhone(getSmartRowValue(row, 'phone')),
+          id: digitsOnly(getSmartRowValueSafe(row, 'id')),
+          name: normalizeNameSafe(getSmartRowValueSafe(row, 'name')),
+          phone: normalizePhone(getSmartRowValueSafe(row, 'phone')),
         }))
         .filter(row => row.id || row.name || row.phone);
 
@@ -239,7 +270,7 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
           digitsOnly(student.national_id),
           digitsOnly(student.seating_number),
         ].filter(Boolean);
-        const studentName = normalizePersonName(student.name);
+        const studentName = normalizeNameSafe(student.name);
 
         const rowIndex = phoneRows.findIndex((row, index) => {
           if (usedRows.has(index)) return false;
@@ -261,7 +292,7 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
         return { ...student, parent_phone: phone };
       });
 
-      setStudents(updated);
+      await setStudents(updated);
       onAlert(`✅ اكتمل الدمج! تم ربط ${matchCount} رقم جوال بنجاح${matchedWithoutPhone ? `، ووجد ${matchedWithoutPhone} طالب بدون رقم جوال في الملف.` : '.'}`, 'success');
     } catch (err: any) {
       onAlert(err.message || 'خطأ في الدمج', 'error');

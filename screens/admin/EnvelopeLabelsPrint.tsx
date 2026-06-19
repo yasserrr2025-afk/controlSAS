@@ -8,11 +8,20 @@ interface Props {
   users: any[];
 }
 
+interface EnvelopeLabelItem {
+  id: string;
+  grade: string;
+  subject: string;
+  teacherId: string;
+  teacherName: string;
+}
+
 const EnvelopeLabelsPrint: React.FC<Props> = ({ students, users }) => {
   const [isPrinting, setIsPrinting] = useState(false);
   const [subject, setSubject] = useState('');
   const [grade, setGrade] = useState('');
   const [teacherId, setTeacherId] = useState('');
+  const [envelopeItems, setEnvelopeItems] = useState<EnvelopeLabelItem[]>([]);
 
   const uniqueGrades = useMemo(() => {
     return Array.from(new Set(students.map(s => s.grade))).filter(Boolean);
@@ -20,15 +29,24 @@ const EnvelopeLabelsPrint: React.FC<Props> = ({ students, users }) => {
 
   const selectedTeacher = useMemo(() => users.find(u => u.id === teacherId), [users, teacherId]);
 
-  const labels = useMemo(() => {
-    if (!subject.trim() || !grade || !selectedTeacher) return [];
-    return Array.from({ length: 21 }).map(() => ({
-      grade,
-      subject: subject.trim(),
-      teacherId: selectedTeacher.id,
-      teacherName: selectedTeacher.full_name,
-    }));
-  }, [subject, grade, selectedTeacher]);
+  const labels = useMemo(() => envelopeItems, [envelopeItems]);
+
+  const handleAddEnvelope = () => {
+    if (!subject.trim() || !grade || !selectedTeacher) return;
+    setEnvelopeItems(prev => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        grade,
+        subject: subject.trim(),
+        teacherId: selectedTeacher.id,
+        teacherName: selectedTeacher.full_name,
+      },
+    ]);
+    setSubject('');
+    setGrade('');
+    setTeacherId('');
+  };
 
   const chunkedLabels = useMemo(() => {
     const pages = [];
@@ -91,7 +109,7 @@ const EnvelopeLabelsPrint: React.FC<Props> = ({ students, users }) => {
          </div>
        </div>
 
-       <div className="no-print bg-white rounded-[2rem] border border-slate-100 shadow-md p-6 grid grid-cols-1 lg:grid-cols-4 gap-4 items-end">
+       <div className="no-print bg-white rounded-[2rem] border border-slate-100 shadow-md p-6 grid grid-cols-1 lg:grid-cols-5 gap-4 items-end">
         <div>
           <label className="block text-xs font-black text-slate-400 mb-2">اسم المادة</label>
           <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="مثال: الرياضيات" className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-bold outline-none focus:border-blue-500" />
@@ -112,6 +130,50 @@ const EnvelopeLabelsPrint: React.FC<Props> = ({ students, users }) => {
             ))}
           </select>
         </div>
+        <button
+          onClick={handleAddEnvelope}
+          disabled={!subject.trim() || !grade || !selectedTeacher}
+          className={`rounded-xl p-3 font-black transition-all ${!subject.trim() || !grade || !selectedTeacher ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-600/20'}`}
+        >
+          إضافة مظروف
+        </button>
+       </div>
+
+       <div className="no-print">
+        {envelopeItems.length === 0 ? (
+          <div className="bg-white border border-dashed border-slate-200 rounded-[2rem] p-10 text-center shadow-sm">
+            <Package className="mx-auto text-slate-200 mb-4" size={54} />
+            <p className="font-black text-slate-400">أضف المظاريف التي تريد طباعتها كملصقات</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-black text-slate-900 text-xl">المظاريف المضافة ({envelopeItems.length})</h3>
+              <button onClick={() => setEnvelopeItems([])} className="text-xs font-black text-red-500 bg-red-50 px-4 py-2 rounded-xl hover:bg-red-100 transition-all">مسح الكل</button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {envelopeItems.map((item, index) => (
+                <div key={item.id} className="bg-white border border-slate-100 rounded-[2rem] p-5 shadow-md hover:shadow-xl hover:-translate-y-1 transition-all overflow-hidden relative">
+                  <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-l from-blue-600 via-sky-400 to-emerald-400" />
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-700 font-black flex items-center justify-center shrink-0">{index + 1}</div>
+                      <div className="min-w-0">
+                        <p className="font-black text-slate-900 text-lg truncate">{item.subject}</p>
+                        <p className="text-xs font-black text-slate-400 mt-1">{item.grade}</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setEnvelopeItems(prev => prev.filter(x => x.id !== item.id))} className="text-red-500 bg-red-50 px-3 py-2 rounded-xl text-xs font-black hover:bg-red-100 transition-all shrink-0">حذف</button>
+                  </div>
+                  <div className="mt-5 rounded-2xl bg-slate-50 border border-slate-100 p-4">
+                    <p className="text-[10px] font-black text-slate-400 mb-1">معلم المادة</p>
+                    <p className="font-black text-slate-800 leading-relaxed">{item.teacherName}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
        </div>
 
        {/* طباعة ملصقات مظاريف الأسئلة (مقاس GS-1021 بمعدل 21 ملصق في الصفحة) */}
