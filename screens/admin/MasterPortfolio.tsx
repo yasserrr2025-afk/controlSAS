@@ -3,7 +3,7 @@ import { BookOpen, Printer, Download, FileText, Link as LinkIcon, Sparkles, Copy
 import { Student, User, Supervision, SystemConfig, Absence, CommitteeReport, ExamSchedule, DeliveryLog, ControlRequest } from '../../types';
 import { APP_CONFIG } from '../../constants';
 import { formatActualProctorStart, getActualSupervisionStart } from '../../utils/proctorTime';
-import { cleanControlRequestText, isInternalSignatureRecord } from '../../services/signatures';
+import { cleanControlRequestText, isInternalSignatureRecord, isSignatureRequest } from '../../services/signatures';
 
 interface Props {
   students: Student[];
@@ -68,7 +68,7 @@ export const MasterPortfolio: React.FC<Props> = ({
     window.print();
   };
 
-  const livePortfolioUrl = 'https://control-exam.vercel.app/?portfolio_book_live=1';
+  const livePortfolioUrl = `${window.location.origin}${window.location.pathname}?portfolio_book_live=1`;
 
   const committeesList = useMemo(() => {
     return Array.from(new Set(students.map(s => s.committee_number).filter(Boolean))).sort((a, b) => Number(a) - Number(b));
@@ -79,11 +79,13 @@ export const MasterPortfolio: React.FC<Props> = ({
   }, [supervisions]);
 
   const printDate = new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const schoolDisplayName = systemConfig?.school_name || 'اسم المدرسة';
+  const directorateDisplayName = (systemConfig as any)?.directorate_name || APP_CONFIG.ADMINISTRATION_NAME;
   const controlChiefFromSettings = systemConfig?.control_chief_id
     ? users.find(u => u.id === systemConfig.control_chief_id)?.full_name
     : null;
   const controlHeadName = controlChiefFromSettings || users.find(u => u.role === 'CONTROL_MANAGER')?.full_name || 'رئيس الكنترول';
-  const schoolManagerName = systemConfig?.principal_name || users.find(u => u.role === 'ADMIN')?.full_name || 'مدير المدرسة';
+  const schoolManagerName = systemConfig?.principal_name || 'مدير المدرسة';
   const reportPreparerName = 'علي عبدالله القرني';
 
   const getStudentExamStatus = (student: Student, committeeNumber: string, date: string, period?: number) => {
@@ -145,7 +147,7 @@ export const MasterPortfolio: React.FC<Props> = ({
       action: rep.resolutions || 'للمتابعة',
       tone: 'report',
     }));
-    const requestRows = controlRequests.filter(req => !isInternalSignatureRecord(req)).map(req => ({
+    const requestRows = controlRequests.filter(req => !isInternalSignatureRecord(req) && !isSignatureRequest(req)).map(req => ({
       id: `request-${req.id}`,
       kind: 'بلاغ كنترول',
       committee: req.committee,
@@ -159,15 +161,13 @@ export const MasterPortfolio: React.FC<Props> = ({
   }, [committeeReports, controlRequests, supervisions, users]);
 
   const OfficialPortfolioHeader = ({ title, meta }: { title: string; meta?: React.ReactNode }) => {
-    const directorateName = (systemConfig as any)?.directorate_name || APP_CONFIG.ADMINISTRATION_NAME;
-
     return (
     <div className="official-report-header">
       <div className="official-side official-side-right">
         <p>المملكة العربية السعودية</p>
         <p>{APP_CONFIG.MINISTRY_NAME}</p>
-        <p>{directorateName}</p>
-        <p>{systemConfig?.school_name || 'اسم المدرسة'}</p>
+        <p>{directorateDisplayName}</p>
+        <p>{schoolDisplayName}</p>
       </div>
       <div className="official-center">
         <img src={APP_CONFIG.LOGO_URL} alt="الشعار" />
@@ -249,7 +249,7 @@ export const MasterPortfolio: React.FC<Props> = ({
           <div>
             <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-2">ملف إنجاز الاختبارات الشامل</h2>
             <p className="text-amber-200 font-bold text-sm md:text-base leading-relaxed max-w-xl">
-              {publicMode ? 'نسخة حية محدثة تلقائيًا للمشرفين وإدارة التعليم بمحافظة جدة' : 'تصدير كتاب PDF متكامل يحتوي على جميع بيانات وإحصائيات الاختبارات الميدانية'}
+              {publicMode ? `نسخة حية محدثة تلقائيًا للمشرفين و${directorateDisplayName}` : 'تصدير كتاب PDF متكامل يحتوي على جميع بيانات وإحصائيات الاختبارات الميدانية'}
             </p>
           </div>
         </div>
@@ -457,8 +457,8 @@ export const MasterPortfolio: React.FC<Props> = ({
              <div className="cover-details">
               <p>المملكة العربية السعودية</p>
               <p>وزارة التعليم</p>
-              <p>إدارة التعليم بمحافظة جدة</p>
-              <p>{systemConfig?.school_name || 'اسم المدرسة'}</p>
+              <p>{directorateDisplayName}</p>
+              <p>{schoolDisplayName}</p>
               <p style={{marginTop: '40px', fontSize: '24px', color: '#0f172a'}}>العام الدراسي: {systemConfig.academic_year || '1446 / 1447'}</p>
            </div>
            <div className="cover-signature-footer">
@@ -517,7 +517,7 @@ export const MasterPortfolio: React.FC<Props> = ({
             <li>5. تقارير المواد (المراقبون، التسليم، وكشوف الطلاب لكل مادة)</li>
           </ul>
           
-          <div className="footer">تم إنشاء هذا الملف آلياً عبر نظام الكنترول الرقمي - مدرسة عماد الدين زنكي - معد التقرير: {reportPreparerName}</div>
+          <div className="footer">تم إنشاء هذا الملف آلياً عبر نظام الكنترول الرقمي - {schoolDisplayName} - معد التقرير: {reportPreparerName}</div>
         </div>
 
         {/* كشف الغياب */}
@@ -562,7 +562,7 @@ export const MasterPortfolio: React.FC<Props> = ({
               )}
             </tbody>
           </table>
-          <div className="footer">تم إنشاء هذا الملف آلياً عبر نظام الكنترول الرقمي - مدرسة عماد الدين زنكي - معد التقرير: {reportPreparerName}</div>
+          <div className="footer">تم إنشاء هذا الملف آلياً عبر نظام الكنترول الرقمي - {schoolDisplayName} - معد التقرير: {reportPreparerName}</div>
         </div>
         
         {/* التقارير الميدانية */}
@@ -816,7 +816,7 @@ export const MasterPortfolio: React.FC<Props> = ({
                        )}
                      </div>
 
-                     <div className="footer">تم إنشاء هذا الكشف آلياً عبر نظام الكنترول الرقمي - مدرسة عماد الدين زنكي - معد التقرير: {reportPreparerName}</div>
+                     <div className="footer">تم إنشاء هذا الكشف آلياً عبر نظام الكنترول الرقمي - {schoolDisplayName} - معد التقرير: {reportPreparerName}</div>
                    </div>
                  );
                })}
