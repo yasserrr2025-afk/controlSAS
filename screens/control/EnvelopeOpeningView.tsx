@@ -294,6 +294,14 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
                    color: #111827;
                    border: 1.2pt solid #111827;
                    box-sizing: border-box;
+                   min-height: 274mm;
+                   display: flex;
+                   flex-direction: column;
+                 }
+                 #envelope-print-portal .report-body {
+                   flex: 1;
+                   display: flex;
+                   flex-direction: column;
                  }
                  #envelope-print-portal table { margin-bottom: 11px !important; border-color: #111827 !important; }
                  #envelope-print-portal th,
@@ -328,13 +336,36 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
                  #envelope-print-portal .text-\\[11px\\] { font-size: 12px !important; }
                  #envelope-print-portal ul { margin: 0 !important; }
                  #envelope-print-portal li { margin: 1px 0 !important; line-height: 1.55 !important; font-size: 13px !important; }
-                 #envelope-print-portal div[style*="margin-top: 50px"] { margin-top: 16px !important; }
                  #envelope-print-portal table[style*="margin-bottom: 40px"] { margin-bottom: 18px !important; }
                  #envelope-print-portal div[style*="font-size: 14px"] { font-size: 14px !important; }
+                 #envelope-print-portal .official-signature-row {
+                   margin-top: 16mm;
+                   padding: 0 18mm;
+                   display: grid;
+                   grid-template-columns: 1fr 1fr;
+                   gap: 22mm;
+                   align-items: end;
+                   font-size: 14px;
+                   font-weight: 900;
+                 }
+                 #envelope-print-portal .official-signature-box {
+                   border-top: 1.6pt dotted #111827;
+                   padding-top: 3mm;
+                   min-height: 12mm;
+                   text-align: center;
+                 }
+                 #envelope-print-portal .official-notes {
+                   margin-top: auto;
+                   border-top: 1.4pt solid #111827;
+                   padding-top: 4mm;
+                   font-size: 13px;
+                   line-height: 1.8;
+                 }
                }
              `}</style>
           <div className="print-container">
             <OfficialHeader systemConfig={systemConfig} date={printRecord.date} />
+            <div className="report-body">
 
             <table style={{ width: '100%', borderCollapse: 'collapse', border: '2px solid #000', marginBottom: '20px', backgroundColor: '#e0f2fe', marginTop: '10px' }}>
               <tbody>
@@ -442,17 +473,18 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
               </tbody>
             </table>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 40px', fontWeight: 'bold', fontSize: '14px' }}>
-              <div>مدير المدرسة: {principalName || '.......................................'}</div>
-              <div>التوقيع: .......................................</div>
+            <div className="official-signature-row">
+              <div className="official-signature-box">مدير المدرسة: {principalName || '.......................................'}</div>
+              <div className="official-signature-box">التوقيع</div>
             </div>
 
-            <div style={{ marginTop: '50px', fontSize: '14px', lineHeight: '1.8' }}>
+            <div className="official-notes">
               <ul style={{ paddingRight: '20px' }}>
                 <li style={{ color: '#000' }}>تفتح مظاريف الأسئلة قبل بدء الاختبار بـ (15) دقيقة.</li>
                 <li style={{ color: '#e11d48', fontWeight: 'bold' }}>يمنع فتح أظرف نماذج الإجابة إلا بعد التأكد من استلام جميع أوراق الإجابة من الطلبة.</li>
                 <li style={{ color: '#000' }}>يحفظ بملف أعمال الاختبارات.</li>
               </ul>
+            </div>
             </div>
 
           </div>

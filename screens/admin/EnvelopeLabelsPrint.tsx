@@ -16,6 +16,8 @@ interface EnvelopeLabelItem {
   teacherName: string;
 }
 
+const ENVELOPE_LABELS_STORAGE_KEY = 'control_envelope_label_items';
+
 const EnvelopeLabelsPrint: React.FC<Props> = ({ students, users }) => {
   const [isPrinting, setIsPrinting] = useState(false);
   const [subject, setSubject] = useState('');
@@ -30,6 +32,26 @@ const EnvelopeLabelsPrint: React.FC<Props> = ({ students, users }) => {
   const selectedTeacher = useMemo(() => users.find(u => u.id === teacherId), [users, teacherId]);
 
   const labels = useMemo(() => envelopeItems, [envelopeItems]);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(ENVELOPE_LABELS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) setEnvelopeItems(parsed);
+      }
+    } catch (error) {
+      console.error('Failed to load envelope labels', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ENVELOPE_LABELS_STORAGE_KEY, JSON.stringify(envelopeItems));
+    } catch (error) {
+      console.error('Failed to save envelope labels', error);
+    }
+  }, [envelopeItems]);
 
   const handleAddEnvelope = () => {
     if (!subject.trim() || !grade || !selectedTeacher) return;
