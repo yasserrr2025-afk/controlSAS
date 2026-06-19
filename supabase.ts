@@ -83,7 +83,7 @@ export const db = {
       return (data || []) as Student[];
     },
     upsert: async (students: any[]) => {
-      const { error } = await supabase.from('students').upsert(students, { onConflict: 'national_id' });
+      const { error } = await supabase.from('students').upsert(students, { onConflict: 'id' });
       const err = handleError(error, "students.upsert");
       if (err) throw new Error(err);
     },
@@ -296,4 +296,3 @@ export const db = {
     }
   }
 };
-

@@ -271,18 +271,58 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
           <style>{`
                @media screen { #envelope-print-portal { display: none !important; } }
                @media print {
-                 @page { size: A4 portrait; margin: 6mm; }
+                 @page { size: A4 portrait; margin: 8mm; }
                  body { background: white !important; margin: 0; padding: 0; -webkit-print-color-adjust: exact; color: black !important; }
                  #root, #app-root, header, nav, .no-print { display: none !important; }
                  #envelope-print-portal { display: block !important; position: absolute; top: 0; left: 0; width: 100%; direction: rtl; }
-                 .print-container { padding: 0; max-width: 100%; margin: 0 auto; font-family: 'Tajawal', sans-serif; font-size: 11px; line-height: 1.25; }
-                 #envelope-print-portal table { margin-bottom: 8px !important; }
-                 #envelope-print-portal th, #envelope-print-portal td { padding: 5px !important; font-size: 11px !important; line-height: 1.25 !important; }
-                 #envelope-print-portal .w-16 { width: 42px !important; height: 42px !important; }
+                 .print-container {
+                   padding: 4mm;
+                   max-width: 100%;
+                   margin: 0 auto;
+                   font-family: 'Tajawal', sans-serif;
+                   font-size: 13px;
+                   line-height: 1.45;
+                   color: #111827;
+                   border: 1.2pt solid #111827;
+                   min-height: 274mm;
+                   box-sizing: border-box;
+                 }
+                 #envelope-print-portal table { margin-bottom: 11px !important; border-color: #111827 !important; }
+                 #envelope-print-portal th,
+                 #envelope-print-portal td {
+                   padding: 7px 8px !important;
+                   font-size: 13px !important;
+                   line-height: 1.45 !important;
+                   border-color: #111827 !important;
+                 }
+                 #envelope-print-portal .print-container > table:first-of-type td {
+                   font-size: 15px !important;
+                   padding: 9px !important;
+                   background: #eef7fb !important;
+                   font-weight: 900 !important;
+                 }
+                 #envelope-print-portal .print-container > table:nth-of-type(2) th {
+                   font-size: 13.5px !important;
+                   background: #edf8fc !important;
+                 }
+                 #envelope-print-portal .print-container > table:nth-of-type(2) td {
+                   font-size: 13.5px !important;
+                 }
+                 #envelope-print-portal .print-container > table:nth-of-type(3) th {
+                   background: #f3f6f8 !important;
+                   font-size: 13px !important;
+                 }
+                 #envelope-print-portal .print-container > table:nth-of-type(3) td {
+                   padding: 8px !important;
+                   font-size: 12.5px !important;
+                 }
+                 #envelope-print-portal .w-16 { width: 54px !important; height: 54px !important; }
+                 #envelope-print-portal .text-\\[11px\\] { font-size: 12px !important; }
                  #envelope-print-portal ul { margin: 0 !important; }
-                 #envelope-print-portal li { margin: 0 !important; line-height: 1.35 !important; }
-                 #envelope-print-portal div[style*="margin-top: 50px"] { margin-top: 10px !important; }
-                 #envelope-print-portal table[style*="margin-bottom: 40px"] { margin-bottom: 12px !important; }
+                 #envelope-print-portal li { margin: 1px 0 !important; line-height: 1.55 !important; font-size: 13px !important; }
+                 #envelope-print-portal div[style*="margin-top: 50px"] { margin-top: 16px !important; }
+                 #envelope-print-portal table[style*="margin-bottom: 40px"] { margin-bottom: 18px !important; }
+                 #envelope-print-portal div[style*="font-size: 14px"] { font-size: 14px !important; }
                }
              `}</style>
           <div className="print-container">
