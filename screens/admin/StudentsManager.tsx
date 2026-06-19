@@ -96,6 +96,32 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
     return digits;
   };
 
+  const normalizeArabicKey = (value: unknown) => String(value || '')
+    .trim()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/\s+/g, '')
+    .toLowerCase();
+
+  const getSmartRowValue = (row: any, kind: 'id' | 'name' | 'phone') => {
+    const entries = Object.entries(row || {});
+    const match = entries.find(([rawKey]) => {
+      const key = normalizeArabicKey(rawKey);
+      if (kind === 'phone') return key.includes('جوال') || key.includes('هاتف') || key.includes('mobile') || key.includes('phone');
+      if (kind === 'name') return key.includes('اسم') || key.includes('name');
+      return key.includes('هويه') || key.includes('سجل') || key.includes('رقمالطالب') || key.includes('studentid') || key.includes('nationalid');
+    });
+    return match?.[1] ?? '';
+  };
+
+  const normalizePersonName = (value: unknown) => String(value || '')
+    .trim()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/\s+/g, ' ');
+
   const grades = useMemo(() => [...new Set(students.map(s => s.grade))].filter(Boolean).sort(), [students]);
 
   const filtered = useMemo(() => students.filter(s => {
@@ -183,6 +209,66 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
       onAlert(`✅ اكتمل الدمج! تم ربط ${matchCount} رقم جوال بنجاح.`, 'success');
     } catch (err: any) { onAlert(err.message || 'خطأ في الدمج', 'error'); } finally { setIsMerging(false); }
     e.target.value = '';
+  };
+
+  const handlePhoneMergeSmart = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (students.length === 0) {
+      onAlert('يرجى رفع كشف الطلاب أولاً', 'warning');
+      e.target.value = '';
+      return;
+    }
+
+    setIsMerging(true);
+    try {
+      const phoneRows = (await parseExcel(file))
+        .map((row: any) => ({
+          id: digitsOnly(getSmartRowValue(row, 'id')),
+          name: normalizePersonName(getSmartRowValue(row, 'name')),
+          phone: normalizePhone(getSmartRowValue(row, 'phone')),
+        }))
+        .filter(row => row.id || row.name || row.phone);
+
+      let matchCount = 0;
+      let matchedWithoutPhone = 0;
+      const usedRows = new Set<number>();
+
+      const updated = students.map((student: Student) => {
+        const studentIds = [
+          digitsOnly(student.national_id),
+          digitsOnly(student.seating_number),
+        ].filter(Boolean);
+        const studentName = normalizePersonName(student.name);
+
+        const rowIndex = phoneRows.findIndex((row, index) => {
+          if (usedRows.has(index)) return false;
+          const idMatched = row.id && studentIds.includes(row.id);
+          const nameMatched = row.name && studentName && row.name === studentName;
+          return Boolean(idMatched || nameMatched);
+        });
+
+        if (rowIndex === -1) return student;
+        usedRows.add(rowIndex);
+
+        const phone = phoneRows[rowIndex].phone;
+        if (!phone) {
+          matchedWithoutPhone++;
+          return student;
+        }
+
+        matchCount++;
+        return { ...student, parent_phone: phone };
+      });
+
+      setStudents(updated);
+      onAlert(`✅ اكتمل الدمج! تم ربط ${matchCount} رقم جوال بنجاح${matchedWithoutPhone ? `، ووجد ${matchedWithoutPhone} طالب بدون رقم جوال في الملف.` : '.'}`, 'success');
+    } catch (err: any) {
+      onAlert(err.message || 'خطأ في الدمج', 'error');
+    } finally {
+      setIsMerging(false);
+      e.target.value = '';
+    }
   };
 
   const withPhone = students.filter(s => s.parent_phone).length;
@@ -291,7 +377,7 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
           <div className="flex gap-3">
             <label className={`flex-1 text-white py-3.5 px-5 rounded-2xl cursor-pointer flex items-center justify-center gap-2 font-black text-sm transition-all shadow-lg ${isMerging ? 'bg-emerald-400 animate-pulse cursor-wait' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
               {isMerging ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> جاري الدمج...</> : <><Smartphone size={16} /> رفع ملف الجوالات</>}
-              <input type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={handlePhoneMerge} disabled={isMerging} />
+              <input type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={handlePhoneMergeSmart} disabled={isMerging} />
             </label>
             <button
               onClick={downloadPhonesTemplate}

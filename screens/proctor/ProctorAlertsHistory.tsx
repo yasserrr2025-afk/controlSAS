@@ -56,6 +56,7 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
   const [signatureRequest, setSignatureRequest] = useState<ControlRequest | null>(null);
   const signatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingRef = useRef(false);
+  const isEnvelopeSignatureRequest = (request: ControlRequest) => isSignatureRequest(request) && String(request.committee).startsWith('ENV:');
 
   const todayDate = systemConfig?.active_exam_date
     ? systemConfig.active_exam_date.split('T')[0]
@@ -92,7 +93,7 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
     done:        myHistory.filter(r => r.effectiveStatus === 'DONE').length,
     pending:     myHistory.filter(r => r.effectiveStatus === 'PENDING').length,
     in_progress: myHistory.filter(r => r.effectiveStatus === 'IN_PROGRESS').length,
-    committees:  new Set(myHistory.map(r => r.committee)).size,
+    committees:  new Set(myHistory.filter(r => !isEnvelopeSignatureRequest(r)).map(r => r.committee)).size,
   }), [myHistory]);
 
   const filtered = useMemo(() => {
@@ -279,6 +280,7 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
                   const st = req.effectiveStatus;
                   const isExpanded = expandedId === req.id;
                   const MetaIcon = meta.icon;
+                  const isEnvelopeRequest = isEnvelopeSignatureRequest(req);
 
                   const statusStyle = st === 'DONE'
                     ? { bar: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700', label: 'مكتمل ✓', iconEl: <CheckCircle2 size={18} className="text-emerald-600" /> }
@@ -309,7 +311,7 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
                           <div className="flex-1 min-w-0">
                             {/* الوسوم */}
                             <div className="flex flex-wrap items-center gap-2 mb-2">
-                              <span className="bg-slate-900 text-white px-3 py-1 rounded-lg font-black text-[10px] tabular-nums">لجنة {req.committee}</span>
+                              <span className="bg-slate-900 text-white px-3 py-1 rounded-lg font-black text-[10px] tabular-nums">{isEnvelopeRequest ? 'فتح مظروف الأسئلة' : `لجنة ${req.committee}`}</span>
                               <span className={`px-3 py-1 rounded-lg font-black text-[9px] uppercase tracking-widest ${statusStyle.badge}`}>
                                 {statusStyle.label}
                               </span>
@@ -369,8 +371,8 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
                               <p className="text-[10px] font-bold text-slate-400 mt-0.5">{formatDate(req.time)}</p>
                             </div>
                             <div className="bg-white border border-slate-100 rounded-[1.5rem] p-5 shadow-sm">
-                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">رقم اللجنة</p>
-                              <p className="text-4xl font-black text-slate-900 tabular-nums">{req.committee}</p>
+                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">{isEnvelopeRequest ? 'نوع العملية' : 'رقم اللجنة'}</p>
+                              <p className={`${isEnvelopeRequest ? 'text-lg leading-relaxed' : 'text-4xl tabular-nums'} font-black text-slate-900`}>{isEnvelopeRequest ? 'فتح مظروف الأسئلة' : req.committee}</p>
                             </div>
                             <div className="col-span-2 md:col-span-1 bg-white border border-slate-100 rounded-[1.5rem] p-5 shadow-sm">
                               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">المتابع من الكنترول</p>

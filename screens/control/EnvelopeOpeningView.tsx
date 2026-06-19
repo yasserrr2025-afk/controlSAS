@@ -149,6 +149,7 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
       || controlRequests.find(req => req.committee === `ENV:${record.id}` && req.text?.startsWith(SIGNATURE_REQUEST_PREFIX))?.from
       || '';
   };
+  const principalName = systemConfig?.principal_name || users.find(u => u.role === 'ADMIN')?.full_name || '';
 
   return (
     <div className="space-y-8 animate-fade-in text-right">
@@ -270,15 +271,22 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
           <style>{`
                @media screen { #envelope-print-portal { display: none !important; } }
                @media print {
-                 @page { size: A4 portrait; margin: 10mm; }
+                 @page { size: A4 portrait; margin: 6mm; }
                  body { background: white !important; margin: 0; padding: 0; -webkit-print-color-adjust: exact; color: black !important; }
                  #root, #app-root, header, nav, .no-print { display: none !important; }
                  #envelope-print-portal { display: block !important; position: absolute; top: 0; left: 0; width: 100%; direction: rtl; }
-                 .print-container { padding: 0; max-width: 100%; margin: 0 auto; font-family: 'Tajawal', sans-serif; }
+                 .print-container { padding: 0; max-width: 100%; margin: 0 auto; font-family: 'Tajawal', sans-serif; font-size: 11px; line-height: 1.25; }
+                 #envelope-print-portal table { margin-bottom: 8px !important; }
+                 #envelope-print-portal th, #envelope-print-portal td { padding: 5px !important; font-size: 11px !important; line-height: 1.25 !important; }
+                 #envelope-print-portal .w-16 { width: 42px !important; height: 42px !important; }
+                 #envelope-print-portal ul { margin: 0 !important; }
+                 #envelope-print-portal li { margin: 0 !important; line-height: 1.35 !important; }
+                 #envelope-print-portal div[style*="margin-top: 50px"] { margin-top: 10px !important; }
+                 #envelope-print-portal table[style*="margin-bottom: 40px"] { margin-bottom: 12px !important; }
                }
              `}</style>
           <div className="print-container">
-            <OfficialHeader />
+            <OfficialHeader systemConfig={systemConfig} date={printRecord.date} />
 
             <table style={{ width: '100%', borderCollapse: 'collapse', border: '2px solid #000', marginBottom: '20px', backgroundColor: '#e0f2fe', marginTop: '10px' }}>
               <tbody>
@@ -388,8 +396,8 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
               </tbody>
             </table>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 40px', fontWeight: 'bold', fontSize: '18px' }}>
-              <div>مدير المدرسة: .......................................</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 40px', fontWeight: 'bold', fontSize: '14px' }}>
+              <div>مدير المدرسة: {principalName || '.......................................'}</div>
               <div>التوقيع: .......................................</div>
             </div>
 
