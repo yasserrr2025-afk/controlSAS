@@ -498,8 +498,19 @@ const SmartProctorDistribution: React.FC<Props> = ({
 
     const dayName = new Date(dist.date).toLocaleDateString('ar-SA', { weekday: 'long' });
     
-    const primary = dist.items.filter(i => i.assignment_type !== 'RESERVE').sort((a,b) => Number(a.committee_number) - Number(b.committee_number));
-    const reserve = dist.items.filter(i => i.assignment_type === 'RESERVE');
+    const isReserveItem = (item: Supervision) => {
+      const committee = String(item.committee_number || '').trim().toLowerCase();
+      const subject = String(item.subject || '');
+      return item.assignment_type === 'RESERVE'
+        || subject.includes('[RESERVE]')
+        || committee === 'احتياط'
+        || committee === 'reserve';
+    };
+
+    const primary = dist.items
+      .filter(i => !isReserveItem(i))
+      .sort((a,b) => Number(a.committee_number) - Number(b.committee_number));
+    const reserve = dist.items.filter(isReserveItem);
 
     const getTeacherName = (id: string) => users.find(u => u.id === id)?.full_name || 'غير معروف';
 

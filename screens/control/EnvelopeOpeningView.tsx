@@ -341,18 +341,38 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
                  #envelope-print-portal .official-signature-row {
                    margin-top: 16mm;
                    padding: 0 18mm;
-                   display: grid;
-                   grid-template-columns: 1fr 1fr;
-                   gap: 22mm;
-                   align-items: end;
+                   display: flex;
+                   justify-content: flex-start;
                    font-size: 14px;
                    font-weight: 900;
                  }
-                 #envelope-print-portal .official-signature-box {
-                   border-top: 1.6pt dotted #111827;
-                   padding-top: 3mm;
-                   min-height: 12mm;
+                 #envelope-print-portal .principal-signature-card {
+                   width: 78mm;
+                   min-height: 28mm;
                    text-align: center;
+                   display: flex;
+                   flex-direction: column;
+                   align-items: center;
+                   justify-content: flex-start;
+                   gap: 2.5mm;
+                 }
+                 #envelope-print-portal .principal-title {
+                   font-size: 14px;
+                   font-weight: 900;
+                 }
+                 #envelope-print-portal .principal-name {
+                   font-size: 14px;
+                   font-weight: 900;
+                 }
+                 #envelope-print-portal .principal-signature-label {
+                   margin-top: 2mm;
+                   font-size: 13px;
+                   font-weight: 900;
+                 }
+                 #envelope-print-portal .principal-signature-line {
+                   width: 62mm;
+                   border-bottom: 1.6pt dotted #111827;
+                   height: 5mm;
                  }
                  #envelope-print-portal .official-notes {
                    margin-top: auto;
@@ -474,8 +494,12 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
             </table>
 
             <div className="official-signature-row">
-              <div className="official-signature-box">مدير المدرسة: {principalName || '.......................................'}</div>
-              <div className="official-signature-box">التوقيع</div>
+              <div className="principal-signature-card">
+                <div className="principal-title">مدير المدرسة</div>
+                <div className="principal-name">{principalName || '.......................................'}</div>
+                <div className="principal-signature-label">التوقيع</div>
+                <div className="principal-signature-line"></div>
+              </div>
             </div>
 
             <div className="official-notes">
