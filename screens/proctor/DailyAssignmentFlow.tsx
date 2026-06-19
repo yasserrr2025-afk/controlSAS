@@ -173,6 +173,20 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   }, [supervisions, matchesCurrentProctor, activeDate, isSupervisionFullyDone]);
 
   const activeCommittee = activeAssignment?.committee_number || null;
+  const pendingEnvelopeSignatureRequests = useMemo(
+    () => controlRequests.filter(
+      request =>
+        request.from === user.full_name &&
+        request.status !== 'DONE' &&
+        isSignatureRequest(request) &&
+        String(request.committee).startsWith('ENV:'),
+    ),
+    [controlRequests, user.full_name],
+  );
+  const openProctorAlerts = () => {
+    localStorage.setItem('activeTab', 'proctor-alerts');
+    window.location.reload();
+  };
   const isAssignmentStarted = (value?: string | null) => {
     return !isPlaceholderProctorStart(value);
   };
@@ -873,6 +887,20 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
 
     return (
       <div className="max-w-4xl mx-auto py-10 px-4 animate-fade-in pb-48 space-y-10">
+        {pendingEnvelopeSignatureRequests.length > 0 && (
+          <div className="bg-gradient-to-br from-amber-50 to-white border-2 border-amber-200 rounded-[3rem] p-7 shadow-xl text-right">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-5">
+              <div>
+                <p className="text-xs font-black text-amber-600 mb-2">تنبيه مهم</p>
+                <h3 className="text-2xl font-black text-slate-900">لديك محضر فتح مظروف بانتظار توقيعك</h3>
+                <p className="text-sm font-bold text-slate-500 mt-2">يرجى توقيع محضر فتح مظروف الأسئلة حتى يكتمل التقرير الرسمي.</p>
+              </div>
+              <button onClick={openProctorAlerts} className="bg-slate-950 text-white px-6 py-4 rounded-2xl font-black shadow-lg hover:bg-slate-800 transition-all">
+                الذهاب للتوقيع
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ══════════════════════════════════════════════
             بطاقة الإنجاز الملكية
@@ -1231,6 +1259,21 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
         </div>
 
         {/* بطاقة الاحتياط المخصص */}
+        {pendingEnvelopeSignatureRequests.length > 0 && (
+          <div className="bg-gradient-to-br from-amber-50 to-white border-2 border-amber-200 rounded-[3rem] p-7 shadow-xl text-right">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-5">
+              <div>
+                <p className="text-xs font-black text-amber-600 mb-2">تنبيه مهم</p>
+                <h3 className="text-2xl font-black text-slate-900">لديك محضر فتح مظروف بانتظار توقيعك</h3>
+                <p className="text-sm font-bold text-slate-500 mt-2">يرجى توقيع محضر فتح مظروف الأسئلة حتى يكتمل التقرير الرسمي.</p>
+              </div>
+              <button onClick={openProctorAlerts} className="bg-slate-950 text-white px-6 py-4 rounded-2xl font-black shadow-lg hover:bg-slate-800 transition-all">
+                الذهاب للتوقيع
+              </button>
+            </div>
+          </div>
+        )}
+
         {user.assigned_committees && user.assigned_committees.length > 0 && (
           <div className="bg-violet-50 border-2 border-violet-200 rounded-[3rem] p-8 shadow-lg">
             <div className="flex flex-col items-center gap-4">

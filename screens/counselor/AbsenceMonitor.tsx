@@ -12,6 +12,7 @@ interface Props {
   supervisions: Supervision[];
   users: User[];
   onAcknowledgeAbsence: (absence: Absence) => Promise<void>;
+  onUpdateContactNote: (absence: Absence, contact: { status: 'CONTACTED' | 'NO_ANSWER' | 'CUSTOM'; note: string }) => Promise<void>;
 }
 
 const StatCard = ({ title, value, icon, color, bgColor, textColor }: any) => (
@@ -25,9 +26,11 @@ const StatCard = ({ title, value, icon, color, bgColor, textColor }: any) => (
   </div>
 );
 
-const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, supervisions, users, onAcknowledgeAbsence }) => {
+const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, supervisions, users, onAcknowledgeAbsence, onUpdateContactNote }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [receivingId, setReceivingId] = useState<string | null>(null);
+  const [contactDrafts, setContactDrafts] = useState<Record<string, string>>({});
+  const [savingContactId, setSavingContactId] = useState<string | null>(null);
   const assignedGrades = user.assigned_grades || [];
 
   const enrichedAbsences = useMemo(() => {
@@ -68,6 +71,23 @@ const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, su
       await onAcknowledgeAbsence(absence);
     } finally {
       setReceivingId(null);
+    }
+  };
+
+  const contactStatusLabel = (status?: string) => {
+    if (status === 'CONTACTED') return 'تم الاتصال';
+    if (status === 'NO_ANSWER') return 'لم يتم الرد';
+    if (status === 'CUSTOM') return 'ملاحظة';
+    return '';
+  };
+
+  const saveContactNote = async (absence: Absence, status: 'CONTACTED' | 'NO_ANSWER' | 'CUSTOM', fallbackNote: string) => {
+    const note = (contactDrafts[absence.id] || fallbackNote).trim();
+    setSavingContactId(absence.id);
+    try {
+      await onUpdateContactNote(absence, { status, note });
+    } finally {
+      setSavingContactId(null);
     }
   };
 
@@ -165,6 +185,29 @@ const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, su
                   </p>
                 </div>
               )}
+              {a.receipt && (
+                <div className={`mb-3 rounded-2xl border p-4 ${a.receipt.contactStatus === 'CONTACTED' ? 'border-blue-100 bg-blue-50' : a.receipt.contactStatus === 'NO_ANSWER' ? 'border-amber-100 bg-amber-50' : 'border-slate-100 bg-slate-50'}`}>
+                  {a.receipt.contactStatus && (
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <span className="font-black text-sm text-slate-800">{contactStatusLabel(a.receipt.contactStatus)}</span>
+                      <span className="text-[10px] font-bold text-slate-400">{a.receipt.contactAt ? new Date(a.receipt.contactAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                    </div>
+                  )}
+                  {a.receipt.contactNote && <p className="mb-3 text-xs font-bold leading-relaxed text-slate-600">{a.receipt.contactNote}</p>}
+                  <textarea
+                    value={contactDrafts[a.id] ?? ''}
+                    onChange={e => setContactDrafts(prev => ({ ...prev, [a.id]: e.target.value }))}
+                    placeholder="أضف ملاحظة اتصال..."
+                    className="mb-3 w-full rounded-xl border border-white bg-white/80 p-3 text-sm font-bold outline-none focus:border-blue-400"
+                    rows={2}
+                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    <button disabled={savingContactId === a.id} onClick={() => saveContactNote(a, 'CONTACTED', 'تم الاتصال بولي الأمر.')} className="rounded-xl bg-blue-600 px-2 py-2 text-xs font-black text-white disabled:opacity-60">تم الاتصال</button>
+                    <button disabled={savingContactId === a.id} onClick={() => saveContactNote(a, 'NO_ANSWER', 'لم يتم الرد على الاتصال.')} className="rounded-xl bg-amber-500 px-2 py-2 text-xs font-black text-white disabled:opacity-60">لم يتم الرد</button>
+                    <button disabled={savingContactId === a.id} onClick={() => saveContactNote(a, 'CUSTOM', 'ملاحظة متابعة.')} className="rounded-xl bg-slate-900 px-2 py-2 text-xs font-black text-white disabled:opacity-60">حفظ ملاحظة</button>
+                  </div>
+                </div>
+              )}
               {!a.receipt ? (
                 <button
                   onClick={() => acknowledge(a)}
@@ -203,6 +246,7 @@ const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, su
               <th className="border-2 border-slate-900 p-2 font-black">اللجنة</th>
               <th className="border-2 border-slate-900 p-2 font-black">الحالة</th>
               <th className="border-2 border-slate-900 p-2 font-black">استلام الحالة</th>
+              <th className="border-2 border-slate-900 p-2 font-black">متابعة الاتصال</th>
             </tr>
           </thead>
           <tbody>
@@ -213,6 +257,9 @@ const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, su
                 <td className="border-2 border-slate-900 p-2 font-bold">{stat.committee_number}</td>
                 <td className="border-2 border-slate-900 p-2">{stat.type === 'ABSENT' ? 'غائب' : 'متأخر'}</td>
                 <td className="border-2 border-slate-900 p-2">{stat.receipt ? `تم - ${stat.receipt.by}` : 'لم يستلم'}</td>
+                <td className="border-2 border-slate-900 p-2 text-right px-4">
+                  {stat.receipt?.contactStatus ? `${contactStatusLabel(stat.receipt.contactStatus)}${stat.receipt.contactNote ? ` - ${stat.receipt.contactNote}` : ''}` : 'لا توجد ملاحظة'}
+                </td>
               </tr>
             ))}
           </tbody>

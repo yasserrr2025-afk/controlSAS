@@ -38,7 +38,7 @@ import DoorLabelsPrint from './screens/admin/DoorLabelsPrint';
 import CommitteePublicView from './screens/public/CommitteePublicView';
 import StudentCommitteeInquiry from './screens/public/StudentCommitteeInquiry';
 import SupervisionVerification from './screens/public/SupervisionVerification';
-import { buildAbsenceReceiptNote, getAbsenceKindLabel } from './services/absenceReceipt';
+import { buildAbsenceContactNote, buildAbsenceReceiptNote, getAbsenceKindLabel } from './services/absenceReceipt';
 import {
   BrowserNotificationPermission,
   getBrowserNotificationPermission,
@@ -448,6 +448,23 @@ const App: React.FC = () => {
     }
   };
 
+  const updateAbsenceContactNote = async (
+    absence: Absence,
+    contact: { status: 'CONTACTED' | 'NO_ANSWER' | 'CUSTOM'; note: string },
+    counselor: User,
+  ) => {
+    const note = buildAbsenceContactNote(absence, {
+      status: contact.status,
+      note: contact.note,
+      by: counselor.full_name,
+    });
+    const cleanAbsence: Absence = { ...absence, note };
+    setAbsences(prev => prev.map(item => item.id === absence.id ? { ...item, note } : item));
+    await db.absences.upsert(cleanAbsence);
+    await fetchData();
+    addLocalNotification('تم حفظ ملاحظة الاتصال لولي الأمر.', 'success');
+  };
+
   const saveUsersOptimistic = async (nextOrUpdater: User[] | ((prev: User[]) => User[])) => {
     const previousUsers = users;
     const nextUsers = typeof nextOrUpdater === 'function'
@@ -596,7 +613,7 @@ const App: React.FC = () => {
       case 'digital-id': return <TeacherBadgeView user={currentUser} />;
       case 'proctor-alerts': return <ProctorAlertsHistory requests={controlRequests} userFullName={currentUser.full_name} deliveryLogs={deliveryLogs} supervisions={supervisions} systemConfig={systemConfig} setRequests={fetchData} />;
       case 'my-schedule': return <ProctorScheduleView user={currentUser} supervisions={allSupervisions} systemConfig={systemConfig} />;
-      case 'student-absences': return <CounselorAbsenceMonitor user={currentUser} absences={absences} students={students} supervisions={supervisions} users={users} onAcknowledgeAbsence={(absence) => acknowledgeAbsenceReceipt(absence, currentUser)} />;
+      case 'student-absences': return <CounselorAbsenceMonitor user={currentUser} absences={absences} students={students} supervisions={supervisions} users={users} onAcknowledgeAbsence={(absence) => acknowledgeAbsenceReceipt(absence, currentUser)} onUpdateContactNote={(absence, contact) => updateAbsenceContactNote(absence, contact, currentUser)} />;
       case 'my-tasks': return <ProctorDailyAssignmentFlow user={currentUser} supervisions={supervisions} setSupervisions={fetchData} students={students} absences={absences} setAbsences={fetchData} deliveryLogs={deliveryLogs} setDeliveryLogs={async (log) => { await db.deliveryLogs.upsert(log); await fetchData(); }} sendRequest={async (txt, com) => { await db.controlRequests.insert({ from: currentUser.full_name, committee: com, text: txt, time: new Date().toISOString(), status: 'PENDING' }); await fetchData(); }} controlRequests={controlRequests} users={users} systemConfig={systemConfig} committeeReports={committeeReports} onReportUpsert={async (report) => { await db.committeeReports.upsert(report); await fetchData(); }} onAlert={addLocalNotification} />;
       case 'envelope-opening': return <EnvelopeOpeningView user={currentUser} systemConfig={systemConfig} users={users} controlRequests={allControlRequests} onRefresh={fetchData} onAlert={addLocalNotification} />;
       case 'envelope-labels': return <EnvelopeLabelsPrint students={students} users={users} />;

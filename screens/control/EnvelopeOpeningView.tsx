@@ -226,7 +226,9 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 no-print">
-        {openings.map(o => (
+        {openings.map(o => {
+          const subjectTeacherSigned = Boolean(findStoredSignature(controlRequests, 'subjectTeacher', o.id, ALL_GRADES_SIGNATURE)?.signature);
+          return (
           <div key={o.id} className="bg-white p-8 rounded-[3rem] shadow-md border border-slate-100 relative overflow-hidden flex flex-col hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
             <div className="flex justify-between items-start mb-6 border-b border-slate-50 pb-6">
               <div>
@@ -251,6 +253,12 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
                 <span className="text-slate-400 font-bold text-sm">معلم المادة:</span>
                 <span className="font-black text-slate-800">{getSubjectTeacherName(o) || '---'}</span>
               </div>
+              <div className={`rounded-2xl border p-4 ${subjectTeacherSigned ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-black">{subjectTeacherSigned ? 'تم توقيع معلم المادة' : 'بانتظار توقيع معلم المادة'}</span>
+                  {subjectTeacherSigned ? <CheckCircle2 size={20} /> : <ShieldAlert size={20} />}
+                </div>
+              </div>
             </div>
 
             <div className="flex gap-2 mt-6">
@@ -262,7 +270,8 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
               </button>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Printable Report Only */}
@@ -284,7 +293,6 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
                    line-height: 1.45;
                    color: #111827;
                    border: 1.2pt solid #111827;
-                   min-height: 274mm;
                    box-sizing: border-box;
                  }
                  #envelope-print-portal table { margin-bottom: 11px !important; border-color: #111827 !important; }
@@ -428,9 +436,7 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
                   <td style={{ border: '1px solid #000', padding: '8px' }}>
                     {subjectTeacherSignature?.signature ? (
                       <img src={subjectTeacherSignature.signature} alt="توقيع معلم المادة" style={{ height: 42, maxWidth: 150, objectFit: 'contain', margin: '0 auto' }} />
-                    ) : (
-                      <span style={{ color: '#991b1b', fontWeight: 'bold' }}>بانتظار التوقيع الإلكتروني</span>
-                    )}
+                    ) : null}
                   </td>
                 </tr>
               </tbody>
