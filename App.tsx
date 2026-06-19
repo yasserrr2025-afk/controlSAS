@@ -78,7 +78,7 @@ const ROLE_TABS: Record<UserRole, string[]> = {
     'ai-insights',
   ],
   CONTROL_MANAGER: ['head-dash', 'control-manager', 'envelope-opening', 'paper-logs', 'receipt-history'],
-  PROCTOR: ['my-tasks', 'my-schedule', 'proctor-alerts', 'digital-id'],
+  PROCTOR: ['my-tasks', 'proctor-alerts', 'digital-id'],
   CONTROL: ['envelope-opening', 'paper-logs', 'receipt-history'],
   ASSISTANT_CONTROL: ['assigned-requests'],
   COUNSELOR: ['student-absences'],
@@ -594,12 +594,12 @@ const App: React.FC = () => {
       case 'paper-logs': return <ControlReceiptView user={currentUser} students={students} absences={absences} deliveryLogs={deliveryLogs} setDeliveryLogs={async (log) => { await db.deliveryLogs.upsert(log); await fetchData(); }} supervisions={supervisions} users={users} controlRequests={controlRequests} setControlRequests={fetchData} systemConfig={systemConfig} onAlert={addLocalNotification} />;
       case 'receipt-history': return <ReceiptLogsView deliveryLogs={deliveryLogs} users={users} />;
       case 'digital-id': return <TeacherBadgeView user={currentUser} />;
-      case 'proctor-alerts': return <ProctorAlertsHistory requests={controlRequests} userFullName={currentUser.full_name} deliveryLogs={deliveryLogs} supervisions={supervisions} systemConfig={systemConfig} />;
+      case 'proctor-alerts': return <ProctorAlertsHistory requests={controlRequests} userFullName={currentUser.full_name} deliveryLogs={deliveryLogs} supervisions={supervisions} systemConfig={systemConfig} setRequests={fetchData} />;
       case 'my-schedule': return <ProctorScheduleView user={currentUser} supervisions={allSupervisions} systemConfig={systemConfig} />;
       case 'student-absences': return <CounselorAbsenceMonitor user={currentUser} absences={absences} students={students} supervisions={supervisions} users={users} onAcknowledgeAbsence={(absence) => acknowledgeAbsenceReceipt(absence, currentUser)} />;
       case 'my-tasks': return <ProctorDailyAssignmentFlow user={currentUser} supervisions={supervisions} setSupervisions={fetchData} students={students} absences={absences} setAbsences={fetchData} deliveryLogs={deliveryLogs} setDeliveryLogs={async (log) => { await db.deliveryLogs.upsert(log); await fetchData(); }} sendRequest={async (txt, com) => { await db.controlRequests.insert({ from: currentUser.full_name, committee: com, text: txt, time: new Date().toISOString(), status: 'PENDING' }); await fetchData(); }} controlRequests={controlRequests} users={users} systemConfig={systemConfig} committeeReports={committeeReports} onReportUpsert={async (report) => { await db.committeeReports.upsert(report); await fetchData(); }} onAlert={addLocalNotification} />;
-      case 'envelope-opening': return <EnvelopeOpeningView user={currentUser} systemConfig={systemConfig} users={users} />;
-      case 'envelope-labels': return <EnvelopeLabelsPrint students={students} />;
+      case 'envelope-opening': return <EnvelopeOpeningView user={currentUser} systemConfig={systemConfig} users={users} controlRequests={allControlRequests} onRefresh={fetchData} onAlert={addLocalNotification} />;
+      case 'envelope-labels': return <EnvelopeLabelsPrint students={students} users={users} />;
       case 'door-labels': return <DoorLabelsPrint students={students} systemConfig={systemConfig} />;
       default: return <div className="p-20 text-center animate-pulse text-slate-400 font-bold">جاري تحميل المحتوى المخصص...</div>;
     }

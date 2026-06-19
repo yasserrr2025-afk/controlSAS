@@ -116,6 +116,8 @@ export interface EnvelopeOpening {
   grade: string;
   status: 'INTACT' | 'DAMAGED';
   opened_by: string;
+  subject_teacher_id?: string;
+  subject_teacher_name?: string;
 }
 
 export interface ArchiveBox {

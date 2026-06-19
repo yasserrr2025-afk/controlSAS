@@ -62,6 +62,40 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
     return text.trim().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ');
   };
 
+  const normalizeColumnKey = (value: unknown) => String(value || '')
+    .trim()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/\s+/g, '')
+    .toLowerCase();
+
+  const toWesternDigits = (value: unknown) => String(value || '').replace(/[٠-٩۰-۹]/g, digit => {
+    const arabic = '٠١٢٣٤٥٦٧٨٩';
+    const persian = '۰۱۲۳۴۵۶۷۸۹';
+    const arabicIndex = arabic.indexOf(digit);
+    if (arabicIndex >= 0) return String(arabicIndex);
+    const persianIndex = persian.indexOf(digit);
+    return persianIndex >= 0 ? String(persianIndex) : digit;
+  });
+
+  const digitsOnly = (value: unknown) => toWesternDigits(value).replace(/\D/g, '');
+
+  const getRowValue = (row: any, labels: string[]) => {
+    const wanted = labels.map(normalizeColumnKey);
+    const entry = Object.entries(row).find(([key]) => wanted.includes(normalizeColumnKey(key)));
+    return entry?.[1] ?? '';
+  };
+
+  const normalizePhone = (value: unknown) => {
+    const digits = digitsOnly(value);
+    if (!digits) return '';
+    if (digits.startsWith('9665') && digits.length >= 12) return `0${digits.slice(3, 12)}`;
+    if (digits.startsWith('05') && digits.length >= 10) return digits.slice(0, 10);
+    if (digits.startsWith('5') && digits.length >= 9) return `0${digits.slice(0, 9)}`;
+    return digits;
+  };
+
   const grades = useMemo(() => [...new Set(students.map(s => s.grade))].filter(Boolean).sort(), [students]);
 
   const filtered = useMemo(() => students.filter(s => {
@@ -123,11 +157,17 @@ const AdminStudentsManager: React.FC<Props> = ({ students, setStudents, onAlert,
     setIsMerging(true);
     try {
       const phoneData = await parseExcel(file);
+      const normalizedPhoneData = phoneData.map((row: any) => ({
+        ...row,
+        'ط±ظ‚ظ… ط§ظ„ظ‡ظˆظٹط©': getRowValue(row, ['رقم الهوية', 'الهوية', 'السجل المدني', 'رقم الطالب', 'student id', 'studentid']),
+        'ط§ظ„ط§ط³ظ…': getRowValue(row, ['الاسم', 'اسم الطالب', 'student name', 'studentname', 'name']),
+        'ط§ظ„ط¬ظˆط§ظ„': normalizePhone(getRowValue(row, ['الجوال', 'رقم جوال', 'رقم الجوال', 'جوال ولي الامر', 'جوال ولي الأمر', 'mobile', 'phone'])),
+      }));
       let matchCount = 0;
       const updated = students.map((s: Student) => {
-        const sId = s.national_id.replace(/\D/g, '');
+        const sId = digitsOnly(s.national_id);
         const sNameNorm = normalizeText(s.name);
-        const match = phoneData.find((p: any) => {
+        const match = normalizedPhoneData.find((p: any) => {
           const pId = String(p['رقم الهوية'] || p['الهوية'] || p['السجل المدني'] || '').replace(/\D/g, '');
           const pName = normalizeText(String(p['الاسم'] || p['اسم الطالب'] || ''));
           return (sId !== '' && pId === sId) || (sNameNorm.split(' ').length >= 2 && pName === sNameNorm);

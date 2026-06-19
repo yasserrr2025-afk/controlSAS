@@ -84,6 +84,7 @@ export const MasterPortfolio: React.FC<Props> = ({
     : null;
   const controlHeadName = controlChiefFromSettings || users.find(u => u.role === 'CONTROL_MANAGER')?.full_name || 'رئيس الكنترول';
   const schoolManagerName = systemConfig?.principal_name || users.find(u => u.role === 'ADMIN')?.full_name || 'مدير المدرسة';
+  const reportPreparerName = 'علي عبدالله القرني';
 
   const getStudentExamStatus = (student: Student, committeeNumber: string, date: string, period?: number) => {
     return absences.find(a =>
@@ -463,7 +464,7 @@ export const MasterPortfolio: React.FC<Props> = ({
            <div className="cover-signature-footer">
              <div>
                <p className="role">مُعد التقرير</p>
-               <p className="name">ياسر محفوظ الحميدي</p>
+                <p className="name">{reportPreparerName}</p>
              </div>
              <div>
                <p className="role">مدير المدرسة</p>
@@ -516,7 +517,7 @@ export const MasterPortfolio: React.FC<Props> = ({
             <li>5. تقارير المواد (المراقبون، التسليم، وكشوف الطلاب لكل مادة)</li>
           </ul>
           
-          <div className="footer">تم إنشاء هذا الملف آلياً عبر نظام الكنترول الرقمي - مدرسة عماد الدين زنكي - بواسطة ياسر الحميدي</div>
+          <div className="footer">تم إنشاء هذا الملف آلياً عبر نظام الكنترول الرقمي - مدرسة عماد الدين زنكي - معد التقرير: {reportPreparerName}</div>
         </div>
 
         {/* كشف الغياب */}
@@ -561,7 +562,7 @@ export const MasterPortfolio: React.FC<Props> = ({
               )}
             </tbody>
           </table>
-          <div className="footer">تم إنشاء هذا الملف آلياً عبر نظام الكنترول الرقمي - مدرسة عماد الدين زنكي - بواسطة ياسر الحميدي</div>
+          <div className="footer">تم إنشاء هذا الملف آلياً عبر نظام الكنترول الرقمي - مدرسة عماد الدين زنكي - معد التقرير: {reportPreparerName}</div>
         </div>
         
         {/* التقارير الميدانية */}
@@ -815,7 +816,7 @@ export const MasterPortfolio: React.FC<Props> = ({
                        )}
                      </div>
 
-                     <div className="footer">تم إنشاء هذا الكشف آلياً عبر نظام الكنترول الرقمي - مدرسة عماد الدين زنكي - بواسطة ياسر الحميدي</div>
+                     <div className="footer">تم إنشاء هذا الكشف آلياً عبر نظام الكنترول الرقمي - مدرسة عماد الدين زنكي - معد التقرير: {reportPreparerName}</div>
                    </div>
                  );
                })}

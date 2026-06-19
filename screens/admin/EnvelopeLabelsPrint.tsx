@@ -3,29 +3,32 @@ import { createPortal } from 'react-dom';
 import { Printer, Package } from 'lucide-react';
 import { APP_CONFIG } from '../../constants';
 
-const ALLOWED_SUBJECTS = ['الرياضيات', 'اللغة العربية', 'العلوم', 'اللغة الإنجليزية'];
-
 interface Props {
   students: any[];
+  users: any[];
 }
 
-const EnvelopeLabelsPrint: React.FC<Props> = ({ students }) => {
+const EnvelopeLabelsPrint: React.FC<Props> = ({ students, users }) => {
   const [isPrinting, setIsPrinting] = useState(false);
+  const [subject, setSubject] = useState('');
+  const [grade, setGrade] = useState('');
+  const [teacherId, setTeacherId] = useState('');
 
   const uniqueGrades = useMemo(() => {
     return Array.from(new Set(students.map(s => s.grade))).filter(Boolean);
   }, [students]);
 
-  // Generate a label for each Subject x Grade
+  const selectedTeacher = useMemo(() => users.find(u => u.id === teacherId), [users, teacherId]);
+
   const labels = useMemo(() => {
-    const arr = [];
-    for (const grade of uniqueGrades) {
-      for (const subject of ALLOWED_SUBJECTS) {
-        arr.push({ grade, subject });
-      }
-    }
-    return arr;
-  }, [uniqueGrades]);
+    if (!subject.trim() || !grade || !selectedTeacher) return [];
+    return Array.from({ length: 21 }).map(() => ({
+      grade,
+      subject: subject.trim(),
+      teacherId: selectedTeacher.id,
+      teacherName: selectedTeacher.full_name,
+    }));
+  }, [subject, grade, selectedTeacher]);
 
   const chunkedLabels = useMemo(() => {
     const pages = [];
@@ -40,7 +43,7 @@ const EnvelopeLabelsPrint: React.FC<Props> = ({ students }) => {
 
     const imageUrlsToPreload: string[] = [];
     labels.forEach(lbl => {
-      const data = `ENV|${lbl.subject}|${lbl.grade}`;
+      const data = `ENV|${lbl.subject}|${lbl.grade}|${lbl.teacherId}|${lbl.teacherName}`;
       imageUrlsToPreload.push(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data)}&color=000000`);
     });
 
@@ -88,6 +91,29 @@ const EnvelopeLabelsPrint: React.FC<Props> = ({ students }) => {
          </div>
        </div>
 
+       <div className="no-print bg-white rounded-[2rem] border border-slate-100 shadow-md p-6 grid grid-cols-1 lg:grid-cols-4 gap-4 items-end">
+        <div>
+          <label className="block text-xs font-black text-slate-400 mb-2">اسم المادة</label>
+          <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="مثال: الرياضيات" className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-bold outline-none focus:border-blue-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-black text-slate-400 mb-2">الصف</label>
+          <select value={grade} onChange={e => setGrade(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-bold outline-none focus:border-blue-500">
+            <option value="">اختر الصف</option>
+            {uniqueGrades.map(g => <option key={String(g)} value={String(g)}>{String(g)}</option>)}
+          </select>
+        </div>
+        <div className="lg:col-span-2">
+          <label className="block text-xs font-black text-slate-400 mb-2">معلم المادة</label>
+          <select value={teacherId} onChange={e => setTeacherId(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-bold outline-none focus:border-blue-500">
+            <option value="">اختر من جميع الأسماء</option>
+            {users.slice().sort((a,b) => String(a.full_name).localeCompare(String(b.full_name), 'ar')).map(u => (
+              <option key={u.id} value={u.id}>{u.full_name}</option>
+            ))}
+          </select>
+        </div>
+       </div>
+
        {/* طباعة ملصقات مظاريف الأسئلة (مقاس GS-1021 بمعدل 21 ملصق في الصفحة) */}
        {isPrinting && createPortal(
         <div id="labels-print-portal">
@@ -122,16 +148,18 @@ const EnvelopeLabelsPrint: React.FC<Props> = ({ students }) => {
                 width: 210mm;
                 height: 297mm;
                 display: grid;
-                grid-template-columns: repeat(3, 70mm);
-                grid-template-rows: repeat(7, 42.4mm);
+                grid-template-columns: repeat(3, 65mm);
+                grid-template-rows: repeat(7, 37mm);
+                column-gap: 4mm;
+                row-gap: 4mm;
                 page-break-after: always;
                 box-sizing: border-box;
-                padding: 0;
+                padding: 7mm 3.5mm;
                 margin: 0;
               }
               .gs-1021-label {
-                width: 70mm;
-                height: 42.4mm;
+                width: 65mm;
+                height: 37mm;
                 box-sizing: border-box;
                 border: 0.2pt solid #000;
                 display: flex;
@@ -160,7 +188,7 @@ const EnvelopeLabelsPrint: React.FC<Props> = ({ students }) => {
             {chunkedLabels.map((pageLabels, pageIndex) => (
               <div key={`page-${pageIndex}`} className="gs-1021-sheet bg-white">
                 {pageLabels.map((lbl, idx) => {
-                  const data = `ENV|${lbl.subject}|${lbl.grade}`;
+                  const data = `ENV|${lbl.subject}|${lbl.grade}|${lbl.teacherId}|${lbl.teacherName}`;
                   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data)}&color=000000`;
                   
                   return (
@@ -186,7 +214,8 @@ const EnvelopeLabelsPrint: React.FC<Props> = ({ students }) => {
                           />
                           <span className="text-[8pt] font-black text-black-bold uppercase tracking-widest leading-none mb-1">مظروف أسئلة</span>
                           <span className="text-[12pt] font-black text-black-bold leading-none tabular-nums text-center" style={{ color: '#000' }}>{lbl.subject}</span>
-                          <span className="text-[8pt] font-black text-black-bold mt-2 uppercase tracking-tighter text-center">{lbl.grade}</span>
+                          <span className="text-[8pt] font-black text-black-bold mt-1 uppercase tracking-tighter text-center">{lbl.grade}</span>
+                          <span className="text-[6pt] font-black text-black-bold mt-1 text-center">{lbl.teacherName}</span>
                         </div>
                       </div>
                     </div>

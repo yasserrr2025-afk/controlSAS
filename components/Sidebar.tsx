@@ -5,7 +5,7 @@ import {
   ShieldAlert, Inbox, FileText, Settings, X, ChevronRight, ChevronLeft,
   History, IdCard, UserCircle, ShieldCheck, ShieldHalf, Bell, Shield,
   Monitor, Fingerprint, MonitorPlay, Award, LayoutPanelTop, QrCode,
-  FileSpreadsheet, MessageSquareQuote, CalendarDays, BrainCircuit, BookOpen, PackageSearch, BarChart3
+  FileSpreadsheet, MessageSquareQuote, BrainCircuit, BookOpen, PackageSearch, BarChart3
 } from 'lucide-react';
 import { UserRole, User, ControlRequest } from '../types';
 import { APP_CONFIG, ROLES_ARABIC } from '../constants';
@@ -75,7 +75,6 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const proctorLinks: SidebarLink[] = [
     { id: 'my-tasks', label: 'رصد اللجنة', icon: ClipboardList },
-    { id: 'my-schedule', label: 'جدول مراقبتي', icon: CalendarDays },
     { id: 'proctor-alerts', label: 'سجل البلاغات', icon: MessageSquareQuote, badge: pendingCount > 0 ? pendingCount : null },
     { id: 'digital-id', label: 'الهوية الرقمية', icon: Fingerprint },
   ];

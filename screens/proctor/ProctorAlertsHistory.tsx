@@ -1,13 +1,20 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { ControlRequest, DeliveryLog, Supervision } from '../../types';
 import {
   History, Clock, CheckCircle2, Timer, UserCheck, Ghost,
   BarChart3, Circle, ChevronDown, ChevronUp,
   MessageSquare, Stethoscope, FileText, Pencil, UserSearch, Package,
-  TrendingUp, ArrowRight
+  TrendingUp, ArrowRight, X
 } from 'lucide-react';
-import { cleanControlRequestText, isInternalSignatureRecord } from '../../services/signatures';
+import { db } from '../../supabase';
+import {
+  ALL_GRADES_SIGNATURE,
+  buildSignatureText,
+  cleanControlRequestText,
+  isInternalSignatureRecord,
+  isSignatureRequest,
+} from '../../services/signatures';
 
 interface Props {
   requests: ControlRequest[];
@@ -15,6 +22,7 @@ interface Props {
   deliveryLogs: DeliveryLog[];
   supervisions: Supervision[];
   systemConfig: { active_exam_date?: string };
+  setRequests?: () => Promise<void>;
 }
 
 /* ── تصنيف النوع ── */
@@ -42,9 +50,12 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
 }
 
-const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliveryLogs, supervisions, systemConfig }) => {
+const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliveryLogs, supervisions, systemConfig, setRequests }) => {
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDING' | 'IN_PROGRESS' | 'DONE'>('ALL');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [signatureRequest, setSignatureRequest] = useState<ControlRequest | null>(null);
+  const signatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawingRef = useRef(false);
 
   const todayDate = systemConfig?.active_exam_date
     ? systemConfig.active_exam_date.split('T')[0]
@@ -88,6 +99,77 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
     if (filterStatus === 'ALL') return myHistory;
     return myHistory.filter(r => r.effectiveStatus === filterStatus);
   }, [myHistory, filterStatus]);
+
+  const getCanvasPoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  };
+
+  const startSignature = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = signatureCanvasRef.current;
+    if (!canvas) return;
+    drawingRef.current = true;
+    canvas.setPointerCapture(event.pointerId);
+    const ctx = canvas.getContext('2d');
+    const point = getCanvasPoint(event);
+    if (ctx) {
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(point.x, point.y);
+    }
+  };
+
+  const drawSignature = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drawingRef.current) return;
+    const canvas = signatureCanvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    const point = getCanvasPoint(event);
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+  };
+
+  const stopSignature = () => {
+    drawingRef.current = false;
+  };
+
+  const clearSignature = () => {
+    const canvas = signatureCanvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const saveEnvelopeSignature = async () => {
+    const canvas = signatureCanvasRef.current;
+    if (!canvas || !signatureRequest) return;
+    const committeeId = String(signatureRequest.committee || '').replace(/^ENV:/, '');
+    const signature = canvas.toDataURL('image/png');
+    await db.controlRequests.insert({
+      from: userFullName,
+      committee: committeeId,
+      text: buildSignatureText({
+        role: 'subjectTeacher',
+        committee: committeeId,
+        grade: ALL_GRADES_SIGNATURE,
+        name: userFullName,
+        time: new Date().toISOString(),
+        signature,
+      }),
+      time: new Date().toISOString(),
+      status: 'DONE',
+    });
+    await db.controlRequests.updateStatus(signatureRequest.id, 'DONE', userFullName);
+    await setRequests?.();
+    setSignatureRequest(null);
+  };
 
   /* ── تجميع حسب اليوم ── */
   const grouped = useMemo(() => {
@@ -271,6 +353,15 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
                           </div>
 
                           {/* بطاقات المعلومات */}
+                          {isSignatureRequest(req) && String(req.committee).startsWith('ENV:') && st !== 'DONE' && (
+                            <button
+                              onClick={() => setSignatureRequest(req)}
+                              className="w-full bg-slate-950 text-white rounded-[1.5rem] py-4 font-black text-base hover:bg-slate-800 transition-all shadow-lg"
+                            >
+                              توقيع محضر فتح المظروف
+                            </button>
+                          )}
+
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                             <div className="bg-white border border-slate-100 rounded-[1.5rem] p-5 shadow-sm">
                               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">وقت الإرسال</p>
@@ -346,6 +437,40 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
           ))
         )}
       </div>
+
+      {signatureRequest && (
+        <div className="fixed inset-0 z-[700] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] shadow-2xl border border-slate-100 w-full max-w-xl p-6 text-right">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <p className="text-xs font-black text-slate-400 mb-1">توقيع إلكتروني</p>
+                <h3 className="text-2xl font-black text-slate-900">محضر فتح المظروف</h3>
+              </div>
+              <button onClick={() => setSignatureRequest(null)} className="p-3 rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600">
+                <X size={22} />
+              </button>
+            </div>
+            <canvas
+              ref={signatureCanvasRef}
+              width={900}
+              height={320}
+              onPointerDown={startSignature}
+              onPointerMove={drawSignature}
+              onPointerUp={stopSignature}
+              onPointerLeave={stopSignature}
+              className="w-full h-52 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 touch-none"
+            />
+            <div className="grid grid-cols-2 gap-3 mt-5">
+              <button onClick={clearSignature} className="py-4 rounded-2xl bg-slate-100 text-slate-700 font-black hover:bg-slate-200 transition-all">
+                مسح التوقيع
+              </button>
+              <button onClick={saveEnvelopeSignature} className="py-4 rounded-2xl bg-emerald-600 text-white font-black hover:bg-emerald-500 transition-all shadow-lg shadow-emerald-500/20">
+                اعتماد التوقيع
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes fade-in  { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }

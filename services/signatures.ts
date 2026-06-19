@@ -1,6 +1,6 @@
 import { ControlRequest } from '../types';
 
-export type SignatureRole = 'receiver' | 'proctor';
+export type SignatureRole = 'receiver' | 'proctor' | 'subjectTeacher';
 
 export interface StoredSignature {
   role: SignatureRole;

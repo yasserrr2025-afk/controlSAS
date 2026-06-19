@@ -3,21 +3,25 @@ import { createPortal } from "react-dom";
 // @ts-ignore
 import { Html5Qrcode } from "html5-qrcode";
 import { Camera, X, CheckCircle2, ShieldAlert, PackageOpen, Printer, Trash2 } from "lucide-react";
-import { EnvelopeOpening, User } from "../../types";
+import { ControlRequest, EnvelopeOpening, User } from "../../types";
 import { db } from "../../supabase";
 import OfficialHeader from "../../components/OfficialHeader";
+import { ALL_GRADES_SIGNATURE, findStoredSignature, SIGNATURE_REQUEST_PREFIX } from "../../services/signatures";
 
 interface Props {
   user: User;
   systemConfig: any;
   users: User[];
+  controlRequests?: ControlRequest[];
+  onRefresh?: () => Promise<void>;
+  onAlert?: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 }
 
-const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users }) => {
+const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, controlRequests = [], onRefresh, onAlert }) => {
   const [openings, setOpenings] = useState<EnvelopeOpening[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const qrScannerRef = useRef<any>(null);
-  const [scannedData, setScannedData] = useState<{ subject: string, grade: string } | null>(null);
+  const [scannedData, setScannedData] = useState<{ subject: string, grade: string, teacherId?: string, teacherName?: string } | null>(null);
   const [status, setStatus] = useState<'INTACT' | 'DAMAGED'>('INTACT');
   const [printRecord, setPrintRecord] = useState<EnvelopeOpening | null>(null);
 
@@ -55,8 +59,8 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users }) => 
           { fps: 15, qrbox: { width: 250, height: 250 } },
           (text) => {
             if (text.startsWith("ENV|")) {
-              const [, subject, grade] = text.split("|");
-              setScannedData({ subject, grade });
+              const [, subject, grade, teacherId, teacherName] = text.split("|");
+              setScannedData({ subject, grade, teacherId, teacherName });
               stopScanner();
             } else {
               alert("الرمز غير صالح لمظروف الأسئلة. يجب أن يكون ملصق مظروف أسئلة معتمد.");
@@ -92,12 +96,32 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users }) => 
         subject: scannedData.subject,
         grade: scannedData.grade,
         status,
-        opened_by: user.full_name
+        opened_by: user.full_name,
+        subject_teacher_id: scannedData.teacherId,
+        subject_teacher_name: scannedData.teacherName,
       };
-      await db.envelopeOpenings.upsert(newRecord);
+      try {
+        await db.envelopeOpenings.upsert(newRecord);
+      } catch {
+        const { subject_teacher_id, subject_teacher_name, ...legacyRecord } = newRecord;
+        await db.envelopeOpenings.upsert(legacyRecord);
+      }
+      if (scannedData.teacherName && newRecord.id) {
+        await db.controlRequests.insert({
+          from: scannedData.teacherName,
+          committee: `ENV:${newRecord.id}`,
+          text: `${SIGNATURE_REQUEST_PREFIX} توقيع معلم المادة على محضر فتح مظروف ${scannedData.subject} - ${scannedData.grade}`,
+          time: new Date().toISOString(),
+          status: 'PENDING',
+        });
+      }
       await fetchOpenings();
+      await onRefresh?.();
       setScannedData(null);
+      onAlert?.('تم تسجيل فتح المظروف وإرسال طلب توقيع معلم المادة.', 'success');
+      if (!onAlert) {
       alert('تم تسجيل عملية فتح المظروف بنجاح.');
+      }
     } catch (err: any) {
       alert(err.message);
     }
@@ -114,6 +138,16 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users }) => 
     const date = new Date(dateStr);
     const options: Intl.DateTimeFormatOptions = { weekday: 'long' };
     return new Intl.DateTimeFormat('ar-SA', options).format(date);
+  };
+
+  const subjectTeacherSignature = printRecord
+    ? findStoredSignature(controlRequests, 'subjectTeacher', printRecord.id, ALL_GRADES_SIGNATURE)
+    : null;
+  const getSubjectTeacherName = (record?: EnvelopeOpening | null) => {
+    if (!record) return '';
+    return record.subject_teacher_name
+      || controlRequests.find(req => req.committee === `ENV:${record.id}` && req.text?.startsWith(SIGNATURE_REQUEST_PREFIX))?.from
+      || '';
   };
 
   return (
@@ -166,6 +200,10 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users }) => 
               <p className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">الصف</p>
               <p className="text-2xl font-black text-slate-800">{scannedData.grade}</p>
             </div>
+            <div className="col-span-2 bg-blue-50 p-6 rounded-[2rem] text-center border border-blue-100">
+              <p className="text-sm font-black text-blue-400 uppercase tracking-widest mb-1">معلم المادة</p>
+              <p className="text-2xl font-black text-blue-900">{scannedData.teacherName || 'غير محدد'}</p>
+            </div>
           </div>
 
           <div className="space-y-4 mb-8">
@@ -207,6 +245,10 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users }) => 
               <div className="flex justify-between">
                 <span className="text-slate-400 font-bold text-sm">بواسطة:</span>
                 <span className="font-black text-slate-800">{o.opened_by}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-bold text-sm">معلم المادة:</span>
+                <span className="font-black text-slate-800">{getSubjectTeacherName(o) || '---'}</span>
               </div>
             </div>
 
@@ -270,6 +312,10 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users }) => 
                   <td style={{ border: '1px solid #000', padding: '10px', fontWeight: 'bold' }}>{printRecord.grade}</td>
                 </tr>
                 <tr>
+                  <td style={{ border: '1px solid #000', padding: '10px', fontWeight: 'bold', backgroundColor: '#f8fafc' }}>معلم المادة</td>
+                  <td colSpan={4} style={{ border: '1px solid #000', padding: '10px', fontWeight: 'bold', textAlign: 'right' }}>{getSubjectTeacherName(printRecord) || '---'}</td>
+                </tr>
+                <tr>
                   <td colSpan={5} style={{ border: '1px solid #000', padding: '20px', textAlign: 'right', fontWeight: 'bold', fontSize: '16px' }}>
                     تم فتح مظروف الأسئلة عند الساعة ( <span style={{ fontFamily: 'sans-serif', margin: '0 5px' }}>{printRecord.time}</span> ص بواسطة : <span style={{ margin: '0 5px' }}>{printRecord.opened_by || ''}</span> ) ووجد:
                     <span style={{ margin: '0 10px' }}>
@@ -325,6 +371,19 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users }) => 
                   <td style={{ border: '1px solid #000', padding: '15px', fontWeight: 'bold' }}>عضو كنترول</td>
                   <td style={{ border: '1px solid #000', padding: '15px', fontWeight: 'bold' }}>عضواً</td>
                   <td style={{ border: '1px solid #000', padding: '15px' }}></td>
+                </tr>
+                <tr>
+                  <td style={{ border: '1px solid #000', padding: '15px' }}>5</td>
+                  <td style={{ border: '1px solid #000', padding: '15px' }}>{getSubjectTeacherName(printRecord)}</td>
+                  <td style={{ border: '1px solid #000', padding: '15px', fontWeight: 'bold' }}>معلم المادة</td>
+                  <td style={{ border: '1px solid #000', padding: '15px', fontWeight: 'bold' }}>عضواً</td>
+                  <td style={{ border: '1px solid #000', padding: '8px' }}>
+                    {subjectTeacherSignature?.signature ? (
+                      <img src={subjectTeacherSignature.signature} alt="توقيع معلم المادة" style={{ height: 42, maxWidth: 150, objectFit: 'contain', margin: '0 auto' }} />
+                    ) : (
+                      <span style={{ color: '#991b1b', fontWeight: 'bold' }}>بانتظار التوقيع الإلكتروني</span>
+                    )}
+                  </td>
                 </tr>
               </tbody>
             </table>
