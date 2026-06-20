@@ -143,6 +143,9 @@ export interface SupervisorVisit {
   rating?: string;
   visit_time: string;
   signature?: string;
+  principal_name?: string;
+  principal_signature?: string;
+  principal_signed_at?: string;
   portfolio_token?: string;
   created_by?: string;
   created_at?: string;

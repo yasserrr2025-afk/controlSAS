@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { CheckCircle2, ClipboardCopy, ExternalLink, Loader2, Plus, Printer, QrCode, RefreshCw, Trash2, UserRoundCheck, X } from 'lucide-react';
 import { SupervisorVisit, SystemConfig, User } from '../../types';
 import { db } from '../../supabase';
@@ -19,6 +19,11 @@ const SupervisorVisitsManager: React.FC<Props> = ({ visits, currentUser, systemC
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [qrVisit, setQrVisit] = useState<SupervisorVisit | null>(null);
+  const [principalVisit, setPrincipalVisit] = useState<SupervisorVisit | null>(null);
+  const [principalSignature, setPrincipalSignature] = useState('');
+  const [savingPrincipalSignature, setSavingPrincipalSignature] = useState(false);
+  const principalCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isDrawingPrincipal = useRef(false);
 
   const stats = useMemo(() => ({
     total: visits.length,
@@ -54,6 +59,89 @@ const SupervisorVisitsManager: React.FC<Props> = ({ visits, currentUser, systemC
     await navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 1800);
+  };
+
+  const getCanvasPoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = principalCanvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (event.clientX - rect.left) * (canvas.width / rect.width),
+      y: (event.clientY - rect.top) * (canvas.height / rect.height),
+    };
+  };
+
+  const startPrincipalSignature = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = principalCanvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    isDrawingPrincipal.current = true;
+    canvas.setPointerCapture(event.pointerId);
+    const point = getCanvasPoint(event);
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+  };
+
+  const drawPrincipalSignature = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isDrawingPrincipal.current) return;
+    const canvas = principalCanvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    const point = getCanvasPoint(event);
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+  };
+
+  const finishPrincipalSignature = () => {
+    if (!isDrawingPrincipal.current || !principalCanvasRef.current) return;
+    isDrawingPrincipal.current = false;
+    setPrincipalSignature(principalCanvasRef.current.toDataURL('image/png'));
+  };
+
+  const clearPrincipalSignature = () => {
+    const canvas = principalCanvasRef.current;
+    if (!canvas) return;
+    canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+    setPrincipalSignature('');
+  };
+
+  const openPrincipalSignature = (visit: SupervisorVisit) => {
+    setPrincipalVisit(visit);
+    setPrincipalSignature(visit.principal_signature || '');
+    setTimeout(() => {
+      const canvas = principalCanvasRef.current;
+      const ctx = canvas?.getContext('2d');
+      if (!canvas || !ctx || !visit.principal_signature) return;
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      img.src = visit.principal_signature;
+    }, 0);
+  };
+
+  const savePrincipalSignature = async () => {
+    if (!principalVisit || !principalSignature) {
+      onAlert?.('يرجى توقيع المدير قبل الاعتماد.', 'warning');
+      return;
+    }
+    setSavingPrincipalSignature(true);
+    try {
+      await db.supervisorVisits.upsert({
+        ...principalVisit,
+        principal_name: systemConfig?.principal_name || currentUser.full_name,
+        principal_signature: principalSignature,
+        principal_signed_at: new Date().toISOString(),
+      });
+      await onRefresh();
+      setPrincipalVisit(null);
+      setPrincipalSignature('');
+      onAlert?.('تم اعتماد ملف الإنجاز المصغر بتوقيع المدير.', 'success');
+    } catch (error: any) {
+      onAlert?.(error.message || 'تعذر حفظ توقيع المدير.', 'error');
+    } finally {
+      setSavingPrincipalSignature(false);
+    }
   };
 
   const removeVisit = async (id: string) => {
@@ -279,6 +367,53 @@ const SupervisorVisitsManager: React.FC<Props> = ({ visits, currentUser, systemC
           </div>
         </div>
       )}
+      {principalVisit && (
+        <div className="fixed inset-0 z-[510] bg-slate-950/70 backdrop-blur-md p-4 flex items-center justify-center">
+          <div className="w-full max-w-2xl rounded-[3rem] bg-white p-6 md:p-8 shadow-2xl relative">
+            <button onClick={() => setPrincipalVisit(null)} className="absolute left-5 top-5 rounded-full bg-slate-100 p-3 text-slate-500 hover:bg-slate-200">
+              <X size={22} />
+            </button>
+            <div className="mb-6 pr-2">
+              <div className="mb-4 inline-flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-700">
+                <UserRoundCheck size={18} />
+                اعتماد مدير المدرسة
+              </div>
+              <h3 className="text-2xl md:text-3xl font-black text-slate-950">توقيع ملف الإنجاز المصغر</h3>
+              <p className="mt-2 text-sm font-bold leading-7 text-slate-500">
+                بعد توقيع المدير سيتم تفعيل زر الطباعة في رابط الإنجاز المصغر الخاص بالمشرف، وسيظهر اسم المدير وتوقيعه في التقرير.
+              </p>
+              <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">
+                <span className="text-slate-400">مدير المدرسة:</span> {systemConfig?.principal_name || currentUser.full_name}
+              </div>
+            </div>
+            <div className="rounded-[2rem] border-2 border-dashed border-slate-200 bg-slate-50 p-3">
+              <canvas
+                ref={principalCanvasRef}
+                width={900}
+                height={260}
+                onPointerDown={startPrincipalSignature}
+                onPointerMove={drawPrincipalSignature}
+                onPointerUp={finishPrincipalSignature}
+                onPointerCancel={finishPrincipalSignature}
+                className="h-44 w-full touch-none rounded-[1.5rem] bg-white shadow-inner"
+              />
+            </div>
+            <div className="mt-5 flex flex-col sm:flex-row gap-3">
+              <button onClick={clearPrincipalSignature} className="rounded-2xl bg-slate-100 px-5 py-3 font-black text-slate-600">
+                مسح التوقيع
+              </button>
+              <button
+                onClick={savePrincipalSignature}
+                disabled={savingPrincipalSignature}
+                className="flex-1 rounded-2xl bg-slate-950 px-5 py-3 font-black text-white flex items-center justify-center gap-3 disabled:opacity-60"
+              >
+                {savingPrincipalSignature ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+                اعتماد وتفعيل طباعة الإنجاز المصغر
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="bg-slate-950 text-white rounded-[3rem] p-8 shadow-2xl border-b-[8px] border-emerald-500 overflow-hidden relative">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,.22),transparent_34%)]" />
         <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
@@ -357,6 +492,17 @@ const SupervisorVisitsManager: React.FC<Props> = ({ visits, currentUser, systemC
                     <button onClick={() => window.open(portfolioUrl, '_blank')} className="px-4 py-3 rounded-xl bg-emerald-600 text-white font-black text-sm flex items-center gap-2">
                       <ExternalLink size={18} />
                       رابط الإنجاز
+                    </button>
+                  )}
+                  {submitted && (
+                    <button
+                      onClick={() => openPrincipalSignature(visit)}
+                      className={`px-4 py-3 rounded-xl font-black text-sm flex items-center gap-2 ${
+                        visit.principal_signature ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                      }`}
+                    >
+                      <UserRoundCheck size={18} />
+                      {visit.principal_signature ? 'توقيع المدير مكتمل' : 'توقيع المدير'}
                     </button>
                   )}
                   <a href={submitted ? portfolioUrl : visitUrl} target="_blank" rel="noreferrer" className="px-4 py-3 rounded-xl bg-blue-50 text-blue-700 font-black text-sm flex items-center gap-2">

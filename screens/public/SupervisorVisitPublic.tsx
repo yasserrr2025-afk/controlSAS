@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Award, CheckCircle2, ClipboardList, FileText, Loader2, PenLine, Sparkles, Star, UserRoundCheck } from 'lucide-react';
+import { Award, CheckCircle2, ClipboardList, FileText, Loader2, LockKeyhole, PenLine, Printer, Sparkles, Star, UserRoundCheck } from 'lucide-react';
 import { Absence, CommitteeReport, ControlRequest, DeliveryLog, ExamSchedule, Student, Supervision, SupervisorVisit, SystemConfig, User } from '../../types';
 import { APP_CONFIG } from '../../constants';
 import { db } from '../../supabase';
@@ -335,6 +335,108 @@ export const SupervisorMiniPortfolio: React.FC<PortfolioProps> = (props) => {
     reports: committeeReports.length,
     exams: examSchedule.filter(e => e.exam_date === activeDate).length,
   }), [students, supervisions, absences, deliveryLogs, controlRequests, committeeReports, examSchedule, activeDate]);
+  const canPrint = Boolean(visit?.principal_signature);
+
+  const printMiniPortfolio = () => {
+    if (!visit || !canPrint) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    const schoolName = systemConfig?.school_name || APP_CONFIG.SCHOOL_NAME;
+    const directorateName = systemConfig?.directorate_name || APP_CONFIG.ADMINISTRATION_NAME;
+    const principalName = visit.principal_name || systemConfig?.principal_name || 'مدير المدرسة';
+    const academicYear = systemConfig?.academic_year || '1447 / 1448';
+    const visitDate = new Date(visit.visit_time).toLocaleDateString('ar-SA');
+    const visitTime = new Date(visit.visit_time).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+    const signedAt = visit.principal_signed_at ? new Date(visit.principal_signed_at).toLocaleString('ar-SA') : 'معتمد إلكترونياً';
+    const html = `
+      <html dir="rtl">
+        <head>
+          <title>ملف الإنجاز المصغر - ${visit.visitor_name || ''}</title>
+          <style>
+            @page { size: A4 portrait; margin: 8mm; }
+            * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body { margin: 0; font-family: Arial, sans-serif; color: #0f172a; background: white; }
+            .page { height: 281mm; border: 1.5pt solid #0f172a; padding: 7mm; overflow: hidden; display: flex; flex-direction: column; }
+            .header { display: grid; grid-template-columns: 1fr 30mm 1fr; gap: 5mm; align-items: center; border-bottom: 3px double #0f172a; padding-bottom: 4mm; margin-bottom: 4mm; }
+            .side { font-size: 9.5pt; font-weight: 900; line-height: 1.55; }
+            .left { text-align: left; color: #334155; }
+            .logo { width: 24mm; height: 24mm; object-fit: contain; margin: auto; display: block; }
+            .title { text-align: center; border: 1.5pt solid #0f172a; background: #eef7fb; padding: 3mm; margin-bottom: 4mm; }
+            .title h1 { margin: 0; font-size: 17pt; font-weight: 900; }
+            .title p { margin: 1.5mm 0 0; font-size: 9pt; font-weight: 800; color: #475569; }
+            .info { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.2mm; margin-bottom: 4mm; }
+            .box { border: 1pt solid #0f172a; min-height: 17mm; }
+            .box b { display: block; background: #f1f5f9; border-bottom: 1pt solid #0f172a; padding: 1.8mm; font-size: 8.5pt; }
+            .box span { display: block; padding: 2mm; font-size: 9.7pt; font-weight: 900; line-height: 1.35; }
+            .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2mm; margin-bottom: 4mm; }
+            .metric { border: 1pt solid #cbd5e1; background: #f8fafc; padding: 2.2mm; text-align: center; min-height: 18mm; }
+            .metric strong { display: block; font-size: 16pt; color: #0f172a; }
+            .metric span { font-size: 7.5pt; font-weight: 900; color: #64748b; }
+            .two { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin-bottom: 4mm; }
+            .section { border: 1pt solid #0f172a; min-height: 33mm; }
+            .section-title { background: #0f172a; color: white; padding: 2mm 3mm; font-size: 9pt; font-weight: 900; }
+            .section-body { padding: 3mm; font-size: 9.7pt; line-height: 1.65; font-weight: 700; white-space: pre-wrap; }
+            .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin-top: 1mm; }
+            .sig { border: 1pt solid #cbd5e1; background: #f8fafc; min-height: 32mm; padding: 2mm; text-align: center; }
+            .sig b { display: block; font-size: 8.5pt; margin-bottom: 1mm; }
+            .sig img { max-height: 23mm; max-width: 76mm; object-fit: contain; }
+            .approval { border: 1pt solid #047857; background: #ecfdf5; padding: 2.5mm 3mm; font-size: 9pt; font-weight: 900; line-height: 1.55; color: #065f46; margin-top: 3mm; }
+            .footer { margin-top: auto; border-top: 1pt solid #cbd5e1; padding-top: 2mm; display: flex; justify-content: space-between; font-size: 8pt; font-weight: 800; color: #475569; }
+          </style>
+        </head>
+        <body>
+          <div class="page">
+            <div class="header">
+              <div class="side">المملكة العربية السعودية<br/>وزارة التعليم<br/>${directorateName}<br/>${schoolName}</div>
+              <img class="logo" src="${APP_CONFIG.LOGO_URL}" />
+              <div class="side left">العام الدراسي: ${academicYear}<br/>تاريخ الطباعة: ${new Date().toLocaleDateString('ar-SA')}<br/>ملف إنجاز مصغر معتمد<br/>رقم السجل: ${visit.id.slice(0, 8)}</div>
+            </div>
+            <div class="title">
+              <h1>ملف الإنجاز المصغر لزيارة مشرف / إدارة</h1>
+              <p>توثيق مختصر لأعمال الاختبارات والمؤشرات الأساسية في يوم الزيارة</p>
+            </div>
+            <div class="info">
+              <div class="box"><b>اسم الزائر</b><span>${visit.visitor_name || '---'}</span></div>
+              <div class="box"><b>الصفة / الجهة</b><span>${visit.visitor_role || '---'}</span></div>
+              <div class="box"><b>وسيلة التواصل</b><span>${visit.visitor_contact || '---'}</span></div>
+              <div class="box"><b>تاريخ الزيارة</b><span>${visitDate}</span></div>
+              <div class="box"><b>وقت الزيارة</b><span>${visitTime}</span></div>
+              <div class="box"><b>نوع الزيارة</b><span>${visit.visit_reason || '---'}</span></div>
+              <div class="box"><b>التقييم العام</b><span>${visit.rating || '---'}</span></div>
+              <div class="box"><b>مدير المدرسة</b><span>${principalName}</span></div>
+              <div class="box"><b>وقت اعتماد المدير</b><span>${signedAt}</span></div>
+            </div>
+            <div class="metrics">
+              <div class="metric"><strong>${metrics.students}</strong><span>الطلاب</span></div>
+              <div class="metric"><strong>${metrics.committees}</strong><span>اللجان</span></div>
+              <div class="metric"><strong>${metrics.proctors}</strong><span>المراقبون</span></div>
+              <div class="metric"><strong>${metrics.requests}</strong><span>بلاغات اليوم</span></div>
+              <div class="metric"><strong>${metrics.absences}</strong><span>الغياب / التأخير</span></div>
+              <div class="metric"><strong>${metrics.receipts}</strong><span>استلام مؤكد</span></div>
+              <div class="metric"><strong>${metrics.reports}</strong><span>تقارير ميدانية</span></div>
+              <div class="metric"><strong>${metrics.exams}</strong><span>اختبارات اليوم</span></div>
+            </div>
+            <div class="two">
+              <div class="section"><div class="section-title">ملاحظات الزيارة</div><div class="section-body">${visit.notes || 'لا توجد ملاحظات.'}</div></div>
+              <div class="section"><div class="section-title">التوصيات</div><div class="section-body">${visit.recommendations || 'لا توجد توصيات.'}</div></div>
+            </div>
+            <div class="signatures">
+              <div class="sig"><b>توقيع المشرف / الزائر</b>${visit.signature ? `<img src="${visit.signature}" />` : ''}</div>
+              <div class="sig"><b>توقيع مدير المدرسة</b>${visit.principal_signature ? `<img src="${visit.principal_signature}" />` : ''}</div>
+            </div>
+            <div class="approval">تم اعتماد هذا الملف إلكترونياً من مدير المدرسة: ${principalName}، ويعد التقرير مستنداً مختصراً للزيارة والمؤشرات التشغيلية في يومها.</div>
+            <div class="footer">
+              <div>نظام الكنترول الرقمي - ${schoolName}</div>
+              <div>رابط إنجاز مصغر معتمد إلكترونياً</div>
+            </div>
+          </div>
+          <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 500); }</script>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
 
   if (loading) {
     return <PublicShell title="ملف الإنجاز المصغر" subtitle={systemConfig?.school_name || 'نظام الكنترول'}><div className="py-24 text-center"><Loader2 className="mx-auto animate-spin text-blue-600" size={48} /></div></PublicShell>;
@@ -354,10 +456,53 @@ export const SupervisorMiniPortfolio: React.FC<PortfolioProps> = (props) => {
               <h2 className="mt-2 text-3xl font-black text-slate-950">{visit.visitor_name}</h2>
               <p className="mt-1 font-bold text-slate-500">{visit.visitor_role} - {new Date(visit.visit_time).toLocaleString('ar-SA')}</p>
             </div>
-            <div className="rounded-2xl bg-emerald-50 px-5 py-4 text-center text-emerald-700 border border-emerald-100">
-              <Star className="mx-auto mb-1" />
-              <p className="font-black">{visit.rating}</p>
+            <div className="flex flex-col sm:flex-row md:flex-col lg:flex-row gap-3">
+              <div className="rounded-2xl bg-emerald-50 px-5 py-4 text-center text-emerald-700 border border-emerald-100">
+                <Star className="mx-auto mb-1" />
+                <p className="font-black">{visit.rating}</p>
+              </div>
+              <button
+                type="button"
+                onClick={printMiniPortfolio}
+                disabled={!canPrint}
+                className={`rounded-2xl px-5 py-4 font-black shadow-lg flex items-center justify-center gap-3 transition-all ${
+                  canPrint
+                    ? 'bg-slate-950 text-white hover:bg-slate-800'
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
+                }`}
+                title={canPrint ? 'طباعة ملف الإنجاز المصغر' : 'يتفعل الزر بعد توقيع مدير المدرسة'}
+              >
+                {canPrint ? <Printer size={22} /> : <LockKeyhole size={22} />}
+                {canPrint ? 'طباعة الإنجاز المصغر' : 'الطباعة بعد توقيع المدير'}
+              </button>
             </div>
+          </div>
+        </div>
+
+        <div className={`rounded-[2rem] p-6 border shadow-md ${canPrint ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+            <div className="flex items-start gap-4">
+              <div className={`grid h-14 w-14 shrink-0 place-items-center rounded-2xl ${canPrint ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-700'}`}>
+                {canPrint ? <CheckCircle2 size={28} /> : <LockKeyhole size={26} />}
+              </div>
+              <div>
+                <h3 className={`text-xl font-black ${canPrint ? 'text-emerald-900' : 'text-amber-900'}`}>
+                  {canPrint ? 'تم اعتماد ملف الإنجاز المصغر' : 'بانتظار توقيع مدير المدرسة'}
+                </h3>
+                <p className={`mt-1 text-sm font-bold leading-7 ${canPrint ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  {canPrint
+                    ? `تم الاعتماد من مدير المدرسة: ${visit.principal_name || systemConfig?.principal_name || 'مدير المدرسة'}`
+                    : 'سيظهر زر الطباعة للمشرف بعد اعتماد المدير من شاشة زيارات المشرفين.'}
+                </p>
+                {visit.principal_signed_at && <p className="mt-1 text-xs font-black text-emerald-600">{new Date(visit.principal_signed_at).toLocaleString('ar-SA')}</p>}
+              </div>
+            </div>
+            {visit.principal_signature && (
+              <div className="rounded-2xl bg-white/80 px-5 py-3 min-w-48 text-center">
+                <p className="mb-2 text-[10px] font-black text-slate-400">توقيع مدير المدرسة</p>
+                <img src={visit.principal_signature} alt="توقيع مدير المدرسة" className="mx-auto h-16 object-contain" />
+              </div>
+            )}
           </div>
         </div>
 
