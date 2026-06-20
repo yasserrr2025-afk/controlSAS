@@ -36,7 +36,8 @@ const AdminSupervisionMonitor: React.FC<Props> = ({ supervisions, users, student
 
   const [reportInfo, setReportInfo] = useState({ 
     date: getRiyadhDateKey(new Date()), 
-    subject: '' 
+    subject: '',
+    period: 1,
   });
 
   // جلب اسم رئيس الكنترول ديناميكياً من قائمة المستخدمين
@@ -56,6 +57,7 @@ const AdminSupervisionMonitor: React.FC<Props> = ({ supervisions, users, student
     url.searchParams.set('c', String(stat.committee_number));
     url.searchParams.set('g', String(stat.grade));
     url.searchParams.set('d', reportInfo.date);
+    url.searchParams.set('p', String(reportInfo.period || 1));
     url.searchParams.set('t', type === 'receiver' ? 'r' : 'p');
     return url.toString();
   };
@@ -66,17 +68,18 @@ const AdminSupervisionMonitor: React.FC<Props> = ({ supervisions, users, student
     return committeeNums.flatMap(num => {
       const committeeStudents = students.filter(s => s.committee_number === num);
       const gradesInCommittee = Array.from(new Set(committeeStudents.map(s => s.grade)));
-      const sv = supervisions.find(s => String(s.committee_number) === String(num) && matchesReportDate(s.date));
+      const sv = supervisions.find(s => String(s.committee_number) === String(num) && matchesReportDate(s.date) && Number(s.period || 1) === Number(reportInfo.period || 1));
       const proctor = users.find(u => u.id === sv?.teacher_id);
 
       return gradesInCommittee.map(grade => {
         const gradeStudents = committeeStudents.filter(s => s.grade === grade);
-        const gradeAbsences = absences.filter(a => matchesReportDate(a.date) && a.committee_number === num && a.type === 'ABSENT' && gradeStudents.some(s => s.national_id === a.student_id));
-        const gradeLates = absences.filter(a => matchesReportDate(a.date) && a.committee_number === num && a.type === 'LATE' && gradeStudents.some(s => s.national_id === a.student_id));
+        const gradeAbsences = absences.filter(a => matchesReportDate(a.date) && Number(a.period || 1) === Number(reportInfo.period || 1) && a.committee_number === num && a.type === 'ABSENT' && gradeStudents.some(s => s.national_id === a.student_id));
+        const gradeLates = absences.filter(a => matchesReportDate(a.date) && Number(a.period || 1) === Number(reportInfo.period || 1) && a.committee_number === num && a.type === 'LATE' && gradeStudents.some(s => s.national_id === a.student_id));
         
         const closeLog = deliveryLogs.find(l => 
           matchesReportDate(l.time) && 
           l.committee_number === num && 
+          Number(l.period || 1) === Number(reportInfo.period || 1) &&
           l.status === 'PENDING' && 
           (l.grade === grade || l.grade.includes(grade))
         );
@@ -84,6 +87,7 @@ const AdminSupervisionMonitor: React.FC<Props> = ({ supervisions, users, student
         const delivery = deliveryLogs.find(l => 
           matchesReportDate(l.time) && 
           l.committee_number === num && 
+          Number(l.period || 1) === Number(reportInfo.period || 1) &&
           l.status === 'CONFIRMED' && 
           (l.grade === grade || l.grade.includes(grade))
         );
@@ -100,13 +104,13 @@ const AdminSupervisionMonitor: React.FC<Props> = ({ supervisions, users, student
           startTime: sv?.date || '',
           closeTime: closeLog?.time || '',
           receiptTime: delivery?.time || '',
-          receiverSignature: findStoredSignature(controlRequests, 'receiver', num, grade)?.signature || '',
-          proctorSignature: findStoredSignature(controlRequests, 'proctor', num, grade)?.signature || '',
+          receiverSignature: findStoredSignature(controlRequests, 'receiver', num, grade, Number(reportInfo.period || 1))?.signature || '',
+          proctorSignature: findStoredSignature(controlRequests, 'proctor', num, grade, Number(reportInfo.period || 1))?.signature || '',
           isDone: !!delivery
         };
       });
     });
-  }, [supervisions, users, students, absences, deliveryLogs, controlRequests, reportInfo.date]);
+  }, [supervisions, users, students, absences, deliveryLogs, controlRequests, reportInfo.date, reportInfo.period]);
 
   return (
     <div className="space-y-10 animate-fade-in text-right pb-32">
@@ -118,13 +122,17 @@ const AdminSupervisionMonitor: React.FC<Props> = ({ supervisions, users, student
               <div className="bg-blue-600 p-4 rounded-3xl shadow-xl"><Printer size={32} /></div>
               <h3 className="text-3xl font-black">إعداد مسير المراقبة والاستلام الميداني</h3>
            </div>
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div className="space-y-3">
                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest mr-3">تاريخ التقرير</label>
                  <div className="relative">
                     <Calendar className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                      <input type="date" className="w-full pr-14 p-5 bg-white/10 border border-white/10 rounded-2xl font-black outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all" value={reportInfo.date} onChange={e => setReportInfo({...reportInfo, date: e.target.value})} />
                  </div>
+              </div>
+              <div className="space-y-3">
+                 <label className="text-xs font-black text-slate-500 uppercase tracking-widest mr-3">الفترة</label>
+                 <input type="number" min={1} className="w-full p-5 bg-white/10 border border-white/10 rounded-2xl font-black outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all" value={reportInfo.period} onChange={e => setReportInfo({...reportInfo, period: Number(e.target.value) || 1})} />
               </div>
               <div className="space-y-3">
                  <label className="text-xs font-black text-slate-500 uppercase tracking-widest mr-3">المادة الدراسية</label>

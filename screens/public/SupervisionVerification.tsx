@@ -38,33 +38,39 @@ const SupervisionVerification: React.FC<Props> = ({ supervisions, users, student
   const committee = params.get('committee') || params.get('c') || '';
   const grade = params.get('grade') || params.get('g') || '';
   const date = params.get('date') || params.get('d') || new Date().toISOString().slice(0, 10);
+  const period = Number(params.get('period') || params.get('p') || 1) || 1;
   const typeParam = params.get('type') || params.get('t');
   const type = typeParam === 'proctor' || typeParam === 'p' ? 'proctor' : 'receiver';
 
   const record = useMemo(() => {
-    const supervision = supervisions.find(item => item.committee_number === committee && sameDay(item.date, date));
+    const matchesPeriod = (value?: number | string | null) => Number(value || 1) === period;
+    const supervision = supervisions.find(item => item.committee_number === committee && sameDay(item.date, date) && matchesPeriod(item.period));
     const proctor = users.find(user => user.id === supervision?.teacher_id);
     const gradeStudents = students.filter(student => student.committee_number === committee && student.grade === grade);
     const absent = absences.filter(item =>
       sameDay(item.date, date) &&
+      matchesPeriod(item.period) &&
       item.committee_number === committee &&
       item.type === 'ABSENT' &&
       gradeStudents.some(student => student.national_id === item.student_id)
     );
     const late = absences.filter(item =>
       sameDay(item.date, date) &&
+      matchesPeriod(item.period) &&
       item.committee_number === committee &&
       item.type === 'LATE' &&
       gradeStudents.some(student => student.national_id === item.student_id)
     );
     const closeLog = deliveryLogs.find(item =>
       sameDay(item.time, date) &&
+      matchesPeriod(item.period) &&
       item.committee_number === committee &&
       item.status === 'PENDING' &&
       (item.grade === grade || item.grade.includes(grade))
     );
     const receiptLog = deliveryLogs.find(item =>
       sameDay(item.time, date) &&
+      matchesPeriod(item.period) &&
       item.committee_number === committee &&
       item.status === 'CONFIRMED' &&
       (item.grade === grade || item.grade.includes(grade))
@@ -83,7 +89,7 @@ const SupervisionVerification: React.FC<Props> = ({ supervisions, users, student
       receiptTime: receiptLog?.time,
       isReceived: Boolean(receiptLog),
     };
-  }, [absences, committee, date, deliveryLogs, grade, students, supervisions, users]);
+  }, [absences, committee, date, deliveryLogs, grade, period, students, supervisions, users]);
 
   const signerLabel = type === 'receiver' ? 'المستلم' : 'المراقب';
   const signerName = type === 'receiver' ? record.receiverName : record.proctorName;

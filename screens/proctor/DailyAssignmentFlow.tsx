@@ -132,14 +132,20 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
 
   const isSupervisionFullyDone = useCallback((s: any) => {
     if (!s || !s.committee_number) return false;
+    const supervisionPeriod = Number(s.period || 1);
     const committeeGrades = Array.from(new Set(students.filter(st => st.committee_number === s.committee_number).map(st => st.grade)));
     if (committeeGrades.length === 0) return false;
     
-    const confirmedLogs = deliveryLogs.filter(l => l.committee_number === s.committee_number && matchesActiveDate(l.time) && l.status === 'CONFIRMED');
+    const confirmedLogs = deliveryLogs.filter(l =>
+      l.committee_number === s.committee_number &&
+      matchesActiveDate(l.time) &&
+      Number(l.period || 1) === supervisionPeriod &&
+      l.status === 'CONFIRMED'
+    );
     const reportedGrades = confirmedLogs.map(l => l.grade);
     
     const allConfirmed = committeeGrades.every(g => reportedGrades.includes(g));
-    const proctorSignature = findStoredSignature(controlRequests, 'proctor', s.committee_number, ALL_GRADES_SIGNATURE);
+    const proctorSignature = findStoredSignature(controlRequests, 'proctor', s.committee_number, ALL_GRADES_SIGNATURE, supervisionPeriod);
     
     return allConfirmed && !!proctorSignature;
   }, [students, deliveryLogs, controlRequests, activeDate]);
@@ -173,6 +179,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   }, [supervisions, matchesCurrentProctor, activeDate, isSupervisionFullyDone]);
 
   const activeCommittee = activeAssignment?.committee_number || null;
+  const activePeriod = Number(activeAssignment?.period || 1);
   const pendingEnvelopeSignatureRequests = useMemo(
     () => controlRequests.filter(
       request =>
@@ -213,7 +220,10 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   const isReserveCommitteeConfirmedByControl = useMemo(() => {
     if (!isEmergencyAssignment || !activeAssignment) return false;
     const committeeDelivery = deliveryLogs.find(
-      (l) => l.committee_number === activeAssignment.committee_number && l.status === 'CONFIRMED'
+      (l) =>
+        l.committee_number === activeAssignment.committee_number &&
+        Number(l.period || 1) === Number(activeAssignment.period || 1) &&
+        l.status === 'CONFIRMED'
     );
     return !!committeeDelivery;
   }, [isEmergencyAssignment, activeAssignment, deliveryLogs]);
@@ -401,6 +411,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
           role: "proctor",
           committee: activeCommittee,
           grade: ALL_GRADES_SIGNATURE,
+          period: activePeriod,
           name: user.full_name,
           time: new Date().toISOString(),
           signature,
@@ -495,7 +506,8 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       .filter(
         (l) =>
           l.committee_number === activeCommittee &&
-          matchesActiveDate(l.time),
+          matchesActiveDate(l.time) &&
+          Number(l.period || 1) === activePeriod,
       )
       .map((l) => l.grade);
 
@@ -503,7 +515,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       committeeGrades.length > 0 &&
       committeeGrades.every((g) => reportedGrades.includes(g))
     );
-  }, [deliveryLogs, activeCommittee, activeDate, students]);
+  }, [deliveryLogs, activeCommittee, activeDate, activePeriod, students]);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsInitialLoading(false), 800);
@@ -524,6 +536,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
         (a) =>
           a.committee_number === activeCommittee &&
           matchesActiveDate(a.date),
+          Number(a.period || 1) === activePeriod,
       ),
     [absences, activeCommittee, activeDate],
   );
@@ -566,7 +579,8 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
         .delete()
         .eq('teacher_id', user.id)
         .gte('date', `${activeDate}T00:00:00`)
-        .lt('date', `${activeDate}T23:59:59.999Z`);
+        .lt('date', `${activeDate}T23:59:59.999Z`)
+        .eq('period', 1);
       await db.supervision.insert({
         id: assignmentId,
         teacher_id: user.id,
@@ -649,7 +663,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
           student_id: student.national_id,
           student_name: student.name,
           committee_number: activeCommittee!,
-          period: 1,
+          period: activePeriod,
           type,
           proctor_id: user.id,
           date: new Date().toISOString(),
@@ -673,7 +687,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
           student_id: student.national_id,
           student_name: student.name,
           committee_number: activeCommittee!,
-          period: 1, type,
+          period: activePeriod, type,
           proctor_id: user.id,
           date: new Date().toISOString(),
         };
@@ -713,7 +727,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     }
 
     try {
-      await sendRequest(message, activeCommittee!);
+      await sendRequest(`${message} [PERIOD:${activePeriod}]`, activeCommittee!);
       onAlert("تم إرسال البلاغ فوراً لوحدة التحكم", "success");
       setIsReportModalOpen(false);
       resetReportState();
@@ -764,12 +778,12 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
           grade,
           type: "RECEIVE",
           time: new Date().toISOString(),
-          period: 1,
+          period: activePeriod,
           status: "PENDING",
         });
       }
       await sendRequest(
-        `المراقب ${user.full_name} أنهى رصد اللجنة ومتجه للكنترول للتسليم.`,
+        `المراقب ${user.full_name} أنهى رصد اللجنة ومتجه للكنترول للتسليم. [PERIOD:${activePeriod}]`,
         activeCommittee!,
       );
       setIsClosingWizardOpen(false);
@@ -871,7 +885,9 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   if (isCommitteeFinished) {
     const committeeLogs = deliveryLogs.filter(
       (l) =>
-        l.committee_number === activeCommittee && matchesActiveDate(l.time),
+        l.committee_number === activeCommittee &&
+        matchesActiveDate(l.time) &&
+        Number(l.period || 1) === activePeriod,
     );
     
     // منع التكرار: نحتفظ بسجل واحد لكل صف، مع أولوية السجل المؤكد (CONFIRMED)
@@ -883,7 +899,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     }, {} as Record<string, DeliveryLog>)) as DeliveryLog[];
 
     const isFullyConfirmed = myLogs.length > 0 && myLogs.every(l => l.status === 'CONFIRMED');
-    const proctorSignature = findStoredSignature(controlRequests, 'proctor', activeCommittee, ALL_GRADES_SIGNATURE);
+    const proctorSignature = findStoredSignature(controlRequests, 'proctor', activeCommittee, ALL_GRADES_SIGNATURE, activePeriod);
 
     return (
       <div className="max-w-4xl mx-auto py-10 px-4 animate-fade-in pb-48 space-y-10">
@@ -1142,6 +1158,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
                 (a) =>
                   a.committee_number === activeCommittee &&
                   matchesActiveDate(a.date) &&
+                  Number(a.period || 1) === activePeriod &&
                   students.find((s) => s.national_id === a.student_id)
                     ?.grade === log.grade,
               );
