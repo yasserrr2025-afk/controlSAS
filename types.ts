@@ -120,6 +120,23 @@ export interface EnvelopeOpening {
   subject_teacher_name?: string;
 }
 
+export interface ExamEnvelope {
+  id: string;
+  exam_date: string;
+  period: number;
+  subject: string;
+  grade: string;
+  subject_teacher_id: string;
+  subject_teacher_name: string;
+  status: 'READY' | 'OPENED' | 'CANCELLED' | string;
+  opened_by?: string;
+  opened_at?: string;
+  opening_id?: string;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface ArchiveBox {
   id: string;
   box_number: string;

@@ -1,6 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { User, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, EnvelopeOpening, ExamSchedule, SupervisorVisit, AppNotification, PushSubscriptionRecord } from './types';
+import { User, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, EnvelopeOpening, ExamSchedule, SupervisorVisit, AppNotification, PushSubscriptionRecord, ExamEnvelope } from './types';
 
 const supabaseUrl = 'https://yronlodrolzaefebqwyn.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlyb25sb2Ryb2x6YWVmZWJxd3luIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyMTU0MzksImV4cCI6MjA5NDc5MTQzOX0.ARvRLaB1amQhPUzl8rq1peAO3sw8LVgR8pBGtpDBT-8';
@@ -305,6 +305,60 @@ export const db = {
     delete: async (id: string) => {
       const { error } = await supabase.from('envelope_openings').delete().eq('id', id);
       const err = handleError(error, "envelopeOpenings.delete");
+      if (err) throw new Error(err);
+    }
+  },
+
+  examEnvelopes: {
+    getAll: async () => {
+      const { data, error } = await supabase
+        .from('exam_envelopes')
+        .select('*')
+        .order('created_at', { ascending: false });
+      const err = handleError(error, "examEnvelopes.getAll");
+      if (err) throw new Error(err);
+      return (data || []) as ExamEnvelope[];
+    },
+    getById: async (id: string) => {
+      const { data, error } = await supabase
+        .from('exam_envelopes')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      const err = handleError(error, "examEnvelopes.getById");
+      if (err) throw new Error(err);
+      return data as ExamEnvelope | null;
+    },
+    upsert: async (envelope: Partial<ExamEnvelope>) => {
+      const { error } = await supabase
+        .from('exam_envelopes')
+        .upsert([{ ...envelope, updated_at: new Date().toISOString() }], { onConflict: 'id' });
+      const err = handleError(error, "examEnvelopes.upsert");
+      if (err) throw new Error(err);
+    },
+    delete: async (id: string) => {
+      const { error } = await supabase.from('exam_envelopes').delete().eq('id', id);
+      const err = handleError(error, "examEnvelopes.delete");
+      if (err) throw new Error(err);
+    },
+    deleteMany: async (ids: string[]) => {
+      if (!ids.length) return;
+      const { error } = await supabase.from('exam_envelopes').delete().in('id', ids);
+      const err = handleError(error, "examEnvelopes.deleteMany");
+      if (err) throw new Error(err);
+    },
+    markOpened: async (id: string, openingId: string, openedBy: string) => {
+      const { error } = await supabase
+        .from('exam_envelopes')
+        .update({
+          status: 'OPENED',
+          opening_id: openingId,
+          opened_by: openedBy,
+          opened_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+      const err = handleError(error, "examEnvelopes.markOpened");
       if (err) throw new Error(err);
     }
   },

@@ -4,9 +4,9 @@ import { createPortal } from "react-dom";
 import { Html5Qrcode } from "html5-qrcode";
 import { Camera, X, CheckCircle2, ShieldAlert, PackageOpen, Printer, Trash2 } from "lucide-react";
 import { ControlRequest, EnvelopeOpening, User } from "../../types";
-import { db } from "../../supabase";
+import { db, supabase } from "../../supabase";
 import OfficialHeader from "../../components/OfficialHeader";
-import { ALL_GRADES_SIGNATURE, findStoredSignature, findStoredSignatureBySourceRequest, isSignatureRequest, SIGNATURE_REQUEST_PREFIX } from "../../services/signatures";
+import { findStoredSignatureBySourceRequest, isSignatureRequest, SIGNATURE_REQUEST_PREFIX } from "../../services/signatures";
 
 interface Props {
   user: User;
@@ -21,7 +21,7 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
   const [openings, setOpenings] = useState<EnvelopeOpening[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const qrScannerRef = useRef<any>(null);
-  const [scannedData, setScannedData] = useState<{ subject: string, grade: string, teacherId?: string, teacherName?: string } | null>(null);
+  const [scannedData, setScannedData] = useState<{ subject: string, grade: string, teacherId?: string, teacherName?: string, envelopeId?: string } | null>(null);
   const [status, setStatus] = useState<'INTACT' | 'DAMAGED'>('INTACT');
   const [printRecord, setPrintRecord] = useState<EnvelopeOpening | null>(null);
 
@@ -36,6 +36,14 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
 
   useEffect(() => {
     fetchOpenings();
+    const channel = supabase
+      .channel(`envelope-openings-live-${systemConfig.active_exam_date || 'today'}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'envelope_openings' }, () => fetchOpenings())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'exam_envelopes' }, () => fetchOpenings())
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [systemConfig.active_exam_date]);
 
   const normalizeEnvelopeValue = (value?: string | null) =>
@@ -80,13 +88,29 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
     return Array.from(byName.values());
   };
 
+  const getPrincipalUser = () => {
+    const principalName = normalizeEnvelopeValue(systemConfig?.principal_name);
+    return users.find(item => principalName && normalizeEnvelopeValue(item.full_name) === principalName)
+      || users.find(item => item.role === 'ADMIN');
+  };
+
+  const getPrincipalName = () => systemConfig?.principal_name || getPrincipalUser()?.full_name || '';
+
   const getEnvelopeCommitteeMembers = (record?: EnvelopeOpening | Partial<EnvelopeOpening> | null) => {
+    const subjectTeacherRequest = record?.id
+      ? controlRequests.find(request =>
+          request.committee === `ENV:${record.id}` &&
+          isSignatureRequest(request) &&
+          request.text.includes('[SIGNATURE_ROLE:subjectTeacher]')
+        )
+      : null;
     const subjectTeacherUser = users.find(item =>
       item.id === record?.subject_teacher_id ||
       item.national_id === record?.subject_teacher_id ||
-      item.full_name === record?.subject_teacher_name
+      item.full_name === record?.subject_teacher_name ||
+      item.full_name === subjectTeacherRequest?.from
     );
-    const subjectTeacherName = subjectTeacherUser?.full_name || record?.subject_teacher_name || '';
+    const subjectTeacherName = subjectTeacherUser?.full_name || record?.subject_teacher_name || subjectTeacherRequest?.from || '';
     const controlMembers = users.filter(item => item.role === 'CONTROL');
     return uniqueMembers([
       {
@@ -129,6 +153,21 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
     return findStoredSignatureBySourceRequest(controlRequests, signatureRequest?.id);
   };
 
+  const findPrincipalSignatureRequest = (record: EnvelopeOpening) => {
+    const principalName = normalizeEnvelopeValue(getPrincipalName());
+    return controlRequests.find(request =>
+      request.committee === `ENV:${record.id}` &&
+      isSignatureRequest(request) &&
+      request.text.includes('[SIGNATURE_ROLE:principal]') &&
+      (!principalName || normalizeEnvelopeValue(request.from) === principalName)
+    );
+  };
+
+  const getPrincipalSignature = (record: EnvelopeOpening) => {
+    const signatureRequest = findPrincipalSignatureRequest(record);
+    return findStoredSignatureBySourceRequest(controlRequests, signatureRequest?.id);
+  };
+
   useEffect(() => {
     if (printRecord) {
       setTimeout(() => {
@@ -149,7 +188,32 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
           { facingMode: "environment" },
           { fps: 15, qrbox: { width: 250, height: 250 } },
           (text) => {
-            if (text.startsWith("ENV|")) {
+            if (text.startsWith("ENV2|")) {
+              const [, envelopeId] = text.split("|");
+              db.examEnvelopes.getById(envelopeId).then(envelope => {
+                if (!envelope) {
+                  onAlert?.('لم يتم العثور على المظروف في قاعدة البيانات.', 'error');
+                  stopScanner();
+                  return;
+                }
+                if (envelope.status === 'OPENED' || envelope.opening_id) {
+                  onAlert?.(`هذا المظروف تم فتحه مسبقاً بواسطة ${envelope.opened_by || 'مستخدم آخر'}.`, 'warning');
+                  stopScanner();
+                  return;
+                }
+                setScannedData({
+                  envelopeId: envelope.id,
+                  subject: envelope.subject,
+                  grade: envelope.grade,
+                  teacherId: envelope.subject_teacher_id,
+                  teacherName: envelope.subject_teacher_name,
+                });
+                stopScanner();
+              }).catch((error: any) => {
+                onAlert?.(error.message || 'تعذر قراءة بيانات المظروف.', 'error');
+                stopScanner();
+              });
+            } else if (text.startsWith("ENV|")) {
               const [, subject, grade, teacherId, teacherName] = text.split("|");
               const parsedData = { subject, grade, teacherId, teacherName };
               const duplicate = findDuplicateOpening(parsedData);
@@ -188,6 +252,19 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
     if (!scannedData) return;
     try {
       const activeDate = systemConfig.active_exam_date || new Date().toISOString().split('T')[0];
+      if (scannedData.envelopeId) {
+        const latestEnvelope = await db.examEnvelopes.getById(scannedData.envelopeId);
+        if (!latestEnvelope) {
+          onAlert?.('لم يتم العثور على المظروف في قاعدة البيانات.', 'error');
+          setScannedData(null);
+          return;
+        }
+        if (latestEnvelope.status === 'OPENED' || latestEnvelope.opening_id) {
+          onAlert?.(`لا يمكن تكرار فتح هذا المظروف. تم فتحه مسبقاً بواسطة ${latestEnvelope.opened_by || 'مستخدم آخر'}.`, 'warning');
+          setScannedData(null);
+          return;
+        }
+      }
       const latestOpenings = await db.envelopeOpenings.getAll();
       const sameDayOpenings = latestOpenings.filter(item => item.date === activeDate);
       const duplicate = findDuplicateOpening(scannedData, sameDayOpenings);
@@ -219,8 +296,13 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
         const { subject_teacher_id, subject_teacher_name, ...legacyRecord } = newRecord;
         await db.envelopeOpenings.upsert(legacyRecord);
       }
+      if (scannedData.envelopeId && newRecord.id) {
+        await db.examEnvelopes.markOpened(scannedData.envelopeId, newRecord.id, user.full_name);
+      }
       if (newRecord.id) {
         const signatureMembers = getEnvelopeCommitteeMembers(newRecord);
+        const principalUser = getPrincipalUser();
+        const principalName = getPrincipalName();
         for (const member of signatureMembers) {
           const isSubjectTeacher = member.signatureRole === 'subjectTeacher';
           await db.controlRequests.insert({
@@ -236,6 +318,22 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
             await db.notifications.broadcast(
               `لديك محضر فتح مظروف بانتظار توقيعك: ${scannedData.subject} - ${scannedData.grade}`,
               member.user.id,
+              user.full_name
+            ).catch(() => undefined);
+          }
+        }
+        if (principalName && !signatureMembers.some(member => normalizeEnvelopeValue(member.name) === normalizeEnvelopeValue(principalName))) {
+          await db.controlRequests.insert({
+            from: principalName,
+            committee: `ENV:${newRecord.id}`,
+            text: `${SIGNATURE_REQUEST_PREFIX}[SIGNATURE_ROLE:principal] توقيع مدير المدرسة على محضر فتح مظروف ${scannedData.subject} - ${scannedData.grade}`,
+            time: new Date().toISOString(),
+            status: 'PENDING',
+          });
+          if (principalUser) {
+            await db.notifications.broadcast(
+              `لديك محضر فتح مظروف بانتظار توقيع مدير المدرسة: ${scannedData.subject} - ${scannedData.grade}`,
+              principalUser.id,
               user.full_name
             ).catch(() => undefined);
           }
@@ -273,13 +371,15 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
     return new Intl.DateTimeFormat('ar-SA', options).format(date);
   };
 
-  const subjectTeacherSignature = printRecord
-    ? findStoredSignature(controlRequests, 'subjectTeacher', printRecord.id, ALL_GRADES_SIGNATURE)
-    : null;
   const getSubjectTeacherName = (record?: EnvelopeOpening | null) => {
     if (!record) return '';
+    const subjectTeacherRequest = controlRequests.find(req =>
+      req.committee === `ENV:${record.id}` &&
+      isSignatureRequest(req) &&
+      req.text.includes('[SIGNATURE_ROLE:subjectTeacher]')
+    );
     return record.subject_teacher_name
-      || controlRequests.find(req => req.committee === `ENV:${record.id}` && req.text?.startsWith(SIGNATURE_REQUEST_PREFIX))?.from
+      || subjectTeacherRequest?.from
       || '';
   };
   const principalName = systemConfig?.principal_name || users.find(u => u.role === 'ADMIN')?.full_name || '';
@@ -657,6 +757,13 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
                 <div className="principal-title">مدير المدرسة</div>
                 <div className="principal-name">{principalName || '.......................................'}</div>
                 <div className="principal-signature-label">التوقيع</div>
+                {getPrincipalSignature(printRecord)?.signature ? (
+                  <img
+                    src={getPrincipalSignature(printRecord)?.signature}
+                    alt="توقيع مدير المدرسة"
+                    style={{ height: 36, maxWidth: 150, objectFit: 'contain', margin: '0 auto' }}
+                  />
+                ) : null}
                 <div className="principal-signature-line"></div>
               </div>
             </div>

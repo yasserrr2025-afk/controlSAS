@@ -164,6 +164,8 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, current
     const signature = canvas.toDataURL('image/png');
     const signatureRole = signatureRequest.text.includes('[SIGNATURE_ROLE:envelopeMember]')
       ? 'envelopeMember'
+      : signatureRequest.text.includes('[SIGNATURE_ROLE:principal]')
+      ? 'principal'
       : signatureRequest.text.includes('[SIGNATURE_ROLE:subjectTeacher]')
       ? 'subjectTeacher'
       : signatureRequest.text.includes('عضو لجنة فتح المظروف') || signatureRequest.text.includes('ط¹ط¶ظˆ ظ„ط¬ظ†ط© ظپطھط­ ط§ظ„ظ…ط¸ط±ظˆظپ')
