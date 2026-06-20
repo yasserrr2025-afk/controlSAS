@@ -151,3 +151,11 @@ export interface SupervisorVisit {
   created_at?: string;
   submitted_at?: string;
 }
+
+export interface AppNotification {
+  id: string;
+  message: string;
+  target: UserRole | 'ALL' | string;
+  sender?: string;
+  created_at?: string;
+}

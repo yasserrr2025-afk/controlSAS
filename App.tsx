@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { User, UserRole, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, ExamSchedule, SupervisorVisit } from './types';
+import { User, UserRole, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, ExamSchedule, SupervisorVisit, AppNotification } from './types';
 import Sidebar from './components/Sidebar';
 import Login from './screens/Login';
 import AdminDashboardOverview from './screens/admin/DashboardOverview';
@@ -133,6 +133,11 @@ const buildExamDateTimestamp = (examDate: string) => {
   const now = new Date();
   const pad = (value: number) => String(value).padStart(2, '0');
   return `${examDate}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+};
+
+const notificationMatchesUser = (notification: AppNotification, user: User) => {
+  const target = String(notification.target || 'ALL').toUpperCase();
+  return target === 'ALL' || target === user.role || target === user.id || target === user.national_id;
 };
 
 const App: React.FC = () => {
@@ -295,6 +300,48 @@ const App: React.FC = () => {
     const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const seenKey = `seen_notifications_${currentUser.id || currentUser.national_id}`;
+    const getSeen = () => {
+      try { return new Set<string>(JSON.parse(localStorage.getItem(seenKey) || '[]')); }
+      catch { return new Set<string>(); }
+    };
+    const saveSeen = (seen: Set<string>) => {
+      localStorage.setItem(seenKey, JSON.stringify(Array.from(seen).slice(-80)));
+    };
+    const showIncoming = (notification: AppNotification, type: 'info' | 'warning' = 'info') => {
+      if (!notification?.id || !notificationMatchesUser(notification, currentUser)) return;
+      const seen = getSeen();
+      if (seen.has(notification.id)) return;
+      seen.add(notification.id);
+      saveSeen(seen);
+      const sender = notification.sender ? `من ${notification.sender}: ` : '';
+      addLocalNotification(`${sender}${notification.message}`, type);
+    };
+
+    const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    db.notifications.getRecent(since)
+      .then(items => {
+        items.reverse().forEach(item => showIncoming(item, 'info'));
+      })
+      .catch(() => {});
+
+    const channel = supabase
+      .channel(`notifications-${currentUser.id || currentUser.national_id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications' },
+        payload => showIncoming(payload.new as AppNotification, 'warning'),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser]);
 
   const handleLogout = () => {
     setCurrentUser(null);

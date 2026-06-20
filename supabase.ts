@@ -1,6 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { User, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, EnvelopeOpening, ExamSchedule, SupervisorVisit } from './types';
+import { User, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, EnvelopeOpening, ExamSchedule, SupervisorVisit, AppNotification } from './types';
 
 const supabaseUrl = 'https://yronlodrolzaefebqwyn.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlyb25sb2Ryb2x6YWVmZWJxd3luIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyMTU0MzksImV4cCI6MjA5NDc5MTQzOX0.ARvRLaB1amQhPUzl8rq1peAO3sw8LVgR8pBGtpDBT-8';
@@ -232,6 +232,18 @@ export const db = {
   },
 
   notifications: {
+    getRecent: async (sinceIso?: string) => {
+      let query = supabase
+        .from('notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (sinceIso) query = query.gte('created_at', sinceIso);
+      const { data, error } = await query;
+      const err = handleError(error, "notifications.getRecent");
+      if (err) throw new Error(err);
+      return (data || []) as AppNotification[];
+    },
     broadcast: async (message: string, target: string, sender: string) => {
       const { error } = await supabase.from('notifications').insert([{
         message,
