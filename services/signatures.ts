@@ -9,10 +9,12 @@ export interface StoredSignature {
   name: string;
   time: string;
   signature: string;
+  sourceRequestId?: string;
 }
 
 export const SIGNATURE_PREFIX = '[SIGNATURE]';
 export const SIGNATURE_REQUEST_PREFIX = '[SIGNATURE_REQUEST]';
+export const SIGNATURE_ROLE_PREFIX = '[SIGNATURE_ROLE:';
 export const ALL_GRADES_SIGNATURE = '__ALL__';
 
 export const buildSignatureText = (signature: StoredSignature) => {
@@ -69,8 +71,22 @@ export const findStoredSignatureByName = (
     .sort((a, b) => b.time.localeCompare(a.time))[0] || null;
 };
 
+export const findStoredSignatureBySourceRequest = (
+  requests: ControlRequest[] = [],
+  sourceRequestId?: string,
+) => {
+  if (!sourceRequestId) return null;
+  return getStoredSignatures(requests)
+    .filter(item => item.sourceRequestId === sourceRequestId)
+    .sort((a, b) => b.time.localeCompare(a.time))[0] || null;
+};
+
 export const isSignatureRequest = (request: ControlRequest) => request.text?.startsWith(SIGNATURE_REQUEST_PREFIX);
-export const cleanSignatureRequestText = (text?: string) => String(text || '').replace(SIGNATURE_REQUEST_PREFIX, '').trim();
+export const cleanSignatureRequestText = (text?: string) =>
+  String(text || '')
+    .replace(SIGNATURE_REQUEST_PREFIX, '')
+    .replace(/\[SIGNATURE_ROLE:[^\]]+\]/g, '')
+    .trim();
 
 export const isInternalSignatureRecord = (request: ControlRequest) => request.text?.startsWith(SIGNATURE_PREFIX);
 
@@ -80,5 +96,6 @@ export const cleanControlRequestText = (text?: string) => {
   return raw
     .replace('[CALL_RECEIVER]', '')
     .replace(SIGNATURE_REQUEST_PREFIX, '')
+    .replace(/\[SIGNATURE_ROLE:[^\]]+\]/g, '')
     .trim();
 };

@@ -6,7 +6,7 @@ import { Camera, X, CheckCircle2, ShieldAlert, PackageOpen, Printer, Trash2 } fr
 import { ControlRequest, EnvelopeOpening, User } from "../../types";
 import { db } from "../../supabase";
 import OfficialHeader from "../../components/OfficialHeader";
-import { ALL_GRADES_SIGNATURE, findStoredSignature, findStoredSignatureByName, SIGNATURE_REQUEST_PREFIX } from "../../services/signatures";
+import { ALL_GRADES_SIGNATURE, findStoredSignature, findStoredSignatureBySourceRequest, isSignatureRequest, SIGNATURE_REQUEST_PREFIX } from "../../services/signatures";
 
 interface Props {
   user: User;
@@ -113,12 +113,20 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
     ]);
   };
 
+  const findMemberSignatureRequest = (record: EnvelopeOpening, member: { name: string; signatureRole: 'subjectTeacher' | 'envelopeMember' }) => {
+    const memberName = normalizeEnvelopeValue(member.name);
+    const roleTag = `[SIGNATURE_ROLE:${member.signatureRole}]`;
+    return controlRequests.find(request =>
+      request.committee === `ENV:${record.id}` &&
+      isSignatureRequest(request) &&
+      request.text.includes(roleTag) &&
+      normalizeEnvelopeValue(request.from) === memberName
+    );
+  };
+
   const getMemberSignature = (record: EnvelopeOpening, member: { name: string; signatureRole: 'subjectTeacher' | 'envelopeMember' }) => {
-    if (member.signatureRole === 'subjectTeacher') {
-      return findStoredSignatureByName(controlRequests, 'subjectTeacher', record.id, member.name, ALL_GRADES_SIGNATURE)
-        || findStoredSignature(controlRequests, 'subjectTeacher', record.id, ALL_GRADES_SIGNATURE);
-    }
-    return findStoredSignatureByName(controlRequests, 'envelopeMember', record.id, member.name, ALL_GRADES_SIGNATURE);
+    const signatureRequest = findMemberSignatureRequest(record, member);
+    return findStoredSignatureBySourceRequest(controlRequests, signatureRequest?.id);
   };
 
   useEffect(() => {
@@ -219,8 +227,8 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
             from: member.name,
             committee: `ENV:${newRecord.id}`,
             text: isSubjectTeacher
-              ? `${SIGNATURE_REQUEST_PREFIX} توقيع معلم المادة على محضر فتح مظروف ${scannedData.subject} - ${scannedData.grade}`
-              : `${SIGNATURE_REQUEST_PREFIX} توقيع عضو لجنة فتح المظروف على محضر فتح مظروف ${scannedData.subject} - ${scannedData.grade}`,
+              ? `${SIGNATURE_REQUEST_PREFIX}[SIGNATURE_ROLE:subjectTeacher] توقيع معلم المادة على محضر فتح مظروف ${scannedData.subject} - ${scannedData.grade}`
+              : `${SIGNATURE_REQUEST_PREFIX}[SIGNATURE_ROLE:envelopeMember] توقيع عضو لجنة فتح المظروف على محضر فتح مظروف ${scannedData.subject} - ${scannedData.grade}`,
             time: new Date().toISOString(),
             status: 'PENDING',
           });

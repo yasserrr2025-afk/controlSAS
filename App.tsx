@@ -361,6 +361,21 @@ const App: React.FC = () => {
   }, [fetchData]);
 
   useEffect(() => {
+    const channel = supabase
+      .channel('control-requests-live-sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'control_requests' },
+        () => fetchData(),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchData]);
+
+  useEffect(() => {
     if (!currentUser) return;
 
     const seenKey = `seen_notifications_${currentUser.id || currentUser.national_id}`;
