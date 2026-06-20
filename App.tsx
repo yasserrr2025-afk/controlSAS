@@ -153,7 +153,7 @@ const App: React.FC = () => {
   const [allSupervisions, setAllSupervisions] = useState<Supervision[]>([]);
   const [absences, setAbsences] = useState<Absence[]>([]);
   const [allAbsences, setAllAbsences] = useState<Absence[]>([]);
-  const [notifications, setNotifications] = useState<{id: string, text: string, type: 'success' | 'error' | 'info' | 'warning'}[]>([]);
+  const [notifications, setNotifications] = useState<{id: string, text: string, type: 'success' | 'error' | 'info' | 'warning', persistent?: boolean}[]>([]);
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<BrowserNotificationPermission>('unsupported');
   const [controlRequests, setControlRequests] = useState<ControlRequest[]>([]);
   const [allControlRequests, setAllControlRequests] = useState<ControlRequest[]>([]);
@@ -172,14 +172,16 @@ const App: React.FC = () => {
   });
   const todayKey = () => getRiyadhDateKey();
 
-  const addLocalNotification = (input: any, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+  const addLocalNotification = (input: any, type: 'success' | 'error' | 'info' | 'warning' = 'info', options?: { persistent?: boolean }) => {
     const id = Math.random().toString(36).substr(2, 9);
     const msg = typeof input === 'string' ? input : (input?.message || "تنبيه جديد من النظام");
-    setNotifications(prev => [{ id, text: msg, type }, ...prev]);
+    setNotifications(prev => [{ id, text: msg, type, persistent: options?.persistent }, ...prev]);
     if (type === 'error' || type === 'warning' || type === 'info') {
       showBrowserNotification('كنترول الاختبارات', msg);
     }
-    setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 5000);
+    if (!options?.persistent) {
+      setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 5000);
+    }
   };
 
   useEffect(() => {
@@ -319,7 +321,7 @@ const App: React.FC = () => {
       seen.add(notification.id);
       saveSeen(seen);
       const sender = notification.sender ? `من ${notification.sender}: ` : '';
-      addLocalNotification(`${sender}${notification.message}`, type);
+      addLocalNotification(`${sender}${notification.message}`, type, { persistent: true });
     };
 
     const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
@@ -771,8 +773,20 @@ const App: React.FC = () => {
                n.type === 'warning' ? <AlertTriangle size={24} /> :
                <Info size={24} />}
             </div>
-            <p className="font-black text-[11px] lg:text-sm">{n.text}</p>
-            <button onClick={() => setNotifications(prev => prev.filter(item => item.id !== n.id))} className="mr-auto opacity-40 hover:opacity-100"><X size={16}/></button>
+            <div className="flex-1">
+              <p className="font-black text-[11px] lg:text-sm leading-6">{n.text}</p>
+              {n.persistent && (
+                <button
+                  onClick={() => setNotifications(prev => prev.filter(item => item.id !== n.id))}
+                  className="mt-3 rounded-xl bg-white/80 px-4 py-2 text-[10px] font-black shadow-sm hover:bg-white"
+                >
+                  تم الاطلاع
+                </button>
+              )}
+            </div>
+            {!n.persistent && (
+              <button onClick={() => setNotifications(prev => prev.filter(item => item.id !== n.id))} className="mr-auto opacity-40 hover:opacity-100"><X size={16}/></button>
+            )}
           </div>
         ))}
       </div>
