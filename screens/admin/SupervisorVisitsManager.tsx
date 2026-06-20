@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { CheckCircle2, ClipboardCopy, ExternalLink, Loader2, Plus, QrCode, RefreshCw, Trash2, UserRoundCheck } from 'lucide-react';
+import { CheckCircle2, ClipboardCopy, ExternalLink, Loader2, Plus, Printer, QrCode, RefreshCw, Trash2, UserRoundCheck, X } from 'lucide-react';
 import { SupervisorVisit, User } from '../../types';
 import { db } from '../../supabase';
 
@@ -16,6 +16,7 @@ const buildPortfolioUrl = (token?: string) => `${window.location.origin}${window
 const SupervisorVisitsManager: React.FC<Props> = ({ visits, currentUser, onRefresh, onAlert }) => {
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [qrVisit, setQrVisit] = useState<SupervisorVisit | null>(null);
 
   const stats = useMemo(() => ({
     total: visits.length,
@@ -60,8 +61,96 @@ const SupervisorVisitsManager: React.FC<Props> = ({ visits, currentUser, onRefre
     onAlert?.('تم حذف سجل الزيارة.', 'success');
   };
 
+  const printVisitReport = (visit: SupervisorVisit) => {
+    const reportWindow = window.open('', '_blank');
+    if (!reportWindow) return;
+    const submitted = visit.status === 'SUBMITTED';
+    const html = `
+      <html dir="rtl">
+        <head>
+          <title>تقرير زيارة مشرف</title>
+          <style>
+            @page { size: A4 portrait; margin: 12mm; }
+            body { font-family: Arial, sans-serif; color: #0f172a; margin: 0; }
+            .page { border: 1.5pt solid #0f172a; padding: 10mm; min-height: 260mm; box-sizing: border-box; }
+            .header { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 3px double #0f172a; padding-bottom: 7mm; margin-bottom: 8mm; }
+            .side { font-size: 11pt; font-weight: 800; line-height: 1.7; }
+            .left { text-align: left; color: #334155; }
+            h1 { text-align: center; font-size: 20pt; margin: 0 0 8mm; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 7mm; }
+            th, td { border: 1px solid #0f172a; padding: 9px; font-size: 12pt; vertical-align: top; }
+            th { background: #f1f5f9; width: 28%; font-weight: 900; }
+            .section-title { background: #0f172a; color: white; padding: 8px 12px; font-weight: 900; margin: 8mm 0 3mm; }
+            .signature { text-align: center; padding: 8mm; border: 1px solid #cbd5e1; min-height: 30mm; }
+            .signature img { max-height: 26mm; max-width: 75mm; object-fit: contain; }
+            .footer { margin-top: 12mm; display: flex; justify-content: space-between; font-size: 11pt; font-weight: 900; }
+            .muted { color: #64748b; }
+          </style>
+        </head>
+        <body>
+          <div class="page">
+            <div class="header">
+              <div class="side">المملكة العربية السعودية<br/>وزارة التعليم<br/>تقرير زيارة إلكترونية</div>
+              <div class="side left">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-SA')}<br/>حالة الزيارة: ${submitted ? 'مكتملة وموقعة' : 'بانتظار تعبئة المشرف'}</div>
+            </div>
+            <h1>تقرير زيارة مشرف / إدارة</h1>
+            <table>
+              <tr><th>اسم الزائر</th><td>${visit.visitor_name || 'لم يتم الإدخال بعد'}</td></tr>
+              <tr><th>الصفة / الجهة</th><td>${visit.visitor_role || 'لم يتم الإدخال بعد'}</td></tr>
+              <tr><th>وسيلة التواصل</th><td>${visit.visitor_contact || '---'}</td></tr>
+              <tr><th>وقت الزيارة</th><td>${new Date(visit.visit_time).toLocaleString('ar-SA')}</td></tr>
+              <tr><th>نوع الزيارة</th><td>${visit.visit_reason || '---'}</td></tr>
+              <tr><th>التقييم العام</th><td>${visit.rating || '---'}</td></tr>
+            </table>
+            <div class="section-title">الملاحظات</div>
+            <table><tr><td>${visit.notes || 'لا توجد ملاحظات مدخلة.'}</td></tr></table>
+            <div class="section-title">التوصيات</div>
+            <table><tr><td>${visit.recommendations || 'لا توجد توصيات مدخلة.'}</td></tr></table>
+            <div class="section-title">التوقيع الإلكتروني</div>
+            <div class="signature">${visit.signature ? `<img src="${visit.signature}" />` : '<span class="muted">لم يتم توقيع الزيارة بعد.</span>'}</div>
+            <div class="footer">
+              <div>أنشئ الرابط بواسطة: ${visit.created_by || currentUser.full_name}</div>
+              <div>رقم السجل: ${visit.id}</div>
+            </div>
+          </div>
+          <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 500); }</script>
+        </body>
+      </html>
+    `;
+    reportWindow.document.write(html);
+    reportWindow.document.close();
+  };
+
   return (
     <div className="space-y-8 animate-fade-in text-right">
+      {qrVisit && (
+        <div className="fixed inset-0 z-[500] bg-slate-950/70 backdrop-blur-md p-4 flex items-center justify-center">
+          <div className="w-full max-w-xl rounded-[3rem] bg-white p-6 md:p-8 shadow-2xl text-center relative">
+            <button onClick={() => setQrVisit(null)} className="absolute left-5 top-5 rounded-full bg-slate-100 p-3 text-slate-500 hover:bg-slate-200">
+              <X size={22} />
+            </button>
+            <div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-emerald-100 text-emerald-700">
+              <QrCode size={34} />
+            </div>
+            <h3 className="text-2xl md:text-3xl font-black text-slate-950">رمز زيارة المشرف</h3>
+            <p className="mt-2 text-sm font-bold text-slate-500">يمكن للمشرف مسح الرمز لتعبئة الزيارة والتوقيع إلكترونياً.</p>
+            <div className="my-7 rounded-[2rem] bg-slate-50 p-5 border border-slate-100">
+              <img
+                alt="QR"
+                className="mx-auto h-72 w-72 max-w-full rounded-2xl bg-white p-3 shadow-inner"
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=420x420&data=${encodeURIComponent(buildVisitUrl(qrVisit.id))}&color=0f172a`}
+              />
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-4 text-xs font-bold text-slate-500 break-all text-left" dir="ltr">
+              {buildVisitUrl(qrVisit.id)}
+            </div>
+            <button onClick={() => copy(buildVisitUrl(qrVisit.id), `${qrVisit.id}-qr`)} className="mt-5 w-full rounded-2xl bg-slate-950 py-4 font-black text-white flex items-center justify-center gap-3">
+              {copiedId === `${qrVisit.id}-qr` ? <CheckCircle2 size={22} /> : <ClipboardCopy size={22} />}
+              نسخ الرابط
+            </button>
+          </div>
+        </div>
+      )}
       <div className="bg-slate-950 text-white rounded-[3rem] p-8 shadow-2xl border-b-[8px] border-emerald-500 overflow-hidden relative">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,.22),transparent_34%)]" />
         <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
@@ -127,6 +216,14 @@ const SupervisorVisitsManager: React.FC<Props> = ({ visits, currentUser, onRefre
                   <button onClick={() => copy(visitUrl, visit.id)} className="px-4 py-3 rounded-xl bg-slate-950 text-white font-black text-sm flex items-center gap-2">
                     {copiedId === visit.id ? <CheckCircle2 size={18} /> : <ClipboardCopy size={18} />}
                     رابط التعبئة
+                  </button>
+                  <button onClick={() => setQrVisit(visit)} className="px-4 py-3 rounded-xl bg-violet-50 text-violet-700 font-black text-sm flex items-center gap-2">
+                    <QrCode size={18} />
+                    QR
+                  </button>
+                  <button onClick={() => printVisitReport(visit)} className="px-4 py-3 rounded-xl bg-slate-100 text-slate-700 font-black text-sm flex items-center gap-2">
+                    <Printer size={18} />
+                    طباعة التقرير
                   </button>
                   {submitted && (
                     <button onClick={() => copy(portfolioUrl, `${visit.id}-portfolio`)} className="px-4 py-3 rounded-xl bg-emerald-600 text-white font-black text-sm flex items-center gap-2">
