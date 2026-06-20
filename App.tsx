@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { User, UserRole, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, ExamSchedule } from './types';
+import { User, UserRole, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, ExamSchedule, SupervisorVisit } from './types';
 import Sidebar from './components/Sidebar';
 import Login from './screens/Login';
 import AdminDashboardOverview from './screens/admin/DashboardOverview';
@@ -16,6 +16,7 @@ import SeatingPlanner from './screens/admin/SeatingPlanner';
 import { ArchiveBoxesManager } from './screens/admin/ArchiveBoxesManager';
 import { MasterPortfolio } from './screens/admin/MasterPortfolio';
 import { PublicBoxReport } from './screens/public/PublicBoxReport';
+import { SupervisorMiniPortfolio, SupervisorVisitForm } from './screens/public/SupervisorVisitPublic';
 import AiDashboard from './screens/admin/AiDashboard';
 import ComprehensiveStats from './screens/admin/ComprehensiveStats';
 import CommitteeLabelsPrint from './screens/admin/CommitteeLabelsPrint';
@@ -156,6 +157,7 @@ const App: React.FC = () => {
   const [committeeReports, setCommitteeReports] = useState<CommitteeReport[]>([]);
   const [allCommitteeReports, setAllCommitteeReports] = useState<CommitteeReport[]>([]);
   const [examSchedule, setExamSchedule] = useState<ExamSchedule[]>([]);
+  const [supervisorVisits, setSupervisorVisits] = useState<SupervisorVisit[]>([]);
   const [systemConfig, setSystemConfig] = useState<SystemConfig>({ 
     id: 'main_config', 
     exam_start_time: '08:00', 
@@ -211,7 +213,7 @@ const App: React.FC = () => {
           filterDate = cfg.active_exam_date || currentToday;
         }
       }
-      const [u, s, sv, ab, cr, dl, reports, exams] = await Promise.all([
+      const [u, s, sv, ab, cr, dl, reports, exams, visits] = await Promise.all([
         db.users.getAll(),
         db.students.getAll(),
         db.supervision.getAll(),
@@ -220,6 +222,7 @@ const App: React.FC = () => {
         db.deliveryLogs.getAll(),
         db.committeeReports.getAll(),
         db.examSchedule.getAll(),
+        db.supervisorVisits.getAll().catch(() => []),
       ]);
       setUsers(u);
       const savedUser = localStorage.getItem('currentUser');
@@ -256,6 +259,7 @@ const App: React.FC = () => {
       setAllControlRequests(cr);
       setAllCommitteeReports(reports);
       setExamSchedule(exams);
+      setSupervisorVisits(visits as SupervisorVisit[]);
       
       if (filterDate) {
         setSupervisions(sv.filter(i => matchesExamDate(i.date, filterDate) && !isReserveSupervision(i))); 
@@ -574,7 +578,7 @@ const App: React.FC = () => {
       : getDefaultTab(currentUser.role);
 
     switch (tabToRender) {
-      case 'master-portfolio': return <MasterPortfolio students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} systemConfig={systemConfig} absences={allAbsences} committeeReports={allCommitteeReports} examSchedule={examSchedule} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} />;
+      case 'master-portfolio': return <MasterPortfolio students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} systemConfig={systemConfig} absences={allAbsences} committeeReports={allCommitteeReports} examSchedule={examSchedule} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} supervisorVisits={supervisorVisits} currentUser={currentUser} onRefresh={fetchData} onAlert={addLocalNotification} />;
       case 'archive-boxes': return <ArchiveBoxesManager students={students} examSchedule={examSchedule} deliveryLogs={allDeliveryLogs} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} users={users} absences={allAbsences} />;
       case 'seating-planner': return <SeatingPlanner systemConfig={systemConfig} />;
       case 'dashboard': return <AdminDashboardOverview stats={{ students: students.length, users: users.length, activeSupervisions: supervisions.length }} absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} studentsList={students} onBroadcast={(m, t) => db.notifications.broadcast(m, t, currentUser.full_name)} systemConfig={systemConfig} />;
@@ -624,7 +628,7 @@ const App: React.FC = () => {
 
   if (isInitialLoading) {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('public_committee') || params.get('student_inquiry') || params.get('supervision_verify') || params.get('sv') || params.get('tv2') || params.get('box_report') || params.get('portfolio_live') || params.get('portfolio_book_live')) {
+    if (params.get('public_committee') || params.get('student_inquiry') || params.get('supervision_verify') || params.get('sv') || params.get('tv2') || params.get('box_report') || params.get('portfolio_live') || params.get('portfolio_book_live') || params.get('supervisor_visit') || params.get('supervisor_portfolio')) {
        return (
          <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-6 font-['Tajawal']" dir="rtl">
            <Loader2 size={48} className="text-blue-600 animate-spin" />
@@ -660,7 +664,17 @@ const App: React.FC = () => {
 
   const portfolioBookLive = params.get('portfolio_book_live');
   if (portfolioBookLive) {
-    return <MasterPortfolio publicMode students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} systemConfig={systemConfig} absences={allAbsences} committeeReports={allCommitteeReports} examSchedule={examSchedule} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} />;
+    return <MasterPortfolio publicMode students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} systemConfig={systemConfig} absences={allAbsences} committeeReports={allCommitteeReports} examSchedule={examSchedule} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} supervisorVisits={supervisorVisits} />;
+  }
+
+  const supervisorVisitId = params.get('supervisor_visit');
+  if (supervisorVisitId) {
+    return <SupervisorVisitForm visitId={supervisorVisitId} systemConfig={systemConfig} students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />;
+  }
+
+  const supervisorPortfolioToken = params.get('supervisor_portfolio');
+  if (supervisorPortfolioToken) {
+    return <SupervisorMiniPortfolio token={supervisorPortfolioToken} systemConfig={systemConfig} students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />;
   }
 
   const isTv2Public = params.get('tv2');

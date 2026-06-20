@@ -1,6 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { User, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, EnvelopeOpening, ExamSchedule } from './types';
+import { User, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, EnvelopeOpening, ExamSchedule, SupervisorVisit } from './types';
 
 const supabaseUrl = 'https://yronlodrolzaefebqwyn.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlyb25sb2Ryb2x6YWVmZWJxd3luIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyMTU0MzksImV4cCI6MjA5NDc5MTQzOX0.ARvRLaB1amQhPUzl8rq1peAO3sw8LVgR8pBGtpDBT-8';
@@ -259,6 +259,37 @@ export const db = {
     delete: async (id: string) => {
       const { error } = await supabase.from('envelope_openings').delete().eq('id', id);
       const err = handleError(error, "envelopeOpenings.delete");
+      if (err) throw new Error(err);
+    }
+  },
+
+  supervisorVisits: {
+    getAll: async () => {
+      const { data, error } = await supabase.from('supervisor_visits').select('*').order('created_at', { ascending: false });
+      const err = handleError(error, "supervisorVisits.getAll");
+      if (err) throw new Error(err);
+      return (data || []) as SupervisorVisit[];
+    },
+    getById: async (id: string) => {
+      const { data, error } = await supabase.from('supervisor_visits').select('*').eq('id', id).maybeSingle();
+      const err = handleError(error, "supervisorVisits.getById");
+      if (err) throw new Error(err);
+      return data as SupervisorVisit | null;
+    },
+    getByPortfolioToken: async (token: string) => {
+      const { data, error } = await supabase.from('supervisor_visits').select('*').eq('portfolio_token', token).maybeSingle();
+      const err = handleError(error, "supervisorVisits.getByPortfolioToken");
+      if (err) throw new Error(err);
+      return data as SupervisorVisit | null;
+    },
+    upsert: async (visit: Partial<SupervisorVisit>) => {
+      const { error } = await supabase.from('supervisor_visits').upsert([visit], { onConflict: 'id' });
+      const err = handleError(error, "supervisorVisits.upsert");
+      if (err) throw new Error(err);
+    },
+    delete: async (id: string) => {
+      const { error } = await supabase.from('supervisor_visits').delete().eq('id', id);
+      const err = handleError(error, "supervisorVisits.delete");
       if (err) throw new Error(err);
     }
   },

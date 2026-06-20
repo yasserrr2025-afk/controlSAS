@@ -129,3 +129,22 @@ export interface ArchiveBox {
   committees: string[];
   created_at?: string;
 }
+
+export interface SupervisorVisit {
+  id: string;
+  tenant_id?: string;
+  status: 'PENDING' | 'SUBMITTED' | 'ARCHIVED' | string;
+  visitor_name?: string;
+  visitor_role?: string;
+  visitor_contact?: string;
+  visit_reason?: string;
+  notes?: string;
+  recommendations?: string;
+  rating?: string;
+  visit_time: string;
+  signature?: string;
+  portfolio_token?: string;
+  created_by?: string;
+  created_at?: string;
+  submitted_at?: string;
+}

@@ -1,9 +1,10 @@
 import React, { useMemo } from 'react';
 import { BookOpen, Printer, Download, FileText, Link as LinkIcon, Sparkles, Copy, Check } from 'lucide-react';
-import { Student, User, Supervision, SystemConfig, Absence, CommitteeReport, ExamSchedule, DeliveryLog, ControlRequest } from '../../types';
+import { Student, User, Supervision, SystemConfig, Absence, CommitteeReport, ExamSchedule, DeliveryLog, ControlRequest, SupervisorVisit } from '../../types';
 import { APP_CONFIG } from '../../constants';
 import { formatActualProctorStart, getActualSupervisionStart } from '../../utils/proctorTime';
 import { cleanControlRequestText, isInternalSignatureRecord, isSignatureRequest } from '../../services/signatures';
+import SupervisorVisitsManager from './SupervisorVisitsManager';
 
 interface Props {
   students: Student[];
@@ -15,12 +16,16 @@ interface Props {
   examSchedule?: ExamSchedule[];
   deliveryLogs?: DeliveryLog[];
   controlRequests?: ControlRequest[];
+  supervisorVisits?: SupervisorVisit[];
+  currentUser?: User;
+  onRefresh?: () => Promise<void>;
+  onAlert?: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
   publicMode?: boolean;
 }
 
 export const MasterPortfolio: React.FC<Props> = ({ 
   students, users, supervisions, systemConfig, absences, committeeReports, 
-  examSchedule = [], deliveryLogs = [], controlRequests = [], publicMode = false
+  examSchedule = [], deliveryLogs = [], controlRequests = [], supervisorVisits = [], currentUser, onRefresh, onAlert, publicMode = false
 }) => {
   const safeTime = (isoStr?: string) => {
     if (!isoStr) return '---';
@@ -160,6 +165,13 @@ export const MasterPortfolio: React.FC<Props> = ({
     return [...reportRows, ...requestRows].sort((a, b) => String(a.time).localeCompare(String(b.time)));
   }, [committeeReports, controlRequests, supervisions, users]);
 
+  const submittedSupervisorVisits = useMemo(
+    () => supervisorVisits
+      .filter(visit => visit.status === 'SUBMITTED')
+      .sort((a, b) => String(a.visit_time).localeCompare(String(b.visit_time))),
+    [supervisorVisits],
+  );
+
   const OfficialPortfolioHeader = ({ title, meta }: { title: string; meta?: React.ReactNode }) => {
     return (
     <div className="official-report-header">
@@ -198,6 +210,7 @@ export const MasterPortfolio: React.FC<Props> = ({
   );
 
   const [activeTab, setActiveTab] = React.useState<string>(publicMode ? 'COVER' : 'ALL');
+  const [workTab, setWorkTab] = React.useState<'PORTFOLIO' | 'VISITS'>('PORTFOLIO');
   const [copied, setCopied] = React.useState(false);
 
   const handleCopyLink = () => {
@@ -208,6 +221,27 @@ export const MasterPortfolio: React.FC<Props> = ({
 
   return (
     <div className={`space-y-8 animate-fade-in text-right ${publicMode ? 'live-portfolio-public min-h-screen bg-slate-100 pb-20' : ''}`}>
+      {!publicMode && (
+        <div className="no-print bg-white rounded-[2rem] p-2 shadow-md border border-slate-100 flex flex-col sm:flex-row gap-2">
+          <button
+            onClick={() => setWorkTab('PORTFOLIO')}
+            className={`flex-1 rounded-[1.5rem] px-5 py-4 font-black transition-all ${workTab === 'PORTFOLIO' ? 'bg-slate-950 text-white shadow-xl' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
+          >
+            ملف الإنجاز
+          </button>
+          <button
+            onClick={() => setWorkTab('VISITS')}
+            className={`flex-1 rounded-[1.5rem] px-5 py-4 font-black transition-all ${workTab === 'VISITS' ? 'bg-emerald-600 text-white shadow-xl' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
+          >
+            زيارات المشرفين
+          </button>
+        </div>
+      )}
+
+      {!publicMode && workTab === 'VISITS' && currentUser && onRefresh ? (
+        <SupervisorVisitsManager visits={supervisorVisits} currentUser={currentUser} onRefresh={onRefresh} onAlert={onAlert} />
+      ) : (
+      <>
       {publicMode && (
         <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-md shadow-sm border-b border-slate-200 p-3 overflow-x-auto print:hidden no-scrollbar">
           <div className="flex gap-2 min-w-max">
@@ -605,6 +639,50 @@ export const MasterPortfolio: React.FC<Props> = ({
           
           <SignatureFooter />
         </div>
+
+        <div className="portfolio-page">
+          <OfficialPortfolioHeader title="سجل زيارات المشرفين والإدارة" />
+          <table className="data-table field-log-table">
+            <thead>
+              <tr>
+                <th>م</th>
+                <th>اسم الزائر</th>
+                <th>الصفة</th>
+                <th>وقت الزيارة</th>
+                <th>نوع الزيارة</th>
+                <th>التقييم</th>
+                <th>الملاحظات والتوصيات</th>
+                <th>التوقيع</th>
+              </tr>
+            </thead>
+            <tbody>
+              {submittedSupervisorVisits.map((visit, idx) => (
+                <tr key={visit.id}>
+                  <td>{idx + 1}</td>
+                  <td>{visit.visitor_name || '---'}</td>
+                  <td>{visit.visitor_role || '---'}</td>
+                  <td>
+                    {new Date(visit.visit_time).toLocaleDateString('ar-SA')}
+                    <br />
+                    <span style={{fontFamily: 'monospace'}}>{safeTime(visit.visit_time)}</span>
+                  </td>
+                  <td>{visit.visit_reason || '---'}</td>
+                  <td>{visit.rating || '---'}</td>
+                  <td style={{textAlign: 'right'}}>
+                    <strong>الملاحظات:</strong> {visit.notes || 'لا توجد'}
+                    <br />
+                    <strong>التوصيات:</strong> {visit.recommendations || 'لا توجد'}
+                  </td>
+                  <td>{visit.signature ? <img src={visit.signature} alt="توقيع المشرف" style={{ height: 34, maxWidth: 110, objectFit: 'contain', margin: '0 auto' }} /> : '---'}</td>
+                </tr>
+              ))}
+              {submittedSupervisorVisits.length === 0 && (
+                <tr><td colSpan={8}>لا توجد زيارات مشرفين مكتملة وموقعة.</td></tr>
+              )}
+            </tbody>
+          </table>
+          <SignatureFooter />
+        </div>
           </>
         )}
 
@@ -837,6 +915,8 @@ export const MasterPortfolio: React.FC<Props> = ({
            <Download size={20}/> تحميل نسخة PDF
          </button>
       </div>}
+      </>
+      )}
     </div>
   );
 };
