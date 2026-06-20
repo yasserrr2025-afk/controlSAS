@@ -535,10 +535,10 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       absences.filter(
         (a) =>
           a.committee_number === activeCommittee &&
-          matchesActiveDate(a.date),
+          matchesActiveDate(a.date) &&
           Number(a.period || 1) === activePeriod,
       ),
-    [absences, activeCommittee, activeDate],
+    [absences, activeCommittee, activeDate, activePeriod],
   );
 
   const stats = useMemo(() => {
@@ -626,7 +626,10 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   ) => {
     if (isCommitteeFinished) return;
     const existing = absences.find(
-      (a) => a.student_id === student.national_id && matchesActiveDate(a.date),
+      (a) =>
+        a.student_id === student.national_id &&
+        matchesActiveDate(a.date) &&
+        Number(a.period || 1) === activePeriod,
     );
     const isRemoving = existing && existing.type === type;
 
