@@ -37,48 +37,45 @@ export const buildSupervisorMiniPortfolioPrintHtml = (
           html, body { width: 204mm; height: 291mm; margin: 0; overflow: hidden; background: white; }
           body { font-family: Arial, sans-serif; color: #0f172a; }
           .sheet {
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 261.5mm;
-            transform: scale(.78);
-            transform-origin: top right;
+            width: 204mm;
+            height: 286mm;
+            overflow: hidden;
           }
           .page {
-            width: 261.5mm;
-            height: 360mm;
+            width: 204mm;
+            height: 286mm;
             border: 1.5pt solid #0f172a;
-            padding: 8mm;
+            padding: 5mm;
             overflow: hidden;
             display: flex;
             flex-direction: column;
             background: white;
           }
-          .header { display: grid; grid-template-columns: 1fr 32mm 1fr; gap: 6mm; align-items: center; border-bottom: 3px double #0f172a; padding-bottom: 5mm; margin-bottom: 5mm; }
-          .side { font-size: 11pt; font-weight: 900; line-height: 1.65; }
+          .header { display: grid; grid-template-columns: 1fr 24mm 1fr; gap: 4mm; align-items: center; border-bottom: 3px double #0f172a; padding-bottom: 3mm; margin-bottom: 3mm; }
+          .side { font-size: 8.5pt; font-weight: 900; line-height: 1.45; }
           .left { text-align: left; color: #334155; }
-          .logo { width: 26mm; height: 26mm; object-fit: contain; margin: auto; display: block; }
-          .title { text-align: center; border: 1.5pt solid #0f172a; background: #eef7fb; padding: 4mm; margin-bottom: 5mm; }
-          .title h1 { margin: 0; font-size: 20pt; font-weight: 900; }
-          .title p { margin: 2mm 0 0; font-size: 10.5pt; font-weight: 800; color: #475569; }
-          .info { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.8mm; margin-bottom: 5mm; }
-          .box { border: 1pt solid #0f172a; min-height: 20mm; }
-          .box b { display: block; background: #f1f5f9; border-bottom: 1pt solid #0f172a; padding: 2.2mm; font-size: 9.8pt; }
-          .box span { display: block; padding: 2.5mm; font-size: 11pt; font-weight: 900; line-height: 1.35; }
-          .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2.5mm; margin-bottom: 5mm; }
-          .metric { border: 1pt solid #cbd5e1; background: #f8fafc; padding: 3mm; text-align: center; min-height: 23mm; }
-          .metric strong { display: block; font-size: 20pt; color: #0f172a; line-height: 1; }
-          .metric span { display: block; margin-top: 1.5mm; font-size: 9pt; font-weight: 900; color: #64748b; }
-          .two { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin-bottom: 5mm; }
-          .section { border: 1pt solid #0f172a; min-height: 42mm; }
-          .section-title { background: #0f172a; color: white; padding: 2.8mm 3.5mm; font-size: 10.5pt; font-weight: 900; }
-          .section-body { padding: 3.5mm; font-size: 11pt; line-height: 1.75; font-weight: 700; white-space: pre-wrap; }
-          .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin-top: 1mm; }
-          .sig { border: 1pt solid #cbd5e1; background: #f8fafc; min-height: 38mm; padding: 3mm; text-align: center; }
-          .sig b { display: block; font-size: 9.8pt; margin-bottom: 1mm; }
-          .sig img { max-height: 28mm; max-width: 92mm; object-fit: contain; }
-          .approval { border: 1pt solid #047857; background: #ecfdf5; padding: 3mm 4mm; font-size: 10.5pt; font-weight: 900; line-height: 1.6; color: #065f46; margin-top: 4mm; }
-          .footer { margin-top: auto; border-top: 1pt solid #cbd5e1; padding-top: 2.5mm; display: flex; justify-content: space-between; font-size: 9pt; font-weight: 800; color: #475569; }
+          .logo { width: 20mm; height: 20mm; object-fit: contain; margin: auto; display: block; }
+          .title { text-align: center; border: 1.5pt solid #0f172a; background: #eef7fb; padding: 2.5mm; margin-bottom: 3mm; }
+          .title h1 { margin: 0; font-size: 15pt; font-weight: 900; }
+          .title p { margin: 1mm 0 0; font-size: 8.3pt; font-weight: 800; color: #475569; }
+          .info { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.8mm; margin-bottom: 3mm; }
+          .box { border: 1pt solid #0f172a; min-height: 14mm; }
+          .box b { display: block; background: #f1f5f9; border-bottom: 1pt solid #0f172a; padding: 1.2mm 1.5mm; font-size: 7.5pt; }
+          .box span { display: block; padding: 1.4mm 1.7mm; font-size: 8.8pt; font-weight: 900; line-height: 1.25; }
+          .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.8mm; margin-bottom: 3mm; }
+          .metric { border: 1pt solid #cbd5e1; background: #f8fafc; padding: 1.8mm; text-align: center; min-height: 15mm; }
+          .metric strong { display: block; font-size: 15pt; color: #0f172a; line-height: 1; }
+          .metric span { display: block; margin-top: .8mm; font-size: 6.8pt; font-weight: 900; color: #64748b; }
+          .two { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5mm; margin-bottom: 3mm; }
+          .section { border: 1pt solid #0f172a; min-height: 27mm; }
+          .section-title { background: #0f172a; color: white; padding: 1.8mm 2.2mm; font-size: 8.2pt; font-weight: 900; }
+          .section-body { padding: 2.2mm; font-size: 8.6pt; line-height: 1.55; font-weight: 700; white-space: pre-wrap; }
+          .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5mm; margin-top: .5mm; }
+          .sig { border: 1pt solid #cbd5e1; background: #f8fafc; min-height: 25mm; padding: 2mm; text-align: center; }
+          .sig b { display: block; font-size: 7.7pt; margin-bottom: .5mm; }
+          .sig img { max-height: 18mm; max-width: 70mm; object-fit: contain; }
+          .approval { border: 1pt solid #047857; background: #ecfdf5; padding: 2mm 2.5mm; font-size: 8.2pt; font-weight: 900; line-height: 1.45; color: #065f46; margin-top: 2.5mm; }
+          .footer { margin-top: auto; border-top: 1pt solid #cbd5e1; padding-top: 1.8mm; display: flex; justify-content: space-between; font-size: 7.2pt; font-weight: 800; color: #475569; }
         </style>
       </head>
       <body>
