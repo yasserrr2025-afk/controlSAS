@@ -30,7 +30,7 @@ const EnvelopeLabelsPrint: React.FC<Props> = ({ students, users, currentUser, sy
     setIsLoading(true);
     try {
       const data = await db.examEnvelopes.getAll();
-      setEnvelopeItems(data.filter(item => item.exam_date === activeDate && item.status !== 'CANCELLED'));
+      setEnvelopeItems(data.filter(item => item.status !== 'CANCELLED'));
     } catch (error: any) {
       console.error(error);
       onAlert?.(error.message || 'تعذر تحميل مظاريف الأسئلة. تأكد من تنفيذ SQL جدول المظاريف.', 'error');
@@ -88,7 +88,7 @@ const EnvelopeLabelsPrint: React.FC<Props> = ({ students, users, currentUser, sy
   };
 
   const handleDeleteAll = async () => {
-    if (!labels.length || !confirm('حذف جميع ملصقات المظاريف لهذا اليوم؟')) return;
+    if (!labels.length || !confirm('حذف جميع ملصقات المظاريف؟')) return;
     await db.examEnvelopes.deleteMany(labels.map(item => item.id));
     await fetchEnvelopes();
     onAlert?.('تم حذف جميع مظاريف اليوم.', 'success');
@@ -135,7 +135,7 @@ const EnvelopeLabelsPrint: React.FC<Props> = ({ students, users, currentUser, sy
             </p>
             <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-500/10 border border-emerald-400/30 text-emerald-200 px-4 py-2 text-xs font-black">
               <Database size={16} />
-              مصدر ملصقات المظاريف: public.exam_envelopes
+              مصدر ملصقات المظاريف: public.exam_envelopes | يعرض جميع المظاريف المحفوظة
             </div>
           </div>
           <button
@@ -185,7 +185,7 @@ const EnvelopeLabelsPrint: React.FC<Props> = ({ students, users, currentUser, sy
         ) : envelopeItems.length === 0 ? (
           <div className="bg-white border border-dashed border-slate-200 rounded-[2rem] p-10 text-center shadow-sm">
             <Package className="mx-auto text-slate-200 mb-4" size={54} />
-            <p className="font-black text-slate-400">أضف المظاريف التي تريد طباعتها كملصقات</p>
+            <p className="font-black text-slate-400">لا توجد مظاريف محفوظة في قاعدة البيانات</p>
           </div>
         ) : (
           <div className="space-y-4">

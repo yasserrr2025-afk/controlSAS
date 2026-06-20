@@ -348,7 +348,7 @@ export const db = {
       if (err) throw new Error(err);
     },
     markOpened: async (id: string, openingId: string, openedBy: string) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('exam_envelopes')
         .update({
           status: 'OPENED',
@@ -357,9 +357,14 @@ export const db = {
           opened_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('status', 'READY')
+        .is('opening_id', null)
+        .select('id')
+        .maybeSingle();
       const err = handleError(error, "examEnvelopes.markOpened");
       if (err) throw new Error(err);
+      if (!data?.id) throw new Error('هذا المظروف تم فتحه مسبقاً ولا يمكن تكرار فتحه.');
     }
   },
 

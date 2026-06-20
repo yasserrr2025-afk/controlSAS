@@ -297,7 +297,14 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
         await db.envelopeOpenings.upsert(legacyRecord);
       }
       if (scannedData.envelopeId && newRecord.id) {
-        await db.examEnvelopes.markOpened(scannedData.envelopeId, newRecord.id, user.full_name);
+        try {
+          await db.examEnvelopes.markOpened(scannedData.envelopeId, newRecord.id, user.full_name);
+        } catch (error: any) {
+          await db.envelopeOpenings.delete(newRecord.id).catch(() => undefined);
+          onAlert?.(error.message || 'لا يمكن تكرار فتح هذا المظروف.', 'warning');
+          setScannedData(null);
+          return;
+        }
       }
       if (newRecord.id) {
         const signatureMembers = getEnvelopeCommitteeMembers(newRecord);
