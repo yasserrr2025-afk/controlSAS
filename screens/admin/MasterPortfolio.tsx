@@ -239,7 +239,7 @@ export const MasterPortfolio: React.FC<Props> = ({
       )}
 
       {!publicMode && workTab === 'VISITS' && currentUser && onRefresh ? (
-        <SupervisorVisitsManager visits={supervisorVisits} currentUser={currentUser} onRefresh={onRefresh} onAlert={onAlert} />
+        <SupervisorVisitsManager visits={supervisorVisits} currentUser={currentUser} systemConfig={systemConfig} onRefresh={onRefresh} onAlert={onAlert} />
       ) : (
       <>
       {publicMode && (

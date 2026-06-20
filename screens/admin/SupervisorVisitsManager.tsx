@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { CheckCircle2, ClipboardCopy, ExternalLink, Loader2, Plus, Printer, QrCode, RefreshCw, Trash2, UserRoundCheck, X } from 'lucide-react';
-import { SupervisorVisit, User } from '../../types';
+import { SupervisorVisit, SystemConfig, User } from '../../types';
 import { db } from '../../supabase';
+import { APP_CONFIG } from '../../constants';
 
 interface Props {
   visits: SupervisorVisit[];
   currentUser: User;
+  systemConfig: SystemConfig;
   onRefresh: () => Promise<void>;
   onAlert?: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 }
@@ -13,7 +15,7 @@ interface Props {
 const buildVisitUrl = (id: string) => `${window.location.origin}${window.location.pathname}?supervisor_visit=${id}`;
 const buildPortfolioUrl = (token?: string) => `${window.location.origin}${window.location.pathname}?supervisor_portfolio=${token || ''}`;
 
-const SupervisorVisitsManager: React.FC<Props> = ({ visits, currentUser, onRefresh, onAlert }) => {
+const SupervisorVisitsManager: React.FC<Props> = ({ visits, currentUser, systemConfig, onRefresh, onAlert }) => {
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [qrVisit, setQrVisit] = useState<SupervisorVisit | null>(null);
@@ -61,7 +63,7 @@ const SupervisorVisitsManager: React.FC<Props> = ({ visits, currentUser, onRefre
     onAlert?.('تم حذف سجل الزيارة.', 'success');
   };
 
-  const printVisitReport = (visit: SupervisorVisit) => {
+  const printVisitReportLegacy = (visit: SupervisorVisit) => {
     const reportWindow = window.open('', '_blank');
     if (!reportWindow) return;
     const submitted = visit.status === 'SUBMITTED';
@@ -111,6 +113,132 @@ const SupervisorVisitsManager: React.FC<Props> = ({ visits, currentUser, onRefre
             <div class="footer">
               <div>أنشئ الرابط بواسطة: ${visit.created_by || currentUser.full_name}</div>
               <div>رقم السجل: ${visit.id}</div>
+            </div>
+          </div>
+          <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 500); }</script>
+        </body>
+      </html>
+    `;
+    reportWindow.document.write(html);
+    reportWindow.document.close();
+  };
+
+  const printVisitReport = (visit: SupervisorVisit) => {
+    const reportWindow = window.open('', '_blank');
+    if (!reportWindow) return;
+    const submitted = visit.status === 'SUBMITTED';
+    const schoolName = systemConfig?.school_name || APP_CONFIG.SCHOOL_NAME;
+    const directorateName = systemConfig?.directorate_name || APP_CONFIG.ADMINISTRATION_NAME;
+    const principalName = systemConfig?.principal_name || '................................';
+    const academicYear = systemConfig?.academic_year || '1447 / 1448';
+    const visitDate = new Date(visit.visit_time).toLocaleDateString('ar-SA');
+    const visitTime = new Date(visit.visit_time).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+    const submittedAt = visit.submitted_at ? new Date(visit.submitted_at).toLocaleString('ar-SA') : '---';
+    const html = `
+      <html dir="rtl">
+        <head>
+          <title>تقرير زيارة مشرف</title>
+          <style>
+            @page { size: A4 portrait; margin: 8mm; }
+            * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body { font-family: Arial, sans-serif; color: #0f172a; margin: 0; background: white; }
+            .page { border: 1.4pt solid #0f172a; padding: 7mm; height: 281mm; overflow: hidden; display: flex; flex-direction: column; }
+            .official-header { display: grid; grid-template-columns: 1fr 30mm 1fr; align-items: center; gap: 6mm; border-bottom: 3px double #0f172a; padding-bottom: 4mm; margin-bottom: 4mm; }
+            .side { font-size: 9.5pt; font-weight: 900; line-height: 1.55; }
+            .left { text-align: left; color: #334155; }
+            .logo { width: 22mm; height: 22mm; object-fit: contain; margin: auto; display: block; }
+            .title-box { text-align: center; border: 1.5pt solid #0f172a; background: #eef7fb; padding: 3mm; margin-bottom: 4mm; }
+            h1 { font-size: 17pt; margin: 0; font-weight: 900; }
+            .meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin-bottom: 4mm; }
+            .meta-card { border: 1pt solid #0f172a; min-height: 19mm; }
+            .meta-card b { display: block; background: #f1f5f9; border-bottom: 1pt solid #0f172a; padding: 2mm; font-size: 8.7pt; }
+            .meta-card span { display: block; padding: 2.2mm; font-size: 10pt; font-weight: 900; line-height: 1.35; }
+            .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin-bottom: 4mm; }
+            .note-box { border: 1pt solid #0f172a; min-height: 35mm; }
+            .note-title { background: #0f172a; color: white; padding: 2.3mm; font-size: 9pt; font-weight: 900; }
+            .note-body { padding: 3mm; font-size: 10pt; line-height: 1.7; font-weight: 700; white-space: pre-wrap; }
+            .signature-area { display: grid; grid-template-columns: 1.2fr .8fr; gap: 3mm; margin-top: 1mm; }
+            .signature { border: 1pt solid #cbd5e1; min-height: 33mm; display: flex; align-items: center; justify-content: center; background: #f8fafc; }
+            .signature img { max-height: 29mm; max-width: 82mm; object-fit: contain; }
+            .status-card { border: 1pt solid #0f172a; padding: 3mm; font-size: 9.5pt; font-weight: 900; line-height: 1.8; }
+            .bottom { margin-top: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 18mm; padding: 3mm 10mm 0; text-align: center; font-weight: 900; }
+            .line { border-bottom: 1.5pt dotted #0f172a; height: 8mm; margin-top: 2mm; }
+            .footer { border-top: 1pt solid #cbd5e1; margin-top: 3mm; padding-top: 2mm; display: flex; justify-content: space-between; font-size: 8pt; font-weight: 800; color: #475569; }
+            .muted { color: #64748b; }
+          </style>
+        </head>
+        <body>
+          <div class="page">
+            <div class="official-header">
+              <div class="side">
+                المملكة العربية السعودية<br/>
+                وزارة التعليم<br/>
+                ${directorateName}<br/>
+                ${schoolName}
+              </div>
+              <img class="logo" src="${APP_CONFIG.LOGO_URL}" />
+              <div class="side left">
+                العام الدراسي: ${academicYear}<br/>
+                تاريخ الطباعة: ${new Date().toLocaleDateString('ar-SA')}<br/>
+                حالة الزيارة: ${submitted ? 'مكتملة وموثقة' : 'بانتظار التعبئة'}<br/>
+                رقم السجل: ${visit.id.slice(0, 8)}
+              </div>
+            </div>
+
+            <div class="title-box"><h1>تقرير زيارة مشرف / إدارة</h1></div>
+
+            <div class="meta-grid">
+              <div class="meta-card"><b>اسم الزائر</b><span>${visit.visitor_name || 'لم يتم الإدخال بعد'}</span></div>
+              <div class="meta-card"><b>الصفة / الجهة</b><span>${visit.visitor_role || 'لم يتم الإدخال بعد'}</span></div>
+              <div class="meta-card"><b>وسيلة التواصل</b><span>${visit.visitor_contact || '---'}</span></div>
+              <div class="meta-card"><b>تاريخ الزيارة</b><span>${visitDate}</span></div>
+              <div class="meta-card"><b>وقت الزيارة</b><span>${visitTime}</span></div>
+              <div class="meta-card"><b>نوع الزيارة</b><span>${visit.visit_reason || '---'}</span></div>
+              <div class="meta-card"><b>التقييم العام</b><span>${visit.rating || '---'}</span></div>
+              <div class="meta-card"><b>وقت الاعتماد الإلكتروني</b><span>${submittedAt}</span></div>
+              <div class="meta-card"><b>منشئ رابط الزيارة</b><span>${visit.created_by || currentUser.full_name}</span></div>
+            </div>
+
+            <div class="two-col">
+              <div class="note-box">
+                <div class="note-title">الملاحظات</div>
+                <div class="note-body">${visit.notes || 'لا توجد ملاحظات مدخلة.'}</div>
+              </div>
+              <div class="note-box">
+                <div class="note-title">التوصيات</div>
+                <div class="note-body">${visit.recommendations || 'لا توجد توصيات مدخلة.'}</div>
+              </div>
+            </div>
+
+            <div class="signature-area">
+              <div>
+                <div class="note-title">التوقيع الإلكتروني للزائر</div>
+                <div class="signature">${visit.signature ? `<img src="${visit.signature}" />` : '<span class="muted">لم يتم توقيع الزيارة بعد.</span>'}</div>
+              </div>
+              <div class="status-card">
+                <div>حالة السجل: ${submitted ? 'مكتمل وموثق إلكترونياً' : 'بانتظار تعبئة المشرف'}</div>
+                <div>المدرسة: ${schoolName}</div>
+                <div>مدير المدرسة: ${principalName}</div>
+                <div>رقم السجل الكامل:<br/>${visit.id}</div>
+              </div>
+            </div>
+
+            <div class="bottom">
+              <div>
+                <div>مدير المدرسة</div>
+                <div>${principalName}</div>
+                <div class="line"></div>
+              </div>
+              <div>
+                <div>ختم المدرسة / الاعتماد</div>
+                <div>&nbsp;</div>
+                <div class="line"></div>
+              </div>
+            </div>
+
+            <div class="footer">
+              <div>نظام الكنترول الرقمي - ${schoolName}</div>
+              <div>تقرير زيارة إلكترونية موثق</div>
             </div>
           </div>
           <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 500); }</script>
@@ -226,8 +354,8 @@ const SupervisorVisitsManager: React.FC<Props> = ({ visits, currentUser, onRefre
                     طباعة التقرير
                   </button>
                   {submitted && (
-                    <button onClick={() => copy(portfolioUrl, `${visit.id}-portfolio`)} className="px-4 py-3 rounded-xl bg-emerald-600 text-white font-black text-sm flex items-center gap-2">
-                      <QrCode size={18} />
+                    <button onClick={() => window.open(portfolioUrl, '_blank')} className="px-4 py-3 rounded-xl bg-emerald-600 text-white font-black text-sm flex items-center gap-2">
+                      <ExternalLink size={18} />
                       رابط الإنجاز
                     </button>
                   )}
