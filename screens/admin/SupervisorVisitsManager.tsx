@@ -1,13 +1,22 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { CheckCircle2, ClipboardCopy, ExternalLink, Loader2, Plus, Printer, QrCode, RefreshCw, Trash2, UserRoundCheck, X } from 'lucide-react';
-import { SupervisorVisit, SystemConfig, User } from '../../types';
+import { Absence, CommitteeReport, ControlRequest, DeliveryLog, ExamSchedule, Student, Supervision, SupervisorVisit, SystemConfig, User } from '../../types';
 import { db } from '../../supabase';
 import { APP_CONFIG } from '../../constants';
+import { isInternalSignatureRecord, isSignatureRequest } from '../../services/signatures';
+import { buildSupervisorMiniPortfolioPrintHtml } from '../../utils/supervisorVisitPrint';
 
 interface Props {
   visits: SupervisorVisit[];
   currentUser: User;
   systemConfig: SystemConfig;
+  students: Student[];
+  supervisions: Supervision[];
+  absences: Absence[];
+  deliveryLogs: DeliveryLog[];
+  controlRequests: ControlRequest[];
+  committeeReports: CommitteeReport[];
+  examSchedule: ExamSchedule[];
   onRefresh: () => Promise<void>;
   onAlert?: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 }
@@ -15,7 +24,20 @@ interface Props {
 const buildVisitUrl = (id: string) => `${window.location.origin}${window.location.pathname}?supervisor_visit=${id}`;
 const buildPortfolioUrl = (token?: string) => `${window.location.origin}${window.location.pathname}?supervisor_portfolio=${token || ''}`;
 
-const SupervisorVisitsManager: React.FC<Props> = ({ visits, currentUser, systemConfig, onRefresh, onAlert }) => {
+const SupervisorVisitsManager: React.FC<Props> = ({
+  visits,
+  currentUser,
+  systemConfig,
+  students,
+  supervisions,
+  absences,
+  deliveryLogs,
+  controlRequests,
+  committeeReports,
+  examSchedule,
+  onRefresh,
+  onAlert,
+}) => {
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [qrVisit, setQrVisit] = useState<SupervisorVisit | null>(null);
@@ -30,6 +52,18 @@ const SupervisorVisitsManager: React.FC<Props> = ({ visits, currentUser, systemC
     pending: visits.filter(v => v.status !== 'SUBMITTED').length,
     submitted: visits.filter(v => v.status === 'SUBMITTED').length,
   }), [visits]);
+  const activeDate = systemConfig.active_exam_date || new Date().toISOString().slice(0, 10);
+
+  const getPrintMetrics = () => ({
+    students: students.length,
+    committees: new Set(students.map(s => s.committee_number).filter(Boolean)).size,
+    proctors: new Set(supervisions.map(s => s.teacher_id)).size,
+    absences: absences.filter(a => String(a.date).startsWith(activeDate)).length,
+    receipts: deliveryLogs.filter(l => l.status === 'CONFIRMED' && String(l.time).startsWith(activeDate)).length,
+    requests: controlRequests.filter(r => !isInternalSignatureRecord(r) && !isSignatureRequest(r) && String(r.time).startsWith(activeDate)).length,
+    reports: committeeReports.length,
+    exams: examSchedule.filter(e => e.exam_date === activeDate).length,
+  });
 
   const createVisit = async () => {
     setCreating(true);
@@ -214,6 +248,15 @@ const SupervisorVisitsManager: React.FC<Props> = ({ visits, currentUser, systemC
   const printVisitReport = (visit: SupervisorVisit) => {
     const reportWindow = window.open('', '_blank');
     if (!reportWindow) return;
+    if (!visit.principal_signature) {
+      reportWindow.close();
+      onAlert?.('تتفعّل طباعة الإنجاز المصغر بعد توقيع مدير المدرسة.', 'warning');
+      return;
+    }
+    const approvedHtml = buildSupervisorMiniPortfolioPrintHtml(visit, systemConfig, getPrintMetrics());
+    reportWindow.document.write(approvedHtml);
+    reportWindow.document.close();
+    return;
     const submitted = visit.status === 'SUBMITTED';
     const schoolName = systemConfig?.school_name || APP_CONFIG.SCHOOL_NAME;
     const directorateName = systemConfig?.directorate_name || APP_CONFIG.ADMINISTRATION_NAME;
@@ -476,18 +519,16 @@ const SupervisorVisitsManager: React.FC<Props> = ({ visits, currentUser, systemC
                   {visit.notes && <p className="mt-3 text-sm font-bold text-slate-600 bg-slate-50 rounded-2xl p-3 leading-7">{visit.notes}</p>}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button onClick={() => copy(visitUrl, visit.id)} className="px-4 py-3 rounded-xl bg-slate-950 text-white font-black text-sm flex items-center gap-2">
-                    {copiedId === visit.id ? <CheckCircle2 size={18} /> : <ClipboardCopy size={18} />}
-                    رابط التعبئة
-                  </button>
                   <button onClick={() => setQrVisit(visit)} className="px-4 py-3 rounded-xl bg-violet-50 text-violet-700 font-black text-sm flex items-center gap-2">
                     <QrCode size={18} />
                     QR
                   </button>
-                  <button onClick={() => printVisitReport(visit)} className="px-4 py-3 rounded-xl bg-slate-100 text-slate-700 font-black text-sm flex items-center gap-2">
-                    <Printer size={18} />
-                    طباعة التقرير
-                  </button>
+                  {visit.principal_signature && (
+                    <button onClick={() => printVisitReport(visit)} className="px-4 py-3 rounded-xl bg-slate-100 text-slate-700 font-black text-sm flex items-center gap-2">
+                      <Printer size={18} />
+                      طباعة الإنجاز المصغر
+                    </button>
+                  )}
                   {submitted && (
                     <button onClick={() => window.open(portfolioUrl, '_blank')} className="px-4 py-3 rounded-xl bg-emerald-600 text-white font-black text-sm flex items-center gap-2">
                       <ExternalLink size={18} />

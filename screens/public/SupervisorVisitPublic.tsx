@@ -4,6 +4,7 @@ import { Absence, CommitteeReport, ControlRequest, DeliveryLog, ExamSchedule, St
 import { APP_CONFIG } from '../../constants';
 import { db } from '../../supabase';
 import { isInternalSignatureRecord, isSignatureRequest } from '../../services/signatures';
+import { buildSupervisorMiniPortfolioPrintHtml } from '../../utils/supervisorVisitPrint';
 
 interface SharedProps {
   systemConfig: SystemConfig;
@@ -353,10 +354,12 @@ export const SupervisorMiniPortfolio: React.FC<PortfolioProps> = (props) => {
         <head>
           <title>ملف الإنجاز المصغر - ${visit.visitor_name || ''}</title>
           <style>
-            @page { size: A4 portrait; margin: 8mm; }
+            @page { size: A4 portrait; margin: 3mm; }
             * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            body { margin: 0; font-family: Arial, sans-serif; color: #0f172a; background: white; }
-            .page { height: 281mm; border: 1.5pt solid #0f172a; padding: 7mm; overflow: hidden; display: flex; flex-direction: column; }
+            html, body { width: 204mm; height: 291mm; margin: 0; overflow: hidden; background: white; }
+            body { font-family: Arial, sans-serif; color: #0f172a; }
+            .sheet { position: absolute; top: 0; right: 0; width: 261.5mm; transform: scale(.78); transform-origin: top right; }
+            .page { width: 261.5mm; height: 360mm; border: 1.5pt solid #0f172a; padding: 8mm; overflow: hidden; display: flex; flex-direction: column; }
             .header { display: grid; grid-template-columns: 1fr 30mm 1fr; gap: 5mm; align-items: center; border-bottom: 3px double #0f172a; padding-bottom: 4mm; margin-bottom: 4mm; }
             .side { font-size: 9.5pt; font-weight: 900; line-height: 1.55; }
             .left { text-align: left; color: #334155; }
@@ -385,6 +388,7 @@ export const SupervisorMiniPortfolio: React.FC<PortfolioProps> = (props) => {
           </style>
         </head>
         <body>
+          <div class="sheet">
           <div class="page">
             <div class="header">
               <div class="side">المملكة العربية السعودية<br/>وزارة التعليم<br/>${directorateName}<br/>${schoolName}</div>
@@ -430,11 +434,12 @@ export const SupervisorMiniPortfolio: React.FC<PortfolioProps> = (props) => {
               <div>رابط إنجاز مصغر معتمد إلكترونياً</div>
             </div>
           </div>
+          </div>
           <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 500); }</script>
         </body>
       </html>
     `;
-    printWindow.document.write(html);
+    printWindow.document.write(buildSupervisorMiniPortfolioPrintHtml(visit, systemConfig, metrics));
     printWindow.document.close();
   };
 
