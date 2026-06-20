@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Supervision, User, Student, DeliveryLog, SystemConfig, CommitteeReport, Absence, ControlRequest } from '../../types';
+import { Supervision, User, Student, DeliveryLog, SystemConfig, CommitteeReport, Absence, ControlRequest, ExamSchedule } from '../../types';
 import {
   Printer, FileSpreadsheet, Search, CheckCircle2, Download,
   ClipboardList, Package, AlertTriangle, Trophy, Timer, BellRing, UserRoundCheck
@@ -217,11 +217,14 @@ const AdminDailyReports: React.FC<Props> = ({
   const [isPrinting, setIsPrinting] = useState(false);
 
   const availablePeriods = useMemo(() => {
-    const periods = supervisions
+    const supervisionPeriods = supervisions
       .filter(s => matchesDate(s?.date, reportDate) && s.period)
       .map(s => s.period);
-    return Array.from(new Set(periods)).sort((a, b) => a - b);
-  }, [supervisions, reportDate]);
+    const schedulePeriods = examSchedule
+      .filter(exam => matchesDate(exam?.exam_date, reportDate) && exam.period)
+      .map(exam => exam.period);
+    return Array.from(new Set([...schedulePeriods, ...supervisionPeriods].map(Number))).sort((a, b) => a - b);
+  }, [supervisions, examSchedule, reportDate]);
 
   useEffect(() => {
     if (availablePeriods.length > 0) {
@@ -240,13 +243,13 @@ const AdminDailyReports: React.FC<Props> = ({
       .filter(Boolean).sort((a, b) => Number(a) - Number(b)) as string[];
 
     return committees.flatMap(num => {
-      const sv = supervisions.find(s => String(s?.committee_number) === String(num) && matchesDate(s?.date, reportDate) && s.period === selectedPeriod);
+      const sv = supervisions.find(s => String(s?.committee_number) === String(num) && matchesDate(s?.date, reportDate) && Number(s.period) === Number(selectedPeriod));
       if (!sv) return [];
 
       const proctor = users.find(u => u?.id === sv?.teacher_id);
-      const closeLog = deliveryLogs.find(l => String(l?.committee_number) === String(num) && matchesDate(l?.time, reportDate) && l?.type === 'RECEIVE' && l?.period === selectedPeriod);
-      const receiptLog = deliveryLogs.find(l => String(l?.committee_number) === String(num) && matchesDate(l?.time, reportDate) && l?.status === 'CONFIRMED' && l?.period === selectedPeriod);
-      const detailedReport = committeeReports.find(r => String(r?.committee_number) === String(num) && r?.date === reportDate);
+      const closeLog = deliveryLogs.find(l => String(l?.committee_number) === String(num) && matchesDate(l?.time, reportDate) && l?.type === 'RECEIVE' && Number(l?.period) === Number(selectedPeriod));
+      const receiptLog = deliveryLogs.find(l => String(l?.committee_number) === String(num) && matchesDate(l?.time, reportDate) && l?.status === 'CONFIRMED' && Number(l?.period) === Number(selectedPeriod));
+      const detailedReport = committeeReports.find(r => String(r?.committee_number) === String(num) && matchesDate(r?.date, reportDate));
       const committeeStudents = students.filter(s => String(s.committee_number) === String(num));
       const gradeSet = Array.from(new Set(committeeStudents.map(s => s.grade))).filter(Boolean);
 
@@ -256,8 +259,8 @@ const AdminDailyReports: React.FC<Props> = ({
         // Find subject from exam schedule
         const scheduleItem = examSchedule?.find(exam => 
           matchesDate(exam.exam_date, reportDate) && 
-          exam.period === selectedPeriod && 
-          exam.grades?.includes(grade)
+          Number(exam.period) === Number(selectedPeriod) && 
+          (!exam.grades?.length || exam.grades.includes(grade))
         );
         const resolvedSubject = scheduleItem?.subject || sv?.subject || '—';
 
@@ -291,7 +294,7 @@ const AdminDailyReports: React.FC<Props> = ({
       const s = searchTerm.toLowerCase();
       return row.committee.includes(s) || row.proctorName.toLowerCase().includes(s) || row.subject.toLowerCase().includes(s);
     });
-  }, [students, supervisions, users, deliveryLogs, reportDate, selectedPeriod, searchTerm, committeeReports]);
+  }, [students, supervisions, users, deliveryLogs, reportDate, selectedPeriod, searchTerm, committeeReports, examSchedule, controlRequests]);
 
   const stats = useMemo(() => ({
     total: reportData.length,

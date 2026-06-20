@@ -66,7 +66,7 @@ const AdminSupervisionMonitor: React.FC<Props> = ({ supervisions, users, student
     return committeeNums.flatMap(num => {
       const committeeStudents = students.filter(s => s.committee_number === num);
       const gradesInCommittee = Array.from(new Set(committeeStudents.map(s => s.grade)));
-      const sv = supervisions.find(s => s.committee_number === num);
+      const sv = supervisions.find(s => String(s.committee_number) === String(num) && matchesReportDate(s.date));
       const proctor = users.find(u => u.id === sv?.teacher_id);
 
       return gradesInCommittee.map(grade => {
