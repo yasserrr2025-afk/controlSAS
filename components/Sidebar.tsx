@@ -33,9 +33,20 @@ const Sidebar: React.FC<SidebarProps> = ({
   user, onLogout, activeTab, setActiveTab, isOpen, setIsOpen, isCollapsed, setIsCollapsed, controlRequests = []
 }) => {
   const role = user?.role || 'PROCTOR';
+  const normalizePersonKey = (value?: string | null) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const requestTargetsUser = (request: ControlRequest) => {
+    const from = normalizePersonKey(request.from);
+    const fullName = normalizePersonKey(user.full_name);
+    const id = normalizePersonKey(user.id);
+    const nationalId = normalizePersonKey(user.national_id);
+    return Boolean(from && (from === fullName || from === id || from === nationalId || (fullName && (from.includes(fullName) || fullName.includes(from)))));
+  };
   
   const pendingCount = controlRequests.filter(r => 
-    (role === 'PROCTOR' ? r.from === user.full_name : user.assigned_committees?.includes(r.committee)) && 
+    (
+      requestTargetsUser(r) ||
+      user.assigned_committees?.includes(r.committee)
+    ) && 
     (r.status === 'PENDING' || r.status === 'IN_PROGRESS')
   ).length;
 
@@ -61,6 +72,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'official-forms', label: 'النماذج (الغياب والتأخير)', icon: FileText },
     { id: 'envelope-opening', label: 'فتح المظاريف', icon: Inbox },
     { id: 'paper-logs', label: 'استلام المظاريف', icon: Inbox },
+    { id: 'proctor-alerts', label: 'سجل البلاغات', icon: MessageSquareQuote, badge: pendingCount > 0 ? pendingCount : null },
     { id: 'envelope-labels', label: 'ملصقات المظاريف', icon: QrCode },
     { id: 'settings', label: 'إعدادات النظام', icon: Settings },
   ];
@@ -71,6 +83,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'envelope-opening', label: 'فتح المظاريف', icon: Inbox },
     { id: 'paper-logs', label: 'استلام المظاريف', icon: Inbox },
     { id: 'receipt-history', label: 'سجل العمليات', icon: History },
+    { id: 'proctor-alerts', label: 'سجل البلاغات', icon: MessageSquareQuote, badge: pendingCount > 0 ? pendingCount : null },
   ];
 
   const proctorLinks: SidebarLink[] = [
@@ -81,16 +94,19 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const counselorLinks: SidebarLink[] = [
     { id: 'student-absences', label: 'متابعة الغياب', icon: Users },
+    { id: 'proctor-alerts', label: 'سجل البلاغات', icon: MessageSquareQuote, badge: pendingCount > 0 ? pendingCount : null },
   ];
 
   const controlLinks: SidebarLink[] = [
     { id: 'envelope-opening', label: 'فتح المظاريف', icon: Inbox },
     { id: 'paper-logs', label: 'استلام المظاريف', icon: Inbox },
     { id: 'receipt-history', label: 'سجل العمليات', icon: History },
+    { id: 'proctor-alerts', label: 'سجل البلاغات', icon: MessageSquareQuote, badge: pendingCount > 0 ? pendingCount : null },
   ];
 
   const assistantControlLinks: SidebarLink[] = [
     { id: 'assigned-requests', label: 'بلاغات اللجان', icon: ShieldAlert, badge: pendingCount > 0 ? pendingCount : null },
+    { id: 'proctor-alerts', label: 'سجل البلاغات', icon: MessageSquareQuote, badge: pendingCount > 0 ? pendingCount : null },
   ];
 
   const links = role === 'ADMIN' ? adminLinks : 

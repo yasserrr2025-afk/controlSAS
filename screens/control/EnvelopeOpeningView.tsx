@@ -89,6 +89,12 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
     if (!scannedData) return;
     try {
       const activeDate = systemConfig.active_exam_date || new Date().toISOString().split('T')[0];
+      const subjectTeacher = users.find(item =>
+        item.id === scannedData.teacherId ||
+        item.national_id === scannedData.teacherId ||
+        item.full_name === scannedData.teacherName
+      );
+      const subjectTeacherName = subjectTeacher?.full_name || scannedData.teacherName || '';
       const newRecord: Partial<EnvelopeOpening> = {
         id: crypto.randomUUID(),
         date: activeDate,
@@ -97,8 +103,8 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
         grade: scannedData.grade,
         status,
         opened_by: user.full_name,
-        subject_teacher_id: scannedData.teacherId,
-        subject_teacher_name: scannedData.teacherName,
+        subject_teacher_id: subjectTeacher?.id || scannedData.teacherId,
+        subject_teacher_name: subjectTeacherName,
       };
       try {
         await db.envelopeOpenings.upsert(newRecord);
@@ -106,14 +112,21 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
         const { subject_teacher_id, subject_teacher_name, ...legacyRecord } = newRecord;
         await db.envelopeOpenings.upsert(legacyRecord);
       }
-      if (scannedData.teacherName && newRecord.id) {
+      if (subjectTeacherName && newRecord.id) {
         await db.controlRequests.insert({
-          from: scannedData.teacherName,
+          from: subjectTeacherName,
           committee: `ENV:${newRecord.id}`,
           text: `${SIGNATURE_REQUEST_PREFIX} توقيع معلم المادة على محضر فتح مظروف ${scannedData.subject} - ${scannedData.grade}`,
           time: new Date().toISOString(),
           status: 'PENDING',
         });
+        if (subjectTeacher) {
+          await db.notifications.broadcast(
+            `لديك محضر فتح مظروف بانتظار توقيعك: ${scannedData.subject} - ${scannedData.grade}`,
+            subjectTeacher.id,
+            user.full_name
+          ).catch(() => undefined);
+        }
       }
       await fetchOpenings();
       await onRefresh?.();

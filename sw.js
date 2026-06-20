@@ -92,14 +92,41 @@ self.addEventListener('message', (event) => {
   }
 });
 
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { body: event.data ? event.data.text() : '' };
+  }
+
+  const title = payload.title || 'كنترول الاختبارات';
+  const options = {
+    body: payload.body || payload.message || 'تنبيه جديد من الكنترول',
+    icon: payload.icon || 'https://www.raed.net/img?id=1488645',
+    badge: payload.badge || 'https://www.raed.net/img?id=1488645',
+    dir: 'rtl',
+    lang: 'ar',
+    tag: payload.tag || `control-push-${Date.now()}`,
+    renotify: true,
+    requireInteraction: Boolean(payload.requireInteraction ?? true),
+    data: {
+      url: payload.url || '/',
+    },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const targetUrl = event.notification?.data?.url || '/';
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
         if ('focus' in client) return client.focus();
       }
-      if (clients.openWindow) return clients.openWindow('/');
+      if (clients.openWindow) return clients.openWindow(targetUrl);
       return undefined;
     })
   );

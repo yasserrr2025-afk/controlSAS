@@ -159,3 +159,14 @@ export interface AppNotification {
   sender?: string;
   created_at?: string;
 }
+
+export interface PushSubscriptionRecord {
+  id?: string;
+  user_id: string;
+  user_role: UserRole | string;
+  endpoint: string;
+  subscription: any;
+  user_agent?: string;
+  updated_at?: string;
+  created_at?: string;
+}

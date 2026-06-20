@@ -1,6 +1,6 @@
 
 import React, { useMemo, useRef, useState } from 'react';
-import { ControlRequest, DeliveryLog, Supervision } from '../../types';
+import { ControlRequest, DeliveryLog, Supervision, User } from '../../types';
 import {
   History, Clock, CheckCircle2, Timer, UserCheck, Ghost,
   BarChart3, Circle, ChevronDown, ChevronUp,
@@ -19,6 +19,7 @@ import {
 interface Props {
   requests: ControlRequest[];
   userFullName: string;
+  currentUser?: User;
   deliveryLogs: DeliveryLog[];
   supervisions: Supervision[];
   systemConfig: { active_exam_date?: string };
@@ -50,13 +51,21 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
 }
 
-const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliveryLogs, supervisions, systemConfig, setRequests }) => {
+const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, currentUser, deliveryLogs, supervisions, systemConfig, setRequests }) => {
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDING' | 'IN_PROGRESS' | 'DONE'>('ALL');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [signatureRequest, setSignatureRequest] = useState<ControlRequest | null>(null);
   const signatureCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingRef = useRef(false);
   const isEnvelopeSignatureRequest = (request: ControlRequest) => isSignatureRequest(request) && String(request.committee).startsWith('ENV:');
+  const normalizePersonKey = (value?: string | null) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const requestTargetsCurrentUser = (request: ControlRequest) => {
+    const from = normalizePersonKey(request.from);
+    const fullName = normalizePersonKey(userFullName);
+    const id = normalizePersonKey(currentUser?.id);
+    const nationalId = normalizePersonKey(currentUser?.national_id);
+    return Boolean(from && (from === fullName || from === id || from === nationalId || (fullName && (from.includes(fullName) || fullName.includes(from)))));
+  };
 
   const todayDate = systemConfig?.active_exam_date
     ? systemConfig.active_exam_date.split('T')[0]
@@ -76,7 +85,7 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
   /* ── تحديد الحالة الفعلية لكل طلب ── */
   const myHistory = useMemo(() => {
     return requests
-      .filter(r => r.from === userFullName && !isInternalSignatureRecord(r))
+      .filter(r => requestTargetsCurrentUser(r) && !isInternalSignatureRecord(r))
       .map(r => {
         // إذا كانت رسالة إنهاء لجنة وتم استلامها من الكنترول → مكتمل
         const isClosureMsg = r.text.includes('متجه') || r.text.includes('إنهاء') || r.text.includes('أنهى رصد');
@@ -86,7 +95,7 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, deliver
         return { ...r, effectiveStatus };
       })
       .sort((a, b) => b.time.localeCompare(a.time));
-  }, [requests, userFullName, confirmedCommittees]);
+  }, [requests, userFullName, currentUser, confirmedCommittees]);
 
   const stats = useMemo(() => ({
     total:       myHistory.length,

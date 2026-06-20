@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { User, UserRole, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, ExamSchedule, SupervisorVisit, AppNotification } from './types';
 import Sidebar from './components/Sidebar';
 import Login from './screens/Login';
@@ -47,6 +47,8 @@ import {
   requestBrowserNotificationPermission,
   showBrowserNotification
 } from './services/browserNotifications';
+import { registerExternalPush } from './services/pushNotifications';
+import { isSignatureRequest } from './services/signatures';
 import GlobalQRScanner from './components/GlobalQRScanner';
 import { BellRing, Menu, X, CheckCircle2, AlertCircle, Info, AlertTriangle, Loader2 } from 'lucide-react';
 import { db, supabase } from './supabase';
@@ -75,14 +77,15 @@ const ROLE_TABS: Record<UserRole, string[]> = {
     'paper-logs',
     'receipt-history',
     'envelope-labels',
+    'proctor-alerts',
     'settings',
     'ai-insights',
   ],
-  CONTROL_MANAGER: ['head-dash', 'control-manager', 'envelope-opening', 'paper-logs', 'receipt-history'],
+  CONTROL_MANAGER: ['head-dash', 'control-manager', 'envelope-opening', 'paper-logs', 'receipt-history', 'proctor-alerts'],
   PROCTOR: ['my-tasks', 'proctor-alerts', 'digital-id'],
-  CONTROL: ['envelope-opening', 'paper-logs', 'receipt-history'],
-  ASSISTANT_CONTROL: ['assigned-requests'],
-  COUNSELOR: ['student-absences'],
+  CONTROL: ['envelope-opening', 'paper-logs', 'receipt-history', 'proctor-alerts'],
+  ASSISTANT_CONTROL: ['assigned-requests', 'proctor-alerts'],
+  COUNSELOR: ['student-absences', 'proctor-alerts'],
 };
 
 const getDefaultTab = (role: UserRole) => {
@@ -140,6 +143,28 @@ const notificationMatchesUser = (notification: AppNotification, user: User) => {
   return target === 'ALL' || target === user.role || target === user.id || target === user.national_id;
 };
 
+const normalizePersonKey = (value?: string | null) =>
+  String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+const controlRequestTargetsUser = (request: ControlRequest, user: User) => {
+  const from = normalizePersonKey(request.from);
+  const fullName = normalizePersonKey(user.full_name);
+  const id = normalizePersonKey(user.id);
+  const nationalId = normalizePersonKey(user.national_id);
+  return Boolean(
+    from &&
+    (
+      from === fullName ||
+      from === id ||
+      from === nationalId ||
+      (fullName && (from.includes(fullName) || fullName.includes(from)))
+    )
+  );
+};
+
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<string>(localStorage.getItem('activeTab') || '');
@@ -172,6 +197,25 @@ const App: React.FC = () => {
   });
   const todayKey = () => getRiyadhDateKey();
 
+  const pendingEnvelopeSignatureRequests = useMemo(() => {
+    if (!currentUser) return [];
+    return controlRequests
+      .filter(request =>
+        request.status !== 'DONE' &&
+        isSignatureRequest(request) &&
+        String(request.committee || '').startsWith('ENV:') &&
+        controlRequestTargetsUser(request, currentUser)
+      )
+      .sort((a, b) => b.time.localeCompare(a.time));
+  }, [controlRequests, currentUser]);
+
+  const openSignatureCenter = () => {
+    if (!currentUser || !canOpenTab(currentUser, 'proctor-alerts')) return;
+    setActiveTab('proctor-alerts');
+    localStorage.setItem('activeTab', 'proctor-alerts');
+    setIsSidebarOpen(false);
+  };
+
   const addLocalNotification = (input: any, type: 'success' | 'error' | 'info' | 'warning' = 'info', options?: { persistent?: boolean }) => {
     const id = Math.random().toString(36).substr(2, 9);
     const msg = typeof input === 'string' ? input : (input?.message || "تنبيه جديد من النظام");
@@ -193,8 +237,13 @@ const App: React.FC = () => {
     const permission = await requestBrowserNotificationPermission();
     setBrowserNotificationPermission(permission);
     if (permission === 'granted') {
-      await showBrowserNotification('تم تفعيل الإشعارات', 'ستظهر التنبيهات المهمة على شاشة الجهاز عند فتح التطبيق أو عمله في الخلفية.');
-      addLocalNotification('تم تفعيل إشعارات الجوال بنجاح.', 'success');
+      try {
+        if (currentUser) await registerExternalPush(currentUser);
+        await showBrowserNotification('تم تفعيل الإشعارات', 'ستظهر التنبيهات المهمة على شاشة الجهاز عند فتح التطبيق أو عمله في الخلفية.');
+        addLocalNotification('تم تفعيل إشعارات الجوال الخارجية بنجاح.', 'success');
+      } catch (error: any) {
+        addLocalNotification(error.message || 'تم تفعيل إشعارات المتصفح، لكن تعذر تسجيل الجهاز للإشعارات الخارجية.', 'warning');
+      }
     } else if (permission === 'denied') {
       addLocalNotification('تم منع الإشعارات من المتصفح. فعّلها من إعدادات الموقع.', 'warning');
     }
@@ -664,7 +713,7 @@ const App: React.FC = () => {
       case 'paper-logs': return <ControlReceiptView user={currentUser} students={students} absences={absences} deliveryLogs={deliveryLogs} setDeliveryLogs={async (log) => { await db.deliveryLogs.upsert(log); await fetchData(); }} supervisions={supervisions} users={users} controlRequests={controlRequests} setControlRequests={fetchData} systemConfig={systemConfig} onAlert={addLocalNotification} />;
       case 'receipt-history': return <ReceiptLogsView deliveryLogs={deliveryLogs} users={users} />;
       case 'digital-id': return <TeacherBadgeView user={currentUser} />;
-      case 'proctor-alerts': return <ProctorAlertsHistory requests={controlRequests} userFullName={currentUser.full_name} deliveryLogs={deliveryLogs} supervisions={supervisions} systemConfig={systemConfig} setRequests={fetchData} />;
+      case 'proctor-alerts': return <ProctorAlertsHistory requests={controlRequests} userFullName={currentUser.full_name} currentUser={currentUser} deliveryLogs={deliveryLogs} supervisions={supervisions} systemConfig={systemConfig} setRequests={fetchData} />;
       case 'my-schedule': return <ProctorScheduleView user={currentUser} supervisions={allSupervisions} systemConfig={systemConfig} />;
       case 'student-absences': return <CounselorAbsenceMonitor user={currentUser} absences={absences} students={students} supervisions={supervisions} users={users} onAcknowledgeAbsence={(absence) => acknowledgeAbsenceReceipt(absence, currentUser)} onUpdateContactNote={(absence, contact) => updateAbsenceContactNote(absence, contact, currentUser)} />;
       case 'my-tasks': return <ProctorDailyAssignmentFlow user={currentUser} supervisions={supervisions} setSupervisions={fetchData} students={students} absences={absences} setAbsences={fetchData} deliveryLogs={deliveryLogs} setDeliveryLogs={async (log) => { await db.deliveryLogs.upsert(log); await fetchData(); }} sendRequest={async (txt, com) => { await db.controlRequests.insert({ from: currentUser.full_name, committee: com, text: txt, time: new Date().toISOString(), status: 'PENDING' }); await fetchData(); }} controlRequests={controlRequests} users={users} systemConfig={systemConfig} committeeReports={committeeReports} onReportUpsert={async (report) => { await db.committeeReports.upsert(report); await fetchData(); }} onAlert={addLocalNotification} />;
@@ -758,6 +807,32 @@ const App: React.FC = () => {
           <div className="pointer-events-auto p-4 rounded-2xl shadow-2xl flex items-center gap-4 bg-amber-50 text-amber-900 border-r-[6px] border-amber-500">
             <AlertTriangle size={22} className="shrink-0" />
             <p className="font-black text-[11px] lg:text-sm">الإشعارات ممنوعة من إعدادات المتصفح.</p>
+          </div>
+        )}
+        {pendingEnvelopeSignatureRequests.length > 0 && (
+          <div className="pointer-events-auto overflow-hidden rounded-3xl bg-gradient-to-br from-amber-50 via-white to-emerald-50 text-slate-950 shadow-2xl border border-amber-200 animate-slide-in">
+            <div className="border-r-[7px] border-amber-500 p-5">
+              <div className="flex items-start gap-4">
+                <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-lg shadow-amber-500/25">
+                  <BellRing size={24} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-black text-amber-700">تنبيه توقيع رسمي</p>
+                  <h3 className="mt-1 text-sm font-black leading-6 text-slate-950">
+                    لديك محضر فتح مظروف بانتظار توقيعك
+                  </h3>
+                  <p className="mt-1 text-[11px] font-bold leading-5 text-slate-500">
+                    يرجى توقيع محضر فتح مظروف الأسئلة حتى يكتمل التقرير الرسمي.
+                  </p>
+                  <button
+                    onClick={openSignatureCenter}
+                    className="mt-4 w-full rounded-2xl bg-slate-950 px-4 py-3 text-xs font-black text-white shadow-lg hover:bg-slate-800"
+                  >
+                    فتح شاشة التوقيع
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
         {notifications.map(n => (

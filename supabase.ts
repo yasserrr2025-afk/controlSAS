@@ -1,6 +1,6 @@
 
 import { createClient } from '@supabase/supabase-js';
-import { User, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, EnvelopeOpening, ExamSchedule, SupervisorVisit, AppNotification } from './types';
+import { User, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, EnvelopeOpening, ExamSchedule, SupervisorVisit, AppNotification, PushSubscriptionRecord } from './types';
 
 const supabaseUrl = 'https://yronlodrolzaefebqwyn.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlyb25sb2Ryb2x6YWVmZWJxd3luIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyMTU0MzksImV4cCI6MjA5NDc5MTQzOX0.ARvRLaB1amQhPUzl8rq1peAO3sw8LVgR8pBGtpDBT-8';
@@ -253,7 +253,34 @@ export const db = {
       }]);
       const err = handleError(error, "notifications.broadcast");
       if (err) throw new Error(err);
+
+      const pushResult = await supabase.functions.invoke('send-push-notification', {
+        body: { message, target, sender },
+      });
+      if (pushResult.error) {
+        console.warn('Push notification function warning:', pushResult.error.message);
+      }
     }
+  },
+
+  pushSubscriptions: {
+    upsert: async (user: User, subscription: any) => {
+      const endpoint = subscription?.endpoint;
+      if (!endpoint) throw new Error('تعذر قراءة معرف اشتراك الجهاز.');
+      const record: PushSubscriptionRecord = {
+        user_id: user.id,
+        user_role: user.role,
+        endpoint,
+        subscription,
+        user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await supabase
+        .from('push_subscriptions')
+        .upsert([record], { onConflict: 'endpoint' });
+      const err = handleError(error, "pushSubscriptions.upsert");
+      if (err) throw new Error(err);
+    },
   },
 
   envelopeOpenings: {
