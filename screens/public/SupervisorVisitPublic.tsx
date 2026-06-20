@@ -95,9 +95,9 @@ const SignaturePad: React.FC<{ value: string; onChange: (value: string) => void 
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
     const point = getPoint(event);
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.lineCap = 'round';
-    ctx.strokeStyle = '#0f172a';
+    ctx.strokeStyle = '#1d4ed8';
     ctx.lineTo(point.x, point.y);
     ctx.stroke();
   };

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Package, Printer, Trash2 } from 'lucide-react';
+import { Database, Package, Printer, Trash2 } from 'lucide-react';
 import { APP_CONFIG } from '../../constants';
 import { db, supabase } from '../../supabase';
 import { ExamEnvelope, SystemConfig, User } from '../../types';
@@ -53,7 +53,7 @@ const EnvelopeLabelsPrint: React.FC<Props> = ({ students, users, currentUser, sy
   const handleAddEnvelope = async () => {
     if (!subject.trim() || !grade || !selectedTeacher) return;
     try {
-      await db.examEnvelopes.upsert({
+      const newEnvelope: ExamEnvelope = {
         id: crypto.randomUUID(),
         exam_date: activeDate,
         period: 1,
@@ -63,14 +63,20 @@ const EnvelopeLabelsPrint: React.FC<Props> = ({ students, users, currentUser, sy
         subject_teacher_name: selectedTeacher.full_name,
         status: 'READY',
         created_by: currentUser?.full_name,
-      });
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      await db.examEnvelopes.upsert(newEnvelope);
+      setEnvelopeItems(prev => [newEnvelope, ...prev.filter(item => item.id !== newEnvelope.id)]);
       setSubject('');
       setGrade('');
       setTeacherId('');
       await fetchEnvelopes();
       onAlert?.('تم حفظ المظروف في قاعدة البيانات.', 'success');
     } catch (error: any) {
-      onAlert?.(error.message || 'تعذر حفظ المظروف.', 'error');
+      console.error('Failed to save exam envelope', error);
+      const message = error?.message || error?.details || JSON.stringify(error);
+      onAlert?.(`تعذر حفظ المظروف في قاعدة البيانات: ${message}`, 'error');
     }
   };
 
@@ -127,6 +133,10 @@ const EnvelopeLabelsPrint: React.FC<Props> = ({ students, users, currentUser, sy
             <p className="text-slate-400 font-bold max-w-lg">
               تنشأ المظاريف الآن في قاعدة البيانات، ويحتوي QR على رقم المظروف لضمان دقة اسم معلم المادة ومنع الخلط.
             </p>
+            <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-500/10 border border-emerald-400/30 text-emerald-200 px-4 py-2 text-xs font-black">
+              <Database size={16} />
+              مصدر ملصقات المظاريف: public.exam_envelopes
+            </div>
           </div>
           <button
             onClick={handlePrint}

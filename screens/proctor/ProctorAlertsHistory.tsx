@@ -128,8 +128,8 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, current
     const ctx = canvas.getContext('2d');
     const point = getCanvasPoint(event);
     if (ctx) {
-      ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#1d4ed8';
+      ctx.lineWidth = 4;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.beginPath();

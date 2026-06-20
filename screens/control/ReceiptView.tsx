@@ -324,10 +324,10 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
     const ctx = canvas.getContext('2d');
     const point = getCanvasPoint(canvas, event);
     if (!ctx) return;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#0f172a';
+    ctx.strokeStyle = '#1d4ed8';
     ctx.lineTo(point.x, point.y);
     ctx.stroke();
   };
