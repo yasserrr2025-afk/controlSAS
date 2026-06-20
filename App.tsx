@@ -188,6 +188,7 @@ const App: React.FC = () => {
   const [allCommitteeReports, setAllCommitteeReports] = useState<CommitteeReport[]>([]);
   const [examSchedule, setExamSchedule] = useState<ExamSchedule[]>([]);
   const [supervisorVisits, setSupervisorVisits] = useState<SupervisorVisit[]>([]);
+  const [dismissedSignatureRequestIds, setDismissedSignatureRequestIds] = useState<string[]>([]);
   const [systemConfig, setSystemConfig] = useState<SystemConfig>({ 
     id: 'main_config', 
     exam_start_time: '08:00', 
@@ -204,13 +205,20 @@ const App: React.FC = () => {
         request.status !== 'DONE' &&
         isSignatureRequest(request) &&
         String(request.committee || '').startsWith('ENV:') &&
+        !dismissedSignatureRequestIds.includes(request.id) &&
         controlRequestTargetsUser(request, currentUser)
       )
       .sort((a, b) => b.time.localeCompare(a.time));
-  }, [controlRequests, currentUser]);
+  }, [controlRequests, currentUser, dismissedSignatureRequestIds]);
 
   const openSignatureCenter = () => {
     if (!currentUser || !canOpenTab(currentUser, 'proctor-alerts')) return;
+    setDismissedSignatureRequestIds(prev => Array.from(new Set([
+      ...prev,
+      ...pendingEnvelopeSignatureRequests.map(request => request.id),
+    ])));
+    setNotifications([]);
+    setNotifications(prev => prev.filter(item => !item.text.includes('محضر فتح مظروف') && !item.text.includes('ظ…ط­ط¶ط± ظپطھط­ ظ…ط¸ط±ظˆظپ')));
     setActiveTab('proctor-alerts');
     localStorage.setItem('activeTab', 'proctor-alerts');
     setIsSidebarOpen(false);

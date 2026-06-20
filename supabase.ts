@@ -140,6 +140,13 @@ export const db = {
       const { error } = await supabase.from('control_requests').update(updateData).eq('id', id);
       const err = handleError(error, "controlRequests.updateStatus");
       if (err) throw new Error(err);
+    },
+    deleteByCommittees: async (committeeNumbers: string[]) => {
+      const cleanNumbers = committeeNumbers.filter(Boolean);
+      if (!cleanNumbers.length) return;
+      const { error } = await supabase.from('control_requests').delete().in('committee_number', cleanNumbers);
+      const err = handleError(error, "controlRequests.deleteByCommittees");
+      if (err) throw new Error(err);
     }
   },
 

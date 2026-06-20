@@ -6,7 +6,7 @@ import { Camera, X, CheckCircle2, ShieldAlert, PackageOpen, Printer, Trash2 } fr
 import { ControlRequest, EnvelopeOpening, User } from "../../types";
 import { db } from "../../supabase";
 import OfficialHeader from "../../components/OfficialHeader";
-import { ALL_GRADES_SIGNATURE, findStoredSignature, SIGNATURE_REQUEST_PREFIX } from "../../services/signatures";
+import { ALL_GRADES_SIGNATURE, findStoredSignature, findStoredSignatureByName, SIGNATURE_REQUEST_PREFIX } from "../../services/signatures";
 
 interface Props {
   user: User;
@@ -38,6 +38,89 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
     fetchOpenings();
   }, [systemConfig.active_exam_date]);
 
+  const normalizeEnvelopeValue = (value?: string | null) =>
+    String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+  const findDuplicateOpening = (
+    data: { subject: string, grade: string, teacherId?: string, teacherName?: string },
+    source: EnvelopeOpening[] = openings
+  ) => {
+    const subject = normalizeEnvelopeValue(data.subject);
+    const grade = normalizeEnvelopeValue(data.grade);
+    const teacherKey = normalizeEnvelopeValue(data.teacherId || data.teacherName);
+    return source.find(opening => {
+      const sameSubject = normalizeEnvelopeValue(opening.subject) === subject;
+      const sameGrade = normalizeEnvelopeValue(opening.grade) === grade;
+      const openingTeacherKey = normalizeEnvelopeValue(opening.subject_teacher_id || opening.subject_teacher_name);
+      const sameTeacher = !teacherKey || !openingTeacherKey || teacherKey === openingTeacherKey;
+      return sameSubject && sameGrade && sameTeacher;
+    });
+  };
+
+  const uniqueMembers = (members: Array<{ user?: User; name: string; work: string; title: string; signatureRole: 'subjectTeacher' | 'envelopeMember' }>) => {
+    const byName = new Map<string, { user?: User; name: string; work: string; title: string; signatureRole: 'subjectTeacher' | 'envelopeMember' }>();
+    members.filter(member => Boolean(member.name)).forEach(member => {
+      const key = normalizeEnvelopeValue(member.name);
+      const existing = byName.get(key);
+      if (!existing) {
+        byName.set(key, member);
+        return;
+      }
+      const works = Array.from(new Set([...existing.work.split(' / '), member.work])).filter(Boolean);
+      byName.set(key, {
+        user: existing.user || member.user,
+        name: existing.name,
+        work: works.join(' / '),
+        title: existing.title === member.title ? existing.title : `${existing.title} / ${member.title}`,
+        signatureRole: existing.signatureRole === 'subjectTeacher' || member.signatureRole === 'subjectTeacher'
+          ? 'subjectTeacher'
+          : 'envelopeMember',
+      });
+    });
+    return Array.from(byName.values());
+  };
+
+  const getEnvelopeCommitteeMembers = (record?: EnvelopeOpening | Partial<EnvelopeOpening> | null) => {
+    const subjectTeacherUser = users.find(item =>
+      item.id === record?.subject_teacher_id ||
+      item.national_id === record?.subject_teacher_id ||
+      item.full_name === record?.subject_teacher_name
+    );
+    const subjectTeacherName = subjectTeacherUser?.full_name || record?.subject_teacher_name || '';
+    const controlMembers = users.filter(item => item.role === 'CONTROL');
+    return uniqueMembers([
+      {
+        user: users.find(item => item.role === 'CONTROL_MANAGER'),
+        name: users.find(item => item.role === 'CONTROL_MANAGER')?.full_name || '',
+        work: 'رئيس الكنترول',
+        title: 'رئيساً',
+        signatureRole: 'envelopeMember',
+      },
+      ...controlMembers.slice(0, 3).map(member => ({
+        user: member,
+        name: member.full_name,
+        work: 'عضو كنترول',
+        title: 'عضواً',
+        signatureRole: 'envelopeMember' as const,
+      })),
+      {
+        user: subjectTeacherUser,
+        name: subjectTeacherName,
+        work: 'معلم المادة',
+        title: 'عضواً',
+        signatureRole: 'subjectTeacher',
+      },
+    ]);
+  };
+
+  const getMemberSignature = (record: EnvelopeOpening, member: { name: string; signatureRole: 'subjectTeacher' | 'envelopeMember' }) => {
+    if (member.signatureRole === 'subjectTeacher') {
+      return findStoredSignatureByName(controlRequests, 'subjectTeacher', record.id, member.name, ALL_GRADES_SIGNATURE)
+        || findStoredSignature(controlRequests, 'subjectTeacher', record.id, ALL_GRADES_SIGNATURE);
+    }
+    return findStoredSignatureByName(controlRequests, 'envelopeMember', record.id, member.name, ALL_GRADES_SIGNATURE);
+  };
+
   useEffect(() => {
     if (printRecord) {
       setTimeout(() => {
@@ -60,7 +143,15 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
           (text) => {
             if (text.startsWith("ENV|")) {
               const [, subject, grade, teacherId, teacherName] = text.split("|");
-              setScannedData({ subject, grade, teacherId, teacherName });
+              const parsedData = { subject, grade, teacherId, teacherName };
+              const duplicate = findDuplicateOpening(parsedData);
+              if (duplicate) {
+                onAlert?.(`هذا المظروف تم فتحه مسبقاً بواسطة ${duplicate.opened_by || 'مستخدم آخر'} عند الساعة ${duplicate.time}.`, 'warning');
+                if (!onAlert) alert("هذا المظروف تم فتحه مسبقاً ولا يمكن فتحه مرة أخرى.");
+                stopScanner();
+                return;
+              }
+              setScannedData(parsedData);
               stopScanner();
             } else {
               alert("الرمز غير صالح لمظروف الأسئلة. يجب أن يكون ملصق مظروف أسئلة معتمد.");
@@ -89,6 +180,14 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
     if (!scannedData) return;
     try {
       const activeDate = systemConfig.active_exam_date || new Date().toISOString().split('T')[0];
+      const latestOpenings = await db.envelopeOpenings.getAll();
+      const sameDayOpenings = latestOpenings.filter(item => item.date === activeDate);
+      const duplicate = findDuplicateOpening(scannedData, sameDayOpenings);
+      if (duplicate) {
+        onAlert?.(`لا يمكن تكرار فتح هذا المظروف. تم فتحه مسبقاً بواسطة ${duplicate.opened_by || 'مستخدم آخر'} عند الساعة ${duplicate.time}.`, 'warning');
+        setScannedData(null);
+        return;
+      }
       const subjectTeacher = users.find(item =>
         item.id === scannedData.teacherId ||
         item.national_id === scannedData.teacherId ||
@@ -112,20 +211,26 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
         const { subject_teacher_id, subject_teacher_name, ...legacyRecord } = newRecord;
         await db.envelopeOpenings.upsert(legacyRecord);
       }
-      if (subjectTeacherName && newRecord.id) {
-        await db.controlRequests.insert({
-          from: subjectTeacherName,
-          committee: `ENV:${newRecord.id}`,
-          text: `${SIGNATURE_REQUEST_PREFIX} توقيع معلم المادة على محضر فتح مظروف ${scannedData.subject} - ${scannedData.grade}`,
-          time: new Date().toISOString(),
-          status: 'PENDING',
-        });
-        if (subjectTeacher) {
-          await db.notifications.broadcast(
-            `لديك محضر فتح مظروف بانتظار توقيعك: ${scannedData.subject} - ${scannedData.grade}`,
-            subjectTeacher.id,
-            user.full_name
-          ).catch(() => undefined);
+      if (newRecord.id) {
+        const signatureMembers = getEnvelopeCommitteeMembers(newRecord);
+        for (const member of signatureMembers) {
+          const isSubjectTeacher = member.signatureRole === 'subjectTeacher';
+          await db.controlRequests.insert({
+            from: member.name,
+            committee: `ENV:${newRecord.id}`,
+            text: isSubjectTeacher
+              ? `${SIGNATURE_REQUEST_PREFIX} توقيع معلم المادة على محضر فتح مظروف ${scannedData.subject} - ${scannedData.grade}`
+              : `${SIGNATURE_REQUEST_PREFIX} توقيع عضو لجنة فتح المظروف على محضر فتح مظروف ${scannedData.subject} - ${scannedData.grade}`,
+            time: new Date().toISOString(),
+            status: 'PENDING',
+          });
+          if (member.user) {
+            await db.notifications.broadcast(
+              `لديك محضر فتح مظروف بانتظار توقيعك: ${scannedData.subject} - ${scannedData.grade}`,
+              member.user.id,
+              user.full_name
+            ).catch(() => undefined);
+          }
         }
       }
       await fetchOpenings();
@@ -141,9 +246,16 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
   };
 
   const handleDelete = async (id: string) => {
+    if (user.role !== 'ADMIN') {
+      onAlert?.('حذف فتح المظروف متاح فقط لمدير النظام.', 'warning');
+      return;
+    }
     if (confirm("هل أنت متأكد من حذف هذا السجل؟")) {
+      await db.controlRequests.deleteByCommittees([`ENV:${id}`, id]);
       await db.envelopeOpenings.delete(id);
       await fetchOpenings();
+      await onRefresh?.();
+      onAlert?.('تم حذف سجل فتح المظروف وطلبات التوقيع المرتبطة به.', 'success');
     }
   };
 
@@ -240,7 +352,9 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 no-print">
         {openings.map(o => {
-          const subjectTeacherSigned = Boolean(findStoredSignature(controlRequests, 'subjectTeacher', o.id, ALL_GRADES_SIGNATURE)?.signature);
+          const committeeMembers = getEnvelopeCommitteeMembers(o);
+          const signedMembersCount = committeeMembers.filter(member => Boolean(getMemberSignature(o, member)?.signature)).length;
+          const allMembersSigned = committeeMembers.length > 0 && signedMembersCount === committeeMembers.length;
           return (
           <div key={o.id} className="bg-white p-8 rounded-[3rem] shadow-md border border-slate-100 relative overflow-hidden flex flex-col hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
             <div className="flex justify-between items-start mb-6 border-b border-slate-50 pb-6">
@@ -266,10 +380,10 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
                 <span className="text-slate-400 font-bold text-sm">معلم المادة:</span>
                 <span className="font-black text-slate-800">{getSubjectTeacherName(o) || '---'}</span>
               </div>
-              <div className={`rounded-2xl border p-4 ${subjectTeacherSigned ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>
+              <div className={`rounded-2xl border p-4 ${allMembersSigned ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-black">{subjectTeacherSigned ? 'تم توقيع معلم المادة' : 'بانتظار توقيع معلم المادة'}</span>
-                  {subjectTeacherSigned ? <CheckCircle2 size={20} /> : <ShieldAlert size={20} />}
+                  <span className="text-sm font-black">{allMembersSigned ? 'تم اكتمال توقيعات المحضر' : `بانتظار التوقيعات (${signedMembersCount}/${committeeMembers.length})`}</span>
+                  {allMembersSigned ? <CheckCircle2 size={20} /> : <ShieldAlert size={20} />}
                 </div>
               </div>
             </div>
@@ -278,9 +392,11 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
               <button onClick={() => setPrintRecord(o)} className="flex-1 py-4 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-[1.5rem] font-black text-lg flex justify-center items-center gap-2 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
                 <Printer size={20} /> طباعة المحضر
               </button>
-              <button onClick={() => handleDelete(o.id)} className="p-4 bg-red-50 text-red-500 rounded-[1.5rem] hover:bg-red-600 hover:text-white transition-all">
-                <Trash2 size={24} />
-              </button>
+              {user.role === 'ADMIN' && (
+                <button onClick={() => handleDelete(o.id)} className="p-4 bg-red-50 text-red-500 rounded-[1.5rem] hover:bg-red-600 hover:text-white transition-all">
+                  <Trash2 size={24} />
+                </button>
+              )}
             </div>
           </div>
           );
@@ -353,9 +469,10 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
                  #envelope-print-portal div[style*="font-size: 14px"] { font-size: 14px !important; }
                  #envelope-print-portal .official-signature-row {
                    margin-top: 16mm;
-                   padding: 0 18mm;
+                   padding: 0 24mm;
                    display: flex;
                    justify-content: flex-start;
+                   direction: ltr;
                    font-size: 14px;
                    font-weight: 900;
                  }
@@ -368,6 +485,7 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
                    align-items: center;
                    justify-content: flex-start;
                    gap: 2.5mm;
+                   direction: rtl;
                  }
                  #envelope-print-portal .principal-title {
                    font-size: 14px;
@@ -464,6 +582,24 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
                 </tr>
               </thead>
               <tbody>
+                {getEnvelopeCommitteeMembers(printRecord).map((member, index) => {
+                  const signature = getMemberSignature(printRecord, member);
+                  return (
+                    <tr key={`${member.name}-${member.work}`}>
+                      <td style={{ border: '1px solid #000', padding: '15px' }}>{index + 1}</td>
+                      <td style={{ border: '1px solid #000', padding: '15px' }}>{member.name}</td>
+                      <td style={{ border: '1px solid #000', padding: '15px', fontWeight: 'bold' }}>{member.work}</td>
+                      <td style={{ border: '1px solid #000', padding: '15px', fontWeight: 'bold' }}>{member.title}</td>
+                      <td style={{ border: '1px solid #000', padding: '8px' }}>
+                        {signature?.signature ? (
+                          <img src={signature.signature} alt={`توقيع ${member.name}`} style={{ height: 42, maxWidth: 150, objectFit: 'contain', margin: '0 auto' }} />
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {false && (
+                <>
                 <tr>
                   <td style={{ border: '1px solid #000', padding: '15px' }}>1</td>
                   <td style={{ border: '1px solid #000', padding: '15px' }}>{users.find(u => u.role === 'CONTROL_MANAGER')?.full_name || ''}</td>
@@ -503,6 +639,8 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
                     ) : null}
                   </td>
                 </tr>
+                </>
+                )}
               </tbody>
             </table>
 

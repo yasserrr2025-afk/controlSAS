@@ -162,11 +162,14 @@ const ProctorAlertsHistory: React.FC<Props> = ({ requests, userFullName, current
     if (!canvas || !signatureRequest) return;
     const committeeId = String(signatureRequest.committee || '').replace(/^ENV:/, '');
     const signature = canvas.toDataURL('image/png');
+    const signatureRole = signatureRequest.text.includes('عضو لجنة فتح المظروف') || signatureRequest.text.includes('ط¹ط¶ظˆ ظ„ط¬ظ†ط© ظپطھط­ ط§ظ„ظ…ط¸ط±ظˆظپ')
+      ? 'envelopeMember'
+      : 'subjectTeacher';
     await db.controlRequests.insert({
       from: userFullName,
       committee: committeeId,
       text: buildSignatureText({
-        role: 'subjectTeacher',
+        role: signatureRole,
         committee: committeeId,
         grade: ALL_GRADES_SIGNATURE,
         name: userFullName,

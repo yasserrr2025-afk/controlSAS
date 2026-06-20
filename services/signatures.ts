@@ -1,6 +1,6 @@
 import { ControlRequest } from '../types';
 
-export type SignatureRole = 'receiver' | 'proctor' | 'subjectTeacher';
+export type SignatureRole = 'receiver' | 'proctor' | 'subjectTeacher' | 'envelopeMember';
 
 export interface StoredSignature {
   role: SignatureRole;
@@ -47,6 +47,24 @@ export const findStoredSignature = (
       item.role === role &&
       String(item.committee).trim() === committeeKey &&
       (!gradeKey || item.grade === gradeKey || item.grade === ALL_GRADES_SIGNATURE)
+    )
+    .sort((a, b) => b.time.localeCompare(a.time))[0] || null;
+};
+
+export const findStoredSignatureByName = (
+  requests: ControlRequest[] = [],
+  role: SignatureRole,
+  committee: string | number,
+  name: string,
+  grade?: string,
+) => {
+  const nameKey = String(name || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  return getStoredSignatures(requests)
+    .filter(item =>
+      item.role === role &&
+      String(item.committee).trim() === String(committee).trim() &&
+      String(item.name || '').replace(/\s+/g, ' ').trim().toLowerCase() === nameKey &&
+      (!grade || item.grade === grade || item.grade === ALL_GRADES_SIGNATURE)
     )
     .sort((a, b) => b.time.localeCompare(a.time))[0] || null;
 };
