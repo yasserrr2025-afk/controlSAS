@@ -719,7 +719,7 @@ const App: React.FC = () => {
            <button onClick={() => setActiveTab('dashboard')} className="fixed top-6 left-6 z-[230] bg-white/10 text-white p-3 rounded-full hover:bg-white/20">
               <X size={32} />
            </button>
-           <ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} />
+           <ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} systemConfig={systemConfig} />
         </div>
       );
       case 'comprehensive-stats': return <ComprehensiveStats students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} systemConfig={systemConfig} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />;
@@ -802,7 +802,7 @@ const App: React.FC = () => {
 
   const isTv2Public = params.get('tv2');
   if (isTv2Public) {
-    return <ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} />;
+    return <ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} systemConfig={systemConfig} />;
   }
 
   const isStudentInquiry = params.get('student_inquiry');

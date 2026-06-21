@@ -152,14 +152,18 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
   }, [deliveryLogs, todayDate, user.full_name]);
 
   const isReceiverSummon = (request: ControlRequest) => request.text?.startsWith('[CALL_RECEIVER]');
-  const cleanSummonText = (text?: string) => String(text || '').replace('[CALL_RECEIVER]', '').trim();
+  const cleanSummonText = (text?: string) => String(text || '').replace('[CALL_RECEIVER]', '').replace(/\[PERIOD:\d+\]/g, '').trim();
 
   const activeCommitteeSummons = useMemo(() => {
     if (!activeCommitteeId) return [];
     return controlRequests
-      .filter(request => request.committee === activeCommitteeId && request.status !== 'DONE' && isReceiverSummon(request))
+      .filter(request => {
+        const periodMatch = String(request.text || '').match(/\[PERIOD:(\d+)\]/);
+        const requestPeriod = periodMatch ? Number(periodMatch[1]) || 1 : 1;
+        return request.committee === activeCommitteeId && request.status !== 'DONE' && isReceiverSummon(request) && requestPeriod === activeReceiptPeriod;
+      })
       .sort((a, b) => b.time.localeCompare(a.time));
-  }, [activeCommitteeId, controlRequests]);
+  }, [activeCommitteeId, activeReceiptPeriod, controlRequests]);
 
   const handleSendSummon = async () => {
     if (!activeCommitteeId || isSummonSaving) return;
@@ -169,7 +173,7 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
       await db.controlRequests.insert({
         from: `${user.full_name} - المستلم`,
         committee: activeCommitteeId,
-        text: `[CALL_RECEIVER] استدعاء المراقب: ${summonReason}${notePart}`,
+        text: `[CALL_RECEIVER] [PERIOD:${activeReceiptPeriod}] استدعاء المراقب: ${summonReason}${notePart}`,
         time: new Date().toISOString(),
         status: 'PENDING',
       });

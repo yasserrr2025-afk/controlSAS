@@ -31,16 +31,28 @@ const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, su
   const [receivingId, setReceivingId] = useState<string | null>(null);
   const [contactDrafts, setContactDrafts] = useState<Record<string, string>>({});
   const [savingContactId, setSavingContactId] = useState<string | null>(null);
+  const [periodFilter, setPeriodFilter] = useState<'ALL' | number>('ALL');
   const assignedGrades = user.assigned_grades || [];
+
+  const availablePeriods = useMemo(() => {
+    return Array.from(new Set(absences.map(a => Number(a.period || 1))))
+      .filter(period => Number.isFinite(period))
+      .sort((a, b) => a - b);
+  }, [absences]);
 
   const enrichedAbsences = useMemo(() => {
     return absences.map((a: Absence) => {
+      const absencePeriod = Number(a.period || 1);
       const student = students.find((s: Student) => s.national_id === a.student_id);
-      const supervision = supervisions.find((sv: Supervision) => sv.committee_number === a.committee_number);
+      const supervision = supervisions.find((sv: Supervision) =>
+        sv.committee_number === a.committee_number &&
+        Number(sv.period || 1) === absencePeriod
+      );
       const proctor = users.find((u: User) => u.id === (supervision?.teacher_id || a.proctor_id));
 
       return {
         ...a,
+        period: absencePeriod,
         studentName: student?.name || a.student_name,
         grade: student?.grade || '---',
         section: student?.section || '---',
@@ -50,13 +62,15 @@ const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, su
       };
     }).filter((a: any) => {
       const insideScope = assignedGrades.length > 0 && assignedGrades.includes(a.grade);
+      const matchesPeriod = periodFilter === 'ALL' || Number(a.period || 1) === periodFilter;
       const matchesSearch = !searchTerm ||
         a.studentName.includes(searchTerm) ||
         a.committee_number.includes(searchTerm) ||
-        a.grade.includes(searchTerm);
-      return insideScope && matchesSearch;
+        a.grade.includes(searchTerm) ||
+        `فترة ${a.period}`.includes(searchTerm);
+      return insideScope && matchesPeriod && matchesSearch;
     });
-  }, [absences, students, supervisions, users, searchTerm, assignedGrades]);
+  }, [absences, students, supervisions, users, searchTerm, periodFilter, assignedGrades]);
 
   const stats = {
     total: enrichedAbsences.length,
@@ -104,6 +118,23 @@ const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, su
               <span className="rounded-xl bg-orange-50 px-4 py-2 text-xs font-black text-orange-700 border border-orange-100">لم يتم إسناد صفوف لهذا الموجه</span>
             )}
           </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              onClick={() => setPeriodFilter('ALL')}
+              className={`rounded-full px-4 py-2 text-xs font-black border transition-all ${periodFilter === 'ALL' ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:border-blue-200'}`}
+            >
+              كل الفترات
+            </button>
+            {availablePeriods.map(period => (
+              <button
+                key={period}
+                onClick={() => setPeriodFilter(period)}
+                className={`rounded-full px-4 py-2 text-xs font-black border transition-all ${periodFilter === period ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:border-blue-200'}`}
+              >
+                فترة {period}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-4 w-full lg:w-auto">
@@ -139,6 +170,9 @@ const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, su
               <div className="flex justify-between items-start mb-6">
                 <span className={`px-4 py-1.5 rounded-full font-black text-[10px] uppercase tracking-widest shadow-sm ${a.type === 'ABSENT' ? 'bg-red-600 text-white' : 'bg-amber-500 text-white'}`}>
                   {a.type === 'ABSENT' ? 'غائب' : 'متأخر'}
+                </span>
+                <span className="px-4 py-1.5 rounded-full text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-100">
+                  فترة {a.period || 1}
                 </span>
                 <span className={`px-4 py-1.5 rounded-full text-[10px] font-black ${a.receipt ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                   {a.receipt ? 'تم الاستلام' : 'بانتظار الاستلام'}
@@ -244,6 +278,7 @@ const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, su
               <th className="border-2 border-slate-900 p-2 font-black">م</th>
               <th className="border-2 border-slate-900 p-2 font-black">اسم الطالب</th>
               <th className="border-2 border-slate-900 p-2 font-black">اللجنة</th>
+              <th className="border-2 border-slate-900 p-2 font-black">الفترة</th>
               <th className="border-2 border-slate-900 p-2 font-black">الحالة</th>
               <th className="border-2 border-slate-900 p-2 font-black">استلام الحالة</th>
               <th className="border-2 border-slate-900 p-2 font-black">متابعة الاتصال</th>
@@ -255,6 +290,7 @@ const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, su
                 <td className="border-2 border-slate-900 p-2 font-bold">{i + 1}</td>
                 <td className="border-2 border-slate-900 p-2 text-right px-4 font-black">{stat.studentName}</td>
                 <td className="border-2 border-slate-900 p-2 font-bold">{stat.committee_number}</td>
+                <td className="border-2 border-slate-900 p-2 font-bold">{stat.period || 1}</td>
                 <td className="border-2 border-slate-900 p-2">{stat.type === 'ABSENT' ? 'غائب' : 'متأخر'}</td>
                 <td className="border-2 border-slate-900 p-2">{stat.receipt ? `تم - ${stat.receipt.by}` : 'لم يستلم'}</td>
                 <td className="border-2 border-slate-900 p-2 text-right px-4">

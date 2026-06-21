@@ -352,13 +352,19 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     () =>
       controlRequests
         .filter(
-          (r) =>
-            r.committee === activeCommittee &&
-            r.status !== "DONE" &&
-            (r.from === user.full_name || r.text?.startsWith('[CALL_RECEIVER]') || isSignatureRequest(r)),
+          (r) => {
+            const periodMatch = String(r.text || '').match(/\[PERIOD:(\d+)\]/) || String(r.text || '').match(/فترة\s*(\d+)/);
+            const requestPeriod = periodMatch ? Number(periodMatch[1]) || 1 : 1;
+            return (
+              r.committee === activeCommittee &&
+              r.status !== "DONE" &&
+              requestPeriod === activePeriod &&
+              (r.from === user.full_name || r.text?.startsWith('[CALL_RECEIVER]') || isSignatureRequest(r))
+            );
+          },
         )
         .sort((a, b) => b.time.localeCompare(a.time)),
-    [controlRequests, user.full_name, activeCommittee],
+    [controlRequests, user.full_name, activeCommittee, activePeriod],
   );
 
   const isReceiverSummon = (request: ControlRequest) => request.text?.startsWith('[CALL_RECEIVER]');
@@ -492,7 +498,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
         if (!pending.length) return;
         for (const rec of pending) {
           if (rec._delete) {
-            await db.absences.delete(rec.student_id).catch(() => {});
+            await db.absences.delete(rec.student_id, rec.period, String(rec.date || activeDate).slice(0, 10)).catch(() => {});
           } else {
             await db.absences.upsert(rec).catch(() => {});
           }
@@ -662,17 +668,22 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       try {
         const raw = localStorage.getItem(localKey);
         const list: any[] = raw ? JSON.parse(raw) : [];
-        const idx = list.findIndex(r => r.student_id === rec.student_id);
+        const idx = list.findIndex(r =>
+          r.student_id === rec.student_id &&
+          Number(r.period || 1) === Number(rec.period || 1)
+        );
         if (idx >= 0) list[idx] = rec; else list.push(rec);
         localStorage.setItem(localKey, JSON.stringify(list));
         setLocalPendingCount(list.length);
       } catch {}
     };
-    const removeFromLocal = (studentId: string) => {
+    const removeFromLocal = (studentId: string, period = activePeriod) => {
       try {
         const raw = localStorage.getItem(localKey);
         if (!raw) return;
-        const list: any[] = JSON.parse(raw).filter((r: any) => r.student_id !== studentId);
+        const list: any[] = JSON.parse(raw).filter((r: any) =>
+          !(r.student_id === studentId && Number(r.period || 1) === Number(period || 1))
+        );
         localStorage.setItem(localKey, JSON.stringify(list));
         setLocalPendingCount(list.length);
       } catch {}
@@ -681,8 +692,8 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     // ── ثانياً: رفع للسيرفر (مع fallback محلي) ──
     try {
       if (isRemoving) {
-        removeFromLocal(student.national_id);
-        await db.absences.delete(student.national_id);
+        removeFromLocal(student.national_id, activePeriod);
+        await db.absences.delete(student.national_id, activePeriod, activeDate);
       } else {
         const rec = {
           id: existing?.id || crypto.randomUUID(),
@@ -702,7 +713,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
           return;
         }
         await db.absences.upsert(rec);
-        removeFromLocal(student.national_id); // نجح الرفع → نمسح المحلي
+        removeFromLocal(student.national_id, activePeriod); // نجح الرفع → نمسح المحلي
       }
       await setAbsences();
     } catch (err: any) {
