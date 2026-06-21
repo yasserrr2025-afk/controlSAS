@@ -255,6 +255,17 @@ const ControlManager: React.FC<ControlManagerProps> = ({
     alert('تم حفظ أرشيف اليوم محليًا على هذا الجهاز.');
   };
 
+  const handleStartSecondPeriod = async () => {
+    await setSystemConfig({
+      ...systemConfig,
+      active_period: 2,
+      active_period_date: activeExamDateKey,
+      second_period_started_at: new Date().toISOString(),
+    });
+    onBroadcast(`تم بدء الفترة الثانية بتاريخ ${activeExamDateKey}. يمكن للمراقبين المسندين للفترة الثانية تأكيد دخول اللجان الآن.`, 'PROCTOR');
+    addAuditEvent('بدء الفترة الثانية', `تم فتح اعتماد دخول الفترة الثانية بتاريخ ${activeExamDateKey}`);
+  };
+
   const broadcastTemplates = [
     { tone: 'INFO', title: 'تعليمات عامة', msg: 'تنبيه من الكنترول: يرجى الالتزام بالتعليمات الرسمية ومتابعة إشعارات النظام أولًا بأول.' },
     { tone: 'URGENT', title: 'تنبيه عاجل', msg: 'تنبيه عاجل من الكنترول: يرجى مراجعة البلاغ فورًا واتخاذ الإجراء المطلوب دون تأخير.' },
@@ -387,6 +398,7 @@ const ControlManager: React.FC<ControlManagerProps> = ({
              onCommit={onCommitSmartDistribution}
              onDeleteSupervisions={onDeleteSmartDistributions}
              onUpdateSupervision={onUpdateSmartDistribution}
+             onStartSecondPeriod={handleStartSecondPeriod}
              systemConfig={systemConfig}
            />
 

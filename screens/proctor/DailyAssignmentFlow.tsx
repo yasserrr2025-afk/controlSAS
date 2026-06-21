@@ -7,6 +7,7 @@ import {
   DeliveryLog,
   ControlRequest,
   CommitteeReport,
+  ExamSchedule,
 } from "../../types";
 import { Html5Qrcode } from "html5-qrcode";
 import {
@@ -65,6 +66,7 @@ interface Props {
   deliveryLogs?: DeliveryLog[];
   setDeliveryLogs: (log: Partial<DeliveryLog>) => Promise<void>;
   systemConfig: any;
+  examSchedule?: ExamSchedule[];
   controlRequests?: ControlRequest[];
 }
 
@@ -81,6 +83,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   deliveryLogs = [],
   setDeliveryLogs,
   systemConfig,
+  examSchedule = [],
   controlRequests = [],
 }) => {
   const [isScanning, setIsScanning] = useState(false);
@@ -234,7 +237,24 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   }, []);
 
   const assignmentGate = useMemo(() => {
-    const [hours, minutes] = String(systemConfig?.exam_start_time || '08:00').split(':').map(Number);
+    if (activePeriod >= 2) {
+      const startedAt = systemConfig?.second_period_started_at
+        ? new Date(systemConfig.second_period_started_at)
+        : null;
+      const isPeriodStarted =
+        String(systemConfig?.active_period_date || '') === activeDate &&
+        Number(systemConfig?.active_period || 1) >= activePeriod;
+
+      return {
+        examStart: startedAt || new Date(`${activeDate}T00:00:00`),
+        opensAt: startedAt,
+        canConfirm: isPeriodStarted,
+        source: 'manual',
+      };
+    }
+
+    const startTime = systemConfig?.exam_start_time || '08:00';
+    const [hours, minutes] = String(startTime).split(':').map(Number);
     const examStart = new Date(`${activeDate}T00:00:00`);
     examStart.setHours(Number.isFinite(hours) ? hours : 8, Number.isFinite(minutes) ? minutes : 0, 0, 0);
     const opensAt = new Date(examStart.getTime() - 15 * 60 * 1000);
@@ -242,13 +262,16 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       examStart,
       opensAt,
       canConfirm: gateNow.getTime() >= opensAt.getTime(),
+      source: 'system',
     };
-  }, [activeDate, systemConfig?.exam_start_time, gateNow]);
+  }, [activeDate, activePeriod, systemConfig?.active_period, systemConfig?.active_period_date, systemConfig?.second_period_started_at, systemConfig?.exam_start_time, gateNow]);
 
-  const gateTimeLabel = assignmentGate.opensAt.toLocaleTimeString('ar-SA', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const gateTimeLabel = assignmentGate.opensAt
+    ? assignmentGate.opensAt.toLocaleTimeString('ar-SA', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : 'بدء الفترة الثانية من مدير النظام';
 
   const buildActiveDateTimestamp = () => {
     const now = new Date();

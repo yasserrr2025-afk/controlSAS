@@ -26,6 +26,7 @@ interface Props {
   onDeleteExamSchedule?: (id: string) => Promise<void>;
   onCommit?: (items: any[], replaceExisting: boolean) => Promise<void>;
   onDeleteSupervisions?: (ids: string[]) => Promise<void>;
+  onStartSecondPeriod?: () => Promise<void>;
   systemConfig?: { academic_year?: string; [key: string]: any };
 }
 
@@ -69,6 +70,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
   onDeleteExamSchedule,
   onCommit,
   onDeleteSupervisions,
+  onStartSecondPeriod,
 }) => {
   const [step, setStep] = useState<WizardStep>('SELECT_EXAM');
   const [selectedPeriod, setSelectedPeriod] = useState<DistributionPeriod | null>(null);
@@ -81,6 +83,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
   const [distributionMode, setDistributionMode] = useState<DistributionMode>('AUTO');
   const [expandedPeriodKey, setExpandedPeriodKey] = useState<string | null>(null);
   const [isSecondPeriodPreparing, setIsSecondPeriodPreparing] = useState(false);
+  const [isStartingSecondPeriod, setIsStartingSecondPeriod] = useState(false);
   
   const [distributionFilter, setDistributionFilter] = useState(''); // Used to view past distributions
   
@@ -151,8 +154,23 @@ const SmartProctorDistribution: React.FC<Props> = ({
     [pastDistributions, activeExamDate],
   );
 
+  const isSecondPeriodStarted = useMemo(
+    () =>
+      String(systemConfig?.active_period_date || '') === activeExamDate &&
+      Number(systemConfig?.active_period || 1) >= 2,
+    [systemConfig?.active_period, systemConfig?.active_period_date, activeExamDate],
+  );
+
+  const secondPeriodDistribution = useMemo(
+    () => pastDistributions.find(item => item.date === activeExamDate && Number(item.period || 1) === 2) || null,
+    [pastDistributions, activeExamDate],
+  );
+
   const startSecondPeriodPreparation = () => {
-    if (isSecondPeriodCommitted) return;
+    if (secondPeriodDistribution) {
+      startEditDistribution(secondPeriodDistribution);
+      return;
+    }
     if (!todaySecondPeriod) {
       alert(`لا يوجد اختبار مسجل للفترة الثانية بتاريخ ${activeExamDate}. أضف اختبار الفترة الثانية أولاً من نموذج "إضافة اختبار للجدول"، ثم اضغط تجهيز الفترة الثانية.`);
       return;
@@ -166,6 +184,21 @@ const SmartProctorDistribution: React.FC<Props> = ({
     setDistributionMode('AUTO');
     setStep('EXCLUDE_PROCTORS');
     window.setTimeout(() => setIsSecondPeriodPreparing(false), 250);
+  };
+
+  const startSecondPeriodNow = async () => {
+    if (!onStartSecondPeriod || isStartingSecondPeriod) return;
+    if (!isSecondPeriodCommitted) {
+      alert('اعتمد تسكين الفترة الثانية أولاً، ثم اضغط بدء الفترة الثانية.');
+      return;
+    }
+    if (!confirm('بدء الفترة الثانية الآن؟ سيظهر زر اعتماد دخول اللجنة للمراقبين المسندين في الفترة الثانية.')) return;
+    setIsStartingSecondPeriod(true);
+    try {
+      await onStartSecondPeriod();
+    } finally {
+      setIsStartingSecondPeriod(false);
+    }
   };
 
   // Handlers for Drag and Drop
@@ -711,34 +744,52 @@ const SmartProctorDistribution: React.FC<Props> = ({
                 تاريخ اليوم النشط: {activeExamDate}
               </div>
               <h4 className="text-xl font-black text-slate-900">
-                {isSecondPeriodCommitted ? 'تم اعتماد الفترة الثانية' : 'تجهيز الفترة الثانية'}
+                {isSecondPeriodCommitted ? 'تسكين الفترة الثانية' : 'تجهيز الفترة الثانية'}
               </h4>
               <p className="mt-1 text-sm font-bold text-slate-600">
                 {isSecondPeriodCommitted
-                  ? 'توزيع الفترة الثانية محفوظ ومعتمد لهذا التاريخ، ولن يتم خلطه مع الفترة الأولى.'
+                  ? 'توزيع الفترة الثانية محفوظ ومعتمد. يمكنك فتحه الآن لمراجعة أو تعديل تسكين المراقبين دون خلطه مع الفترة الأولى.'
                   : todaySecondPeriod
                     ? `اختبار الفترة الثانية جاهز للتجهيز: ${todaySecondPeriod.subjects.join('، ') || 'مواد متعددة'}.`
                     : 'أضف اختبار الفترة الثانية لهذا التاريخ أولاً، ثم استخدم هذا الزر لتجهيز توزيعها.'}
               </p>
             </div>
-            <button
-              onClick={startSecondPeriodPreparation}
-              disabled={isSecondPeriodCommitted || isSecondPeriodPreparing}
-              className={`px-7 py-4 rounded-2xl font-black flex items-center justify-center gap-3 shadow-lg transition-all active:scale-95 disabled:cursor-not-allowed ${
-                isSecondPeriodCommitted
-                  ? 'bg-emerald-600 text-white shadow-emerald-100'
-                  : 'bg-blue-600 text-white shadow-blue-100 hover:bg-blue-700 disabled:opacity-60'
-              }`}
-            >
-              {isSecondPeriodPreparing ? (
-                <RefreshCcw size={20} className="animate-spin" />
-              ) : isSecondPeriodCommitted ? (
-                <Check size={20} />
-              ) : (
-                <Wand2 size={20} />
-              )}
-              {isSecondPeriodCommitted ? 'تم اعتماد الفترة الثانية' : 'تجهيز الفترة الثانية'}
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={startSecondPeriodPreparation}
+                disabled={isSecondPeriodPreparing}
+                className={`px-7 py-4 rounded-2xl font-black flex items-center justify-center gap-3 shadow-lg transition-all active:scale-95 disabled:cursor-not-allowed ${
+                  isSecondPeriodCommitted
+                    ? 'bg-emerald-600 text-white shadow-emerald-100 hover:bg-emerald-700'
+                    : 'bg-blue-600 text-white shadow-blue-100 hover:bg-blue-700 disabled:opacity-60'
+                }`}
+              >
+                {isSecondPeriodPreparing ? (
+                  <RefreshCcw size={20} className="animate-spin" />
+                ) : isSecondPeriodCommitted ? (
+                  <Edit2 size={20} />
+                ) : (
+                  <Wand2 size={20} />
+                )}
+                {isSecondPeriodCommitted ? 'عرض/تعديل تسكين الفترة الثانية' : 'تجهيز الفترة الثانية'}
+              </button>
+              <button
+                onClick={startSecondPeriodNow}
+                disabled={!isSecondPeriodCommitted || isSecondPeriodStarted || isStartingSecondPeriod}
+                className={`px-7 py-4 rounded-2xl font-black flex items-center justify-center gap-3 shadow-lg transition-all active:scale-95 disabled:cursor-not-allowed ${
+                  isSecondPeriodStarted
+                    ? 'bg-emerald-700 text-white shadow-emerald-100'
+                    : 'bg-slate-950 text-white shadow-slate-200 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none'
+                }`}
+              >
+                {isStartingSecondPeriod ? (
+                  <RefreshCcw size={20} className="animate-spin" />
+                ) : (
+                  <Check size={20} />
+                )}
+                {isSecondPeriodStarted ? 'الفترة الثانية بدأت' : 'بدء الفترة الثانية'}
+              </button>
+            </div>
           </div>
           
           {/* Add Exam Form */}
