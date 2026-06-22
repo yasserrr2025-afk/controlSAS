@@ -153,6 +153,11 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
 
   const isReceiverSummon = (request: ControlRequest) => request.text?.startsWith('[CALL_RECEIVER]');
   const cleanSummonText = (text?: string) => String(text || '').replace('[CALL_RECEIVER]', '').replace(/\[PERIOD:\d+\]/g, '').trim();
+  const getRequestPeriod = (request: ControlRequest) => {
+    const periodMatch = String(request.text || '').match(/\[PERIOD:(\d+)\]/) || String(request.text || '').match(/فترة\s*(\d+)/);
+    return periodMatch ? Number(periodMatch[1]) || 1 : 1;
+  };
+  const requestMatchesReceiptPeriod = (request: ControlRequest, period: number) => getRequestPeriod(request) === Number(period || 1);
 
   const activeCommitteeSummons = useMemo(() => {
     if (!activeCommitteeId) return [];
@@ -221,7 +226,13 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
         const isReady = !isReceived && (proctorSubmittedCommittees.has(`${info.committee}__${period}`) || Boolean(pendingLog));
         const gradeAbsences = absences.filter(a => a.committee_number === info.committee && Number(a.period || 1) === period && a.type === 'ABSENT' && matchDate(a.date, todayDate) && students.find(s => s.national_id === a.student_id)?.grade === info.grade);
         const gradeLates = absences.filter(a => a.committee_number === info.committee && Number(a.period || 1) === period && a.type === 'LATE' && matchDate(a.date, todayDate) && students.find(s => s.national_id === a.student_id)?.grade === info.grade);
-        const openAlerts = controlRequests.filter(r => r.committee === info.committee && r.status !== 'DONE' && !isInternalSignatureRecord(r) && !isSignatureRequest(r));
+        const openAlerts = controlRequests.filter(r =>
+          r.committee === info.committee &&
+          r.status !== 'DONE' &&
+          requestMatchesReceiptPeriod(r, period) &&
+          !isInternalSignatureRecord(r) &&
+          !isSignatureRequest(r)
+        );
         const status = isReceived ? 'RECEIVED' : isReady ? 'READY' : 'WAITING';
         return {
           ...info,
@@ -773,7 +784,13 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
                           )}
                         </div>
 
-                        {controlRequests.some(r => r.committee === activeCommitteeId && r.status !== 'DONE' && !isInternalSignatureRecord(r) && !isSignatureRequest(r)) && (
+                        {controlRequests.some(r =>
+                          r.committee === activeCommitteeId &&
+                          r.status !== 'DONE' &&
+                          requestMatchesReceiptPeriod(r, Number((currentQueue[currentQueueIndex] as any)?.period || activeReceiptPeriod || 1)) &&
+                          !isInternalSignatureRecord(r) &&
+                          !isSignatureRequest(r)
+                        ) && (
                           <div className="bg-red-50 border border-red-100 rounded-[2rem] p-5 flex items-start gap-4">
                             <ShieldAlert size={24} className="text-red-600 shrink-0 mt-1" />
                             <div className="text-right">
