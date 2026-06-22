@@ -158,15 +158,12 @@ export const db = {
       return (data || []) as Absence[];
     },
     upsert: async (absence: Partial<Absence>) => {
-      const { error } = await supabase.from('absences').upsert([absence], { onConflict: 'id' });
+      const { error } = await supabase.from('absences').upsert([absence], { onConflict: 'student_id' });
       const err = handleError(error, "absences.upsert");
       if (err) throw new Error(err);
     },
-    delete: async (studentId: string, period?: number, date?: string) => {
-      let query = supabase.from('absences').delete().eq('student_id', studentId);
-      if (period !== undefined) query = query.eq('period', period);
-      if (date) query = query.gte('date', `${date}T00:00:00`).lt('date', `${date}T23:59:59.999Z`);
-      const { error } = await query;
+    delete: async (studentId: string) => {
+      const { error } = await supabase.from('absences').delete().eq('student_id', studentId);
       const err = handleError(error, "absences.delete");
       if (err) throw new Error(err);
     }

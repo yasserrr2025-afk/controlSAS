@@ -248,6 +248,9 @@ const SignatureSheetPage = ({
     String(item.committee_number) === String(committee) &&
     sameDate(item.date, date) &&
     (!period || Number(item.period || 1) === Number(period))
+  ) || supervisions.find(item =>
+    String(item.committee_number) === String(committee) &&
+    sameDate(item.date, date)
   );
   const proctorName = resolveUserName(users, supervision?.teacher_id);
   const controlChiefFromSettings = systemConfig?.control_chief_id
@@ -563,12 +566,10 @@ const PrintSheets: React.FC<Props> = ({
 
       if (sheetType === 'committee-closures') {
         const committeeList = selectedCommittee === 'ALL' ? committees : [selectedCommittee];
-        const selectedPeriods = new Set(selectedExams.map(exam => Number(exam.period || 1)));
-        const periodMatches = (period?: number) => selectedPeriods.size === 0 || selectedPeriods.has(Number(period || 1));
         const rows = committeeList.map(committee => {
-          const committeeSupervision = supervisions.find(item => String(item.committee_number) === String(committee) && dateMatches(item.date) && periodMatches(item.period));
-          const closeLogs = deliveryLogs.filter(log => String(log.committee_number) === String(committee) && dateMatches(log.time) && periodMatches(log.period) && log.type === 'RECEIVE' && log.status === 'PENDING');
-          const receiveLogs = deliveryLogs.filter(log => String(log.committee_number) === String(committee) && dateMatches(log.time) && periodMatches(log.period) && log.type === 'RECEIVE' && log.status === 'CONFIRMED');
+          const committeeSupervision = supervisions.find(item => String(item.committee_number) === String(committee) && dateMatches(item.date));
+          const closeLogs = deliveryLogs.filter(log => String(log.committee_number) === String(committee) && dateMatches(log.time) && log.type === 'RECEIVE' && log.status === 'PENDING');
+          const receiveLogs = deliveryLogs.filter(log => String(log.committee_number) === String(committee) && dateMatches(log.time) && log.type === 'RECEIVE' && log.status === 'CONFIRMED');
           return {
             committee,
             proctor: firstRealName(closeLogs[0]?.proctor_name, resolveUserName(users, committeeSupervision?.teacher_id)),

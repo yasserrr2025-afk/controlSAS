@@ -99,9 +99,6 @@ export interface SystemConfig {
   exam_start_time: string; 
   exam_date: string;
   active_exam_date?: string;
-  active_period?: number;
-  active_period_date?: string;
-  second_period_started_at?: string;
   academic_year?: string;
   allow_manual_join?: boolean;
   openrouter_api_key?: string;
