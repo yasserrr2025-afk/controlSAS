@@ -343,7 +343,7 @@ const App: React.FC = () => {
         ab.some(i => matchesExamDate(i.date, date)) ||
         reports.some(i => matchesExamDate(i.date, date));
 
-      if (!cfg?.active_exam_date && !hasDateData(filterDate)) {
+      if (!hasDateData(filterDate)) {
         const fallbackDates = sortDateKeysDesc([
           ...sv.filter(i => !isReserveSupervision(i)).map(i => getRiyadhDateKeyFromValue(i.date)),
           ...exams.map(i => String(i.exam_date || '').slice(0, 10)),
