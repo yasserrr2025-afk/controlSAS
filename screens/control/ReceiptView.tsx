@@ -12,7 +12,7 @@ import {
   Timer, Inbox, SlidersHorizontal
 } from 'lucide-react';
 import { db } from '../../supabase';
-import { buildSignatureText, isInternalSignatureRecord, isSignatureRequest, SIGNATURE_REQUEST_PREFIX } from '../../services/signatures';
+import { buildSignatureText, cleanControlRequestText, isInternalSignatureRecord, isSignatureRequest, SIGNATURE_REQUEST_PREFIX } from '../../services/signatures';
 
 interface Props {
   user: User;
@@ -143,7 +143,10 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
   }, [deliveryLogs, todayDate, user.full_name]);
 
   const isReceiverSummon = (request: ControlRequest) => request.text?.startsWith('[CALL_RECEIVER]');
-  const cleanSummonText = (text?: string) => String(text || '').replace('[CALL_RECEIVER]', '').trim();
+  const cleanSummonText = (text?: string) =>
+    cleanControlRequestText(text)
+      .replace('[CALL_RECEIVER]', '')
+      .trim();
 
   const activeCommitteeSummons = useMemo(() => {
     if (!activeCommitteeId) return [];
