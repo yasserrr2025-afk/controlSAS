@@ -1,9 +1,44 @@
 
-import React, { Suspense, lazy, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { User, UserRole, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, ExamSchedule, SupervisorVisit, AppNotification } from './types';
 import Sidebar from './components/Sidebar';
 import Login from './screens/Login';
 import type { SmartDistributionItem } from './screens/admin/SmartProctorDistribution';
+import AdminDashboardOverview from './screens/admin/DashboardOverview';
+import AdminUsersManager from './screens/admin/UsersManager';
+import AdminStudentsManager from './screens/admin/StudentsManager';
+import AdminSupervisionMonitor from './screens/admin/SupervisionMonitor';
+import AdminDailyReports from './screens/admin/DailyReports';
+import AdminOfficialForms from './screens/admin/OfficialForms';
+import AdminSystemSettings from './screens/admin/SystemSettings';
+import AdminProctorPerformance from './screens/admin/ProctorPerformance';
+import PrintSheets from './screens/admin/PrintSheets';
+import SeatingPlanner from './screens/admin/SeatingPlanner';
+import { ArchiveBoxesManager } from './screens/admin/ArchiveBoxesManager';
+import { MasterPortfolio } from './screens/admin/MasterPortfolio';
+import { PublicBoxReport } from './screens/public/PublicBoxReport';
+import { SupervisorVisitForm, SupervisorMiniPortfolio } from './screens/public/SupervisorVisitPublic';
+import AiDashboard from './screens/admin/AiDashboard';
+import ComprehensiveStats from './screens/admin/ComprehensiveStats';
+import CommitteeLabelsPrint from './screens/admin/CommitteeLabelsPrint';
+import ControlHeadDashboard from './screens/admin/ControlHeadDashboard';
+import ControlManager from './screens/admin/ControlManager';
+import ControlRoomMonitor from './screens/admin/ControlRoomMonitor';
+import ControlRoomMonitor2 from './screens/admin/ControlRoomMonitor2';
+import ProctorDailyAssignmentFlow from './screens/proctor/DailyAssignmentFlow';
+import ProctorAlertsHistory from './screens/proctor/ProctorAlertsHistory';
+import ProctorScheduleView from './screens/proctor/ProctorScheduleView';
+import TeacherBadgeView from './screens/proctor/TeacherBadgeView';
+import CounselorAbsenceMonitor from './screens/counselor/AbsenceMonitor';
+import ControlReceiptView from './screens/control/ReceiptView';
+import ReceiptLogsView from './screens/control/ReceiptLogsView';
+import AssistantControlView from './screens/control/AssistantControlView';
+import EnvelopeOpeningView from './screens/control/EnvelopeOpeningView';
+import EnvelopeLabelsPrint from './screens/admin/EnvelopeLabelsPrint';
+import DoorLabelsPrint from './screens/admin/DoorLabelsPrint';
+import CommitteePublicView from './screens/public/CommitteePublicView';
+import StudentCommitteeInquiry from './screens/public/StudentCommitteeInquiry';
+import SupervisionVerification from './screens/public/SupervisionVerification';
 import { buildAbsenceContactNote, buildAbsenceReceiptNote, getAbsenceKindLabel } from './services/absenceReceipt';
 import {
   BrowserNotificationPermission,
@@ -14,45 +49,8 @@ import {
 } from './services/browserNotifications';
 import { registerExternalPush } from './services/pushNotifications';
 import { isSignatureRequest } from './services/signatures';
-import { BellRing, Menu, X, CheckCircle2, AlertCircle, Info, AlertTriangle, Loader2 } from 'lucide-react';
+import { BellRing, Menu, X, CheckCircle2, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 import { db, supabase } from './supabase';
-
-const AdminDashboardOverview = lazy(() => import('./screens/admin/DashboardOverview'));
-const AdminUsersManager = lazy(() => import('./screens/admin/UsersManager'));
-const AdminStudentsManager = lazy(() => import('./screens/admin/StudentsManager'));
-const AdminSupervisionMonitor = lazy(() => import('./screens/admin/SupervisionMonitor'));
-const AdminDailyReports = lazy(() => import('./screens/admin/DailyReports'));
-const AdminOfficialForms = lazy(() => import('./screens/admin/OfficialForms'));
-const AdminSystemSettings = lazy(() => import('./screens/admin/SystemSettings'));
-const AdminProctorPerformance = lazy(() => import('./screens/admin/ProctorPerformance'));
-const PrintSheets = lazy(() => import('./screens/admin/PrintSheets'));
-const SeatingPlanner = lazy(() => import('./screens/admin/SeatingPlanner'));
-const ArchiveBoxesManager = lazy(() => import('./screens/admin/ArchiveBoxesManager').then(module => ({ default: module.ArchiveBoxesManager })));
-const MasterPortfolio = lazy(() => import('./screens/admin/MasterPortfolio').then(module => ({ default: module.MasterPortfolio })));
-const PublicBoxReport = lazy(() => import('./screens/public/PublicBoxReport').then(module => ({ default: module.PublicBoxReport })));
-const SupervisorVisitForm = lazy(() => import('./screens/public/SupervisorVisitPublic').then(module => ({ default: module.SupervisorVisitForm })));
-const SupervisorMiniPortfolio = lazy(() => import('./screens/public/SupervisorVisitPublic').then(module => ({ default: module.SupervisorMiniPortfolio })));
-const AiDashboard = lazy(() => import('./screens/admin/AiDashboard'));
-const ComprehensiveStats = lazy(() => import('./screens/admin/ComprehensiveStats'));
-const CommitteeLabelsPrint = lazy(() => import('./screens/admin/CommitteeLabelsPrint'));
-const ControlHeadDashboard = lazy(() => import('./screens/admin/ControlHeadDashboard'));
-const ControlManager = lazy(() => import('./screens/admin/ControlManager'));
-const ControlRoomMonitor = lazy(() => import('./screens/admin/ControlRoomMonitor'));
-const ControlRoomMonitor2 = lazy(() => import('./screens/admin/ControlRoomMonitor2'));
-const ProctorDailyAssignmentFlow = lazy(() => import('./screens/proctor/DailyAssignmentFlow'));
-const ProctorAlertsHistory = lazy(() => import('./screens/proctor/ProctorAlertsHistory'));
-const ProctorScheduleView = lazy(() => import('./screens/proctor/ProctorScheduleView'));
-const TeacherBadgeView = lazy(() => import('./screens/proctor/TeacherBadgeView'));
-const CounselorAbsenceMonitor = lazy(() => import('./screens/counselor/AbsenceMonitor'));
-const ControlReceiptView = lazy(() => import('./screens/control/ReceiptView'));
-const ReceiptLogsView = lazy(() => import('./screens/control/ReceiptLogsView'));
-const AssistantControlView = lazy(() => import('./screens/control/AssistantControlView'));
-const EnvelopeOpeningView = lazy(() => import('./screens/control/EnvelopeOpeningView'));
-const EnvelopeLabelsPrint = lazy(() => import('./screens/admin/EnvelopeLabelsPrint'));
-const DoorLabelsPrint = lazy(() => import('./screens/admin/DoorLabelsPrint'));
-const CommitteePublicView = lazy(() => import('./screens/public/CommitteePublicView'));
-const StudentCommitteeInquiry = lazy(() => import('./screens/public/StudentCommitteeInquiry'));
-const SupervisionVerification = lazy(() => import('./screens/public/SupervisionVerification'));
 
 const ROLE_TABS: Record<UserRole, string[]> = {
   ADMIN: [
@@ -101,21 +99,7 @@ const getDefaultTab = (role: UserRole) => {
   return defaults[role] || 'my-tasks';
 };
 
-const ScreenLoader = () => (
-  <div className="min-h-[55vh] flex flex-col items-center justify-center gap-5 text-center font-['Tajawal']" dir="rtl">
-    <Loader2 size={44} className="animate-spin text-blue-600" />
-    <div>
-      <p className="text-lg font-black text-slate-800">جاري فتح الشاشة...</p>
-      <p className="mt-1 text-xs font-bold text-slate-400">يتم تحميل الجزء المطلوب فقط لتسريع النظام.</p>
-    </div>
-  </div>
-);
-
-const withSuspense = (node: React.ReactNode) => (
-  <Suspense fallback={<ScreenLoader />}>
-    {node}
-  </Suspense>
-);
+const withSuspense = (node: React.ReactNode) => node;
 
 const canOpenTab = (user: User, tab: string) => ROLE_TABS[user.role]?.includes(tab) ?? false;
 const isReserveSupervision = (item: Supervision) => String(item.subject || '').includes('[RESERVE]');
@@ -442,21 +426,29 @@ const App: React.FC = () => {
       }
     }
     fetchData();
-    const interval = setInterval(fetchData, 10000);
+    const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
   useEffect(() => {
+    let refreshTimer: number | undefined;
+    const scheduleRefresh = () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        if (document.visibilityState !== 'hidden') fetchData();
+      }, 1200);
+    };
     const channel = supabase
       .channel('control-requests-live-sync')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'control_requests' },
-        () => fetchData(),
+        scheduleRefresh,
       )
       .subscribe();
 
     return () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer);
       supabase.removeChannel(channel);
     };
   }, [fetchData]);

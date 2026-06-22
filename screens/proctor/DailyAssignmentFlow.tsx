@@ -806,19 +806,20 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   const finalizeClosing = async () => {
     setIsVerifying(true);
     try {
-      for (const grade of myGrades) {
-        await setDeliveryLogs({
-          id: crypto.randomUUID(),
-          teacher_name: "بانتظار الكنترول",
-          proctor_name: user.full_name,
-          committee_number: activeCommittee!,
-          grade,
-          type: "RECEIVE",
-          time: new Date().toISOString(),
-          period: activePeriod,
-          status: "PENDING",
-        });
-      }
+      const now = new Date().toISOString();
+      const closingLogs = myGrades.map(grade => ({
+        id: crypto.randomUUID(),
+        teacher_name: "بانتظار الكنترول",
+        proctor_name: user.full_name,
+        committee_number: activeCommittee!,
+        grade,
+        type: "RECEIVE",
+        time: now,
+        period: activePeriod,
+        status: "PENDING",
+      }));
+      const { error } = await supabase.from("delivery_logs").upsert(closingLogs, { onConflict: "id" });
+      if (error) throw new Error(error.message);
       await sendRequest(
         `المراقب ${user.full_name} أنهى رصد اللجنة ومتجه للكنترول للتسليم. [PERIOD:${activePeriod}]`,
         activeCommittee!,
