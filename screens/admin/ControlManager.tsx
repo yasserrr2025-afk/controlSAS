@@ -159,7 +159,7 @@ const ControlManager: React.FC<ControlManagerProps> = ({
     if (!confirm(`بدء يوم جديد سيقوم بتصفير اللجان لليوم (${today}). هل أنت متأكد؟`)) return;
     setIsResetting(true);
     try {
-      await supabase.from('supervision').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      // Do not clear supervision rows here; live exam assignments must stay intact.
       await setSystemConfig({ ...systemConfig, active_exam_date: today });
       onBroadcast(`تم تفعيل يوم الاختبار الجديد (${today}). يرجى المباشرة فوراً.`, 'ALL');
       addAuditEvent('بداية يوم جديد', `تم تصفير اللجان وتفعيل تاريخ ${today}`);

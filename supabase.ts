@@ -174,7 +174,11 @@ export const db = {
 
   supervision: {
     getAll: async () => {
-      const { data, error } = await supabase.from('supervision').select('*');
+      const { data, error } = await supabase
+        .from('supervision')
+        .select('*')
+        .order('date', { ascending: false })
+        .limit(5000);
       const err = handleError(error, "supervision.getAll");
       if (err) throw new Error(err);
       return (data || []) as Supervision[];

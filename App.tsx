@@ -400,7 +400,8 @@ const App: React.FC = () => {
         }
       }
       setStudents(s);
-      setAllSupervisions(sv);
+      const supervisionRows = Array.isArray(sv) ? sv : [];
+      setAllSupervisions(prev => supervisionRows.length > 0 ? supervisionRows : prev);
       setAllAbsences(ab);
       setAllDeliveryLogs(dl);
       setAllControlRequests(cr);
@@ -409,7 +410,9 @@ const App: React.FC = () => {
       setSupervisorVisits(visits as SupervisorVisit[]);
       
       if (filterDate) {
-        setSupervisions(sv.filter(i => matchesExamDate(i.date, filterDate) && !isReserveSupervision(i))); 
+        if (supervisionRows.length > 0) {
+          setSupervisions(supervisionRows.filter(i => matchesExamDate(i.date, filterDate) && !isReserveSupervision(i)));
+        }
         setAbsences(ab.filter(i => matchesExamDate(i.date, filterDate))); 
         setDeliveryLogs(dl.filter(i => matchesExamDate(i.time, filterDate)));
         setControlRequests(cr.filter(i => matchesExamDate(i.time, filterDate)));
