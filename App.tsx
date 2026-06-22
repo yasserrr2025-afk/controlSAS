@@ -132,34 +132,6 @@ const matchesExamDate = (value: string | undefined | null, examDate: string) => 
   return String(value).startsWith(examDate) || getRiyadhDateKeyFromValue(value) === examDate;
 };
 
-const normalizeDateKey = (value?: string | null) => {
-  if (!value) return '';
-  const key = String(value).slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : getRiyadhDateKeyFromValue(value);
-};
-
-const pickDynamicExamDate = (
-  today: string,
-  configDate: string | undefined,
-  supervisions: Supervision[],
-  exams: ExamSchedule[],
-) => {
-  const candidates = Array.from(new Set([
-    ...supervisions.map(item => normalizeDateKey(item.date)),
-    ...exams.map(item => normalizeDateKey(item.exam_date)),
-  ].filter(key => /^\d{4}-\d{2}-\d{2}$/.test(key)))).sort();
-
-  if (candidates.includes(today)) return today;
-
-  const pastOrToday = candidates.filter(key => key <= today);
-  if (pastOrToday.length > 0) return pastOrToday[pastOrToday.length - 1];
-
-  const normalizedConfigDate = normalizeDateKey(configDate);
-  if (normalizedConfigDate && candidates.includes(normalizedConfigDate)) return normalizedConfigDate;
-
-  return candidates[0] || normalizedConfigDate || today;
-};
-
 const buildExamDateTimestamp = (examDate: string) => {
   const now = new Date();
   const pad = (value: number) => String(value).padStart(2, '0');
@@ -289,86 +261,32 @@ const App: React.FC = () => {
     try {
       const cfg = await db.config.get();
       const currentToday = todayKey();
-      const safeFetch = async <T,>(label: string, action: () => Promise<T>, fallback: T): Promise<T> => {
-        try {
-          return await action();
-        } catch (error: any) {
-          console.warn(`Sync Warning [${label}]:`, error?.message || error);
-          return fallback;
-        }
-      };
-
-      const [u, s, sv, exams, visits] = await Promise.all([
-        safeFetch('users', db.users.getAll, [] as User[]),
-        safeFetch('students', db.students.getAll, [] as Student[]),
-        safeFetch('supervision', db.supervision.getAll, [] as Supervision[]),
-        safeFetch('examSchedule', db.examSchedule.getAll, [] as ExamSchedule[]),
-        safeFetch('supervisorVisits', () => db.supervisorVisits.getAll(), [] as SupervisorVisit[]),
-      ]);
-      const supervisionRows = Array.isArray(sv) ? sv : [];
-      const filterDate = pickDynamicExamDate(currentToday, cfg?.active_exam_date, supervisionRows, exams);
+      let filterDate = currentToday;
       if (cfg) {
-        setSystemConfig(prev => ({ ...prev, ...cfg, active_exam_date: filterDate }));
-      } else {
-        setSystemConfig(prev => ({ ...prev, active_exam_date: filterDate }));
+        if (cfg.active_exam_date !== currentToday) {
+          const nextCfg = { ...cfg, active_exam_date: currentToday };
+          const lastAutoActiveDate = localStorage.getItem('last_auto_active_exam_date');
+          if (lastAutoActiveDate !== currentToday) {
+            await db.config.upsert(nextCfg);
+            localStorage.setItem('last_auto_active_exam_date', currentToday);
+          }
+          setSystemConfig(prev => ({ ...prev, ...nextCfg }));
+          filterDate = currentToday;
+        } else {
+          setSystemConfig(prev => ({ ...prev, ...cfg }));
+          filterDate = cfg.active_exam_date || currentToday;
+        }
       }
-
-      const nextDate = new Date(`${filterDate}T00:00:00`);
-      nextDate.setDate(nextDate.getDate() + 1);
-      const dayStart = filterDate;
-      const dayEndValue = nextDate.toISOString().slice(0, 10);
-
-      const [ab, cr, dl, reports] = await Promise.all([
-        safeFetch('absences.today', async () => {
-          const { data, error } = await supabase
-            .from('absences')
-            .select('*')
-            .gte('date', dayStart)
-            .lt('date', dayEndValue)
-            .limit(1000);
-          if (error) throw new Error(error.message);
-          return (data || []) as Absence[];
-        }, [] as Absence[]),
-        safeFetch('controlRequests.today', async () => {
-          const { data, error } = await supabase
-            .from('control_requests')
-            .select('*')
-            .gte('time', dayStart)
-            .lt('time', dayEndValue)
-            .order('time', { ascending: false })
-            .limit(500);
-          if (error) throw new Error(error.message);
-          return (data || []).map((d: any) => ({
-            id: d.id,
-            from: d.from_user_name,
-            committee: d.committee_number,
-            text: d.text,
-            time: d.time,
-            status: d.status,
-            assistant_name: d.assistant_name
-          })) as ControlRequest[];
-        }, [] as ControlRequest[]),
-        safeFetch('deliveryLogs.today', async () => {
-          const { data, error } = await supabase
-            .from('delivery_logs')
-            .select('*')
-            .gte('time', dayStart)
-            .lt('time', dayEndValue)
-            .limit(1000);
-          if (error) throw new Error(error.message);
-          return (data || []) as DeliveryLog[];
-        }, [] as DeliveryLog[]),
-        safeFetch('committeeReports.today', async () => {
-          const { data, error } = await supabase
-            .from('committee_reports')
-            .select('*')
-            .gte('date', dayStart)
-            .lt('date', dayEndValue)
-            .order('created_at', { ascending: false })
-            .limit(500);
-          if (error) throw new Error(error.message);
-          return (data || []) as CommitteeReport[];
-        }, [] as CommitteeReport[]),
+      const [u, s, sv, ab, cr, dl, reports, exams, visits] = await Promise.all([
+        db.users.getAll(),
+        db.students.getAll(),
+        db.supervision.getAll(),
+        db.absences.getAll(),
+        db.controlRequests.getAll(),
+        db.deliveryLogs.getAll(),
+        db.committeeReports.getAll(),
+        db.examSchedule.getAll(),
+        db.supervisorVisits.getAll().catch(() => []),
       ]);
       setUsers(u);
       const savedUser = localStorage.getItem('currentUser');
@@ -399,7 +317,7 @@ const App: React.FC = () => {
         }
       }
       setStudents(s);
-      setAllSupervisions(supervisionRows);
+      setAllSupervisions(sv);
       setAllAbsences(ab);
       setAllDeliveryLogs(dl);
       setAllControlRequests(cr);
@@ -408,7 +326,7 @@ const App: React.FC = () => {
       setSupervisorVisits(visits as SupervisorVisit[]);
       
       if (filterDate) {
-        setSupervisions(supervisionRows.filter(i => matchesExamDate(i.date, filterDate) && !isReserveSupervision(i))); 
+        setSupervisions(sv.filter(i => matchesExamDate(i.date, filterDate) && !isReserveSupervision(i))); 
         setAbsences(ab.filter(i => matchesExamDate(i.date, filterDate))); 
         setDeliveryLogs(dl.filter(i => matchesExamDate(i.time, filterDate)));
         setControlRequests(cr.filter(i => matchesExamDate(i.time, filterDate)));
@@ -438,29 +356,21 @@ const App: React.FC = () => {
       }
     }
     fetchData();
-    const interval = setInterval(fetchData, 60000);
+    const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
   useEffect(() => {
-    let refreshTimer: number | undefined;
-    const scheduleRefresh = () => {
-      if (refreshTimer) window.clearTimeout(refreshTimer);
-      refreshTimer = window.setTimeout(() => {
-        if (document.visibilityState !== 'hidden') fetchData();
-      }, 1200);
-    };
     const channel = supabase
       .channel('control-requests-live-sync')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'control_requests' },
-        scheduleRefresh,
+        () => fetchData(),
       )
       .subscribe();
 
     return () => {
-      if (refreshTimer) window.clearTimeout(refreshTimer);
       supabase.removeChannel(channel);
     };
   }, [fetchData]);
@@ -807,7 +717,7 @@ const App: React.FC = () => {
            <button onClick={() => setActiveTab('dashboard')} className="fixed top-6 left-6 z-[230] bg-white/10 text-white p-3 rounded-full hover:bg-white/20">
               <X size={32} />
            </button>
-           <ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} systemConfig={systemConfig} />
+           <ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} />
         </div>
       );
       case 'comprehensive-stats': return <ComprehensiveStats students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} systemConfig={systemConfig} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />;
@@ -829,7 +739,7 @@ const App: React.FC = () => {
       case 'proctor-alerts': return <ProctorAlertsHistory requests={controlRequests} userFullName={currentUser.full_name} currentUser={currentUser} deliveryLogs={deliveryLogs} supervisions={supervisions} systemConfig={systemConfig} setRequests={fetchData} />;
       case 'my-schedule': return <ProctorScheduleView user={currentUser} supervisions={allSupervisions} systemConfig={systemConfig} />;
       case 'student-absences': return <CounselorAbsenceMonitor user={currentUser} absences={absences} students={students} supervisions={supervisions} users={users} onAcknowledgeAbsence={(absence) => acknowledgeAbsenceReceipt(absence, currentUser)} onUpdateContactNote={(absence, contact) => updateAbsenceContactNote(absence, contact, currentUser)} />;
-      case 'my-tasks': return <ProctorDailyAssignmentFlow user={currentUser} supervisions={supervisions} setSupervisions={fetchData} students={students} absences={absences} setAbsences={fetchData} deliveryLogs={deliveryLogs} setDeliveryLogs={async (log) => { await db.deliveryLogs.upsert(log); await fetchData(); }} sendRequest={async (txt, com) => { await db.controlRequests.insert({ from: currentUser.full_name, committee: com, text: txt, time: new Date().toISOString(), status: 'PENDING' }); await fetchData(); }} controlRequests={controlRequests} users={users} systemConfig={systemConfig} examSchedule={examSchedule} committeeReports={committeeReports} onReportUpsert={async (report) => { await db.committeeReports.upsert(report); await fetchData(); }} onAlert={addLocalNotification} />;
+      case 'my-tasks': return <ProctorDailyAssignmentFlow user={currentUser} supervisions={supervisions} setSupervisions={fetchData} students={students} absences={absences} setAbsences={fetchData} deliveryLogs={deliveryLogs} setDeliveryLogs={async (log) => { await db.deliveryLogs.upsert(log); await fetchData(); }} sendRequest={async (txt, com) => { await db.controlRequests.insert({ from: currentUser.full_name, committee: com, text: txt, time: new Date().toISOString(), status: 'PENDING' }); await fetchData(); }} controlRequests={controlRequests} users={users} systemConfig={systemConfig} committeeReports={committeeReports} onReportUpsert={async (report) => { await db.committeeReports.upsert(report); await fetchData(); }} onAlert={addLocalNotification} />;
       case 'envelope-opening': return <EnvelopeOpeningView user={currentUser} systemConfig={systemConfig} users={users} controlRequests={allControlRequests} onRefresh={fetchData} onAlert={addLocalNotification} />;
       case 'envelope-labels': return <EnvelopeLabelsPrint students={students} users={users} currentUser={currentUser} systemConfig={systemConfig} onAlert={addLocalNotification} />;
       case 'door-labels': return <DoorLabelsPrint students={students} systemConfig={systemConfig} />;
@@ -890,7 +800,7 @@ const App: React.FC = () => {
 
   const isTv2Public = params.get('tv2');
   if (isTv2Public) {
-    return <ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} systemConfig={systemConfig} />;
+    return <ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} />;
   }
 
   const isStudentInquiry = params.get('student_inquiry');
