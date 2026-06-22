@@ -159,6 +159,14 @@ export const db = {
     },
     upsert: async (absence: Partial<Absence>) => {
       const { error } = await supabase.from('absences').upsert([absence], { onConflict: 'id' });
+      if (error?.code === '23505' && String(error.message || '').includes('absences_student_id_key')) {
+        const { error: fallbackError } = await supabase
+          .from('absences')
+          .upsert([absence], { onConflict: 'student_id' });
+        const fallbackErr = handleError(fallbackError, "absences.upsertByStudent");
+        if (fallbackErr) throw new Error(fallbackErr);
+        return;
+      }
       const err = handleError(error, "absences.upsert");
       if (err) throw new Error(err);
     },
@@ -299,7 +307,11 @@ export const db = {
 
   envelopeOpenings: {
     getAll: async () => {
-      const { data, error } = await supabase.from('envelope_openings').select('*');
+      const { data, error } = await supabase
+        .from('envelope_openings')
+        .select('*')
+        .order('time', { ascending: false })
+        .limit(500);
       const err = handleError(error, "envelopeOpenings.getAll");
       if (err) throw new Error(err);
       return (data || []) as EnvelopeOpening[];

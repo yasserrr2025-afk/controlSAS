@@ -390,7 +390,7 @@ const ControlManager: React.FC<ControlManagerProps> = ({
            <SmartProctorDistribution
              users={users}
              students={students}
-             supervisions={smartSupervisions || supervisions}
+             supervisions={(smartSupervisions && smartSupervisions.length > 0) ? smartSupervisions : supervisions}
              activeDate={systemConfig.active_exam_date}
              examSchedule={examSchedule}
              onUpsertExamSchedule={onUpsertExamSchedule}

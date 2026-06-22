@@ -99,11 +99,37 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
   const [showDayComplete, setShowDayComplete] = useState(false);
   const latestSeenRef = useRef({ request: '', absence: '', delivery: '' });
   const wasCompleteRef = useRef(false);
-  const activeDate = systemConfig?.active_exam_date || getRiyadhDateKey(new Date());
+  const configuredDate = String(systemConfig?.active_exam_date || '').slice(0, 10);
+  const todayDate = getRiyadhDateKey(new Date());
+  const activeDate = useMemo(() => {
+    const candidates = [
+      ...supervisions.map(item => item.date),
+      ...absences.map(item => item.date),
+      ...deliveryLogs.map(item => item.time),
+      ...requests.map(item => item.time),
+    ]
+      .map(value => getRiyadhDateKey(value || ''))
+      .filter(value => /^\d{4}-\d{2}-\d{2}$/.test(value));
+
+    if (candidates.includes(todayDate)) return todayDate;
+    if (configuredDate && candidates.includes(configuredDate)) return configuredDate;
+    return candidates.sort().at(-1) || configuredDate || todayDate;
+  }, [absences, configuredDate, deliveryLogs, requests, supervisions, todayDate]);
+
+  const detectedPeriod = useMemo(() => {
+    const periods = [
+      ...supervisions.filter(item => matchesMonitorDate(item.date, activeDate)).map(item => Number(item.period || 1)),
+      ...absences.filter(item => matchesMonitorDate(item.date, activeDate)).map(item => Number(item.period || 1)),
+      ...deliveryLogs.filter(item => matchesMonitorDate(item.time, activeDate)).map(item => Number(item.period || 1)),
+      ...requests.filter(item => matchesMonitorDate(item.time, activeDate)).map(item => getRequestPeriod(item) || 1),
+    ].filter(value => Number.isFinite(value) && value > 0);
+    return Math.max(1, ...periods);
+  }, [absences, activeDate, deliveryLogs, requests, supervisions]);
+
   const activePeriod =
     String(systemConfig?.active_period_date || '') === activeDate
-      ? Math.max(1, Number(systemConfig?.active_period || 1))
-      : 1;
+      ? Math.max(1, Number(systemConfig?.active_period || detectedPeriod))
+      : detectedPeriod;
 
   const scopedSupervisions = useMemo(
     () => supervisions.filter(s => matchesMonitorDate(s.date, activeDate) && Number(s.period || 1) === activePeriod),

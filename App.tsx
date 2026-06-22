@@ -133,6 +133,34 @@ const matchesExamDate = (value: string | undefined | null, examDate: string) => 
   return String(value).startsWith(examDate) || getRiyadhDateKeyFromValue(value) === examDate;
 };
 
+const normalizeDateKey = (value?: string | null) => {
+  if (!value) return '';
+  const key = String(value).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : getRiyadhDateKeyFromValue(value);
+};
+
+const pickDynamicExamDate = (
+  today: string,
+  configDate: string | undefined,
+  supervisions: Supervision[],
+  exams: ExamSchedule[],
+) => {
+  const candidates = Array.from(new Set([
+    ...supervisions.map(item => normalizeDateKey(item.date)),
+    ...exams.map(item => normalizeDateKey(item.exam_date)),
+  ].filter(key => /^\d{4}-\d{2}-\d{2}$/.test(key)))).sort();
+
+  if (candidates.includes(today)) return today;
+
+  const pastOrToday = candidates.filter(key => key <= today);
+  if (pastOrToday.length > 0) return pastOrToday[pastOrToday.length - 1];
+
+  const normalizedConfigDate = normalizeDateKey(configDate);
+  if (normalizedConfigDate && candidates.includes(normalizedConfigDate)) return normalizedConfigDate;
+
+  return candidates[0] || normalizedConfigDate || today;
+};
+
 const buildExamDateTimestamp = (examDate: string) => {
   const now = new Date();
   const pad = (value: number) => String(value).padStart(2, '0');
@@ -264,22 +292,6 @@ const App: React.FC = () => {
     try {
       const cfg = await db.config.get();
       const currentToday = todayKey();
-      let filterDate = currentToday;
-      if (cfg) {
-        if (cfg.active_exam_date !== currentToday) {
-          const nextCfg = { ...cfg, active_exam_date: currentToday };
-          const lastAutoActiveDate = localStorage.getItem('last_auto_active_exam_date');
-          if (lastAutoActiveDate !== currentToday) {
-            await db.config.upsert(nextCfg);
-            localStorage.setItem('last_auto_active_exam_date', currentToday);
-          }
-          setSystemConfig(prev => ({ ...prev, ...nextCfg }));
-          filterDate = currentToday;
-        } else {
-          setSystemConfig(prev => ({ ...prev, ...cfg }));
-          filterDate = cfg.active_exam_date || currentToday;
-        }
-      }
       const safeFetch = async <T,>(label: string, action: () => Promise<T>, fallback: T): Promise<T> => {
         try {
           return await action();
@@ -289,12 +301,6 @@ const App: React.FC = () => {
         }
       };
 
-      const nextDate = new Date(`${filterDate}T00:00:00`);
-      nextDate.setDate(nextDate.getDate() + 1);
-      const nextDateKey = nextDate.toISOString().slice(0, 10);
-      const dayStart = filterDate;
-      const dayEndValue = nextDateKey;
-
       const [u, s, sv, exams, visits] = await Promise.all([
         safeFetch('users', db.users.getAll, [] as User[]),
         safeFetch('students', db.students.getAll, [] as Student[]),
@@ -302,6 +308,19 @@ const App: React.FC = () => {
         safeFetch('examSchedule', db.examSchedule.getAll, [] as ExamSchedule[]),
         safeFetch('supervisorVisits', () => db.supervisorVisits.getAll(), [] as SupervisorVisit[]),
       ]);
+      const supervisionRows = Array.isArray(sv) ? sv : [];
+      const filterDate = pickDynamicExamDate(currentToday, cfg?.active_exam_date, supervisionRows, exams);
+      if (cfg) {
+        setSystemConfig(prev => ({ ...prev, ...cfg, active_exam_date: filterDate }));
+      } else {
+        setSystemConfig(prev => ({ ...prev, active_exam_date: filterDate }));
+      }
+
+      const nextDate = new Date(`${filterDate}T00:00:00`);
+      nextDate.setDate(nextDate.getDate() + 1);
+      const nextDateKey = nextDate.toISOString().slice(0, 10);
+      const dayStart = filterDate;
+      const dayEndValue = nextDateKey;
 
       const [ab, cr, dl, reports] = await Promise.all([
         safeFetch('absences.today', async () => {
@@ -384,7 +403,6 @@ const App: React.FC = () => {
         }
       }
       setStudents(s);
-      const supervisionRows = Array.isArray(sv) ? sv : [];
       setAllSupervisions(prev => supervisionRows.length > 0 ? supervisionRows : prev);
       setAllAbsences(ab);
       setAllDeliveryLogs(dl);

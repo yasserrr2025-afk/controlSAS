@@ -28,7 +28,11 @@ const EnvelopeOpeningView: React.FC<Props> = ({ user, systemConfig, users, contr
   const fetchOpenings = async () => {
     try {
       const data = await db.envelopeOpenings.getAll();
-      setOpenings(data.filter(d => d.date === (systemConfig.active_exam_date || new Date().toISOString().split('T')[0])));
+      setOpenings(
+        data.sort((a, b) =>
+          String(b.time || b.date || '').localeCompare(String(a.time || a.date || ''))
+        )
+      );
     } catch (e) {
       console.error(e);
     }
