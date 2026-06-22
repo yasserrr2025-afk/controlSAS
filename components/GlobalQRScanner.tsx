@@ -76,7 +76,7 @@ const GlobalQRScanner: React.FC<Props> = ({ students, absences, activeDate, onRe
       
       if (existing) {
         if (existing.type === type) {
-          await db.absences.delete(existing.student_id, existing.period, String(existing.date || activeDate).slice(0, 10));
+          await db.absences.delete(existing.id);
         } else {
           await db.absences.upsert({ ...existing, type });
         }
@@ -86,7 +86,6 @@ const GlobalQRScanner: React.FC<Props> = ({ students, absences, activeDate, onRe
           student_id: scannedStudent.national_id,
           student_name: scannedStudent.name,
           committee_number: scannedStudent.committee_number,
-          period: 1,
           type,
           date: new Date().toISOString()
         });

@@ -25,7 +25,7 @@ import {
   Users,
   Zap,
 } from 'lucide-react';
-import { Absence, ControlRequest, DeliveryLog, Student, Supervision, User } from '../../types';
+import { Absence, ControlRequest, DeliveryLog, Student, Supervision, SystemConfig, User } from '../../types';
 import { getAbsenceKindLabel, getAbsenceReceipt } from '../../services/absenceReceipt';
 import { isPlaceholderProctorStart } from '../../utils/proctorTime';
 import { cleanControlRequestText, isInternalSignatureRecord, isSignatureRequest } from '../../services/signatures';
@@ -37,6 +37,7 @@ interface Props {
   deliveryLogs: DeliveryLog[];
   students: Student[];
   requests: ControlRequest[];
+  systemConfig?: SystemConfig;
 }
 
 type Scene = 'overview' | 'map' | 'alerts' | 'attendance' | 'timeline';
@@ -49,7 +50,7 @@ const formatTime = (value?: string) => {
 };
 
 const isReceiverSummon = (request: ControlRequest) => request.text?.startsWith('[CALL_RECEIVER]');
-const cleanSummonText = (text?: string) => String(text || '').replace('[CALL_RECEIVER]', '').trim();
+const cleanSummonText = (text?: string) => String(text || '').replace('[CALL_RECEIVER]', '').replace(/\[PERIOD:\d+\]/g, '').trim();
 const summonAgeMinutes = (time?: string) => {
   if (!time) return 0;
   const value = new Date(time).getTime();
@@ -76,7 +77,21 @@ const matchesMonitorDate = (value: string | undefined | null, date: string) => {
   return text.startsWith(date) || getRiyadhDateKey(text) === date;
 };
 
-const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, deliveryLogs, students, requests }) => {
+const getRequestPeriod = (request: ControlRequest) => {
+  const text = String(request.text || '');
+  const explicit = text.match(/\[PERIOD:(\d+)\]/);
+  if (explicit) return Number(explicit[1]) || 1;
+  const arabic = text.match(/فترة\s*(\d+)/);
+  if (arabic) return Number(arabic[1]) || 1;
+  return null;
+};
+
+const requestMatchesPeriod = (request: ControlRequest, period: number) => {
+  const requestPeriod = getRequestPeriod(request);
+  return requestPeriod ? requestPeriod === period : period === 1;
+};
+
+const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, deliveryLogs, students, requests, systemConfig }) => {
   const [now, setNow] = useState(new Date());
   const [scene, setScene] = useState<Scene>('overview');
   const [pinnedScene, setPinnedScene] = useState<Scene | null>(null);
@@ -84,7 +99,57 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
   const [showDayComplete, setShowDayComplete] = useState(false);
   const latestSeenRef = useRef({ request: '', absence: '', delivery: '' });
   const wasCompleteRef = useRef(false);
-  const activeDate = getRiyadhDateKey(new Date());
+  const configuredDate = String(systemConfig?.active_exam_date || '').slice(0, 10);
+  const todayDate = getRiyadhDateKey(new Date());
+  const activeDate = useMemo(() => {
+    const candidates = [
+      ...supervisions.map(item => item.date),
+      ...absences.map(item => item.date),
+      ...deliveryLogs.map(item => item.time),
+      ...requests.map(item => item.time),
+    ]
+      .map(value => getRiyadhDateKey(value || ''))
+      .filter(value => /^\d{4}-\d{2}-\d{2}$/.test(value));
+
+    if (candidates.includes(todayDate)) return todayDate;
+    if (configuredDate && candidates.includes(configuredDate)) return configuredDate;
+    return candidates.sort().at(-1) || configuredDate || todayDate;
+  }, [absences, configuredDate, deliveryLogs, requests, supervisions, todayDate]);
+
+  const detectedPeriod = useMemo(() => {
+    const periods = [
+      ...supervisions.filter(item => matchesMonitorDate(item.date, activeDate)).map(item => Number(item.period || 1)),
+      ...absences.filter(item => matchesMonitorDate(item.date, activeDate)).map(item => Number(item.period || 1)),
+      ...deliveryLogs.filter(item => matchesMonitorDate(item.time, activeDate)).map(item => Number(item.period || 1)),
+      ...requests.filter(item => matchesMonitorDate(item.time, activeDate)).map(item => getRequestPeriod(item) || 1),
+    ].filter(value => Number.isFinite(value) && value > 0);
+    return Math.max(1, ...periods);
+  }, [absences, activeDate, deliveryLogs, requests, supervisions]);
+
+  const activePeriod =
+    String(systemConfig?.active_period_date || '') === activeDate
+      ? Math.max(1, Number(systemConfig?.active_period || detectedPeriod))
+      : detectedPeriod;
+
+  const scopedSupervisions = useMemo(
+    () => supervisions.filter(s => matchesMonitorDate(s.date, activeDate) && Number(s.period || 1) === activePeriod),
+    [activeDate, activePeriod, supervisions],
+  );
+
+  const scopedDeliveryLogs = useMemo(
+    () => deliveryLogs.filter(l => matchesMonitorDate(l.time, activeDate) && Number(l.period || 1) === activePeriod),
+    [activeDate, activePeriod, deliveryLogs],
+  );
+
+  const scopedAbsences = useMemo(
+    () => absences.filter(a => matchesMonitorDate(a.date, activeDate) && Number(a.period || 1) === activePeriod),
+    [absences, activeDate, activePeriod],
+  );
+
+  const scopedRequests = useMemo(
+    () => requests.filter(r => matchesMonitorDate(r.time, activeDate) && requestMatchesPeriod(r, activePeriod)),
+    [activeDate, activePeriod, requests],
+  );
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -116,9 +181,9 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
   }, [pinnedScene, priorityScene]);
 
   useEffect(() => {
-    const latestRequest = [...requests].sort((a, b) => b.time.localeCompare(a.time))[0];
-    const latestAbsence = [...absences].sort((a, b) => b.date.localeCompare(a.date))[0];
-    const latestDelivery = [...deliveryLogs].sort((a, b) => b.time.localeCompare(a.time))[0];
+    const latestRequest = [...scopedRequests].sort((a, b) => b.time.localeCompare(a.time))[0];
+    const latestAbsence = [...scopedAbsences].sort((a, b) => b.date.localeCompare(a.date))[0];
+    const latestDelivery = [...scopedDeliveryLogs].sort((a, b) => b.time.localeCompare(a.time))[0];
 
     const seen = latestSeenRef.current;
     if (!seen.request && !seen.absence && !seen.delivery) {
@@ -151,20 +216,20 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
       latestSeenRef.current = { ...latestSeenRef.current, delivery: latestDelivery.id };
       return;
     }
-  }, [absences, deliveryLogs, pinnedScene, requests]);
+  }, [pinnedScene, scopedAbsences, scopedDeliveryLogs, scopedRequests]);
 
   const committees = useMemo(() => {
     const nums = Array.from(new Set(students.map(s => s.committee_number))).filter(Boolean).sort((a, b) => Number(a) - Number(b));
     return nums.map(num => {
       const committeeStudents = students.filter(s => s.committee_number === num);
       const grades = Array.from(new Set(committeeStudents.map(s => s.grade)));
-      const supervision = supervisions.find(s => s.committee_number === num);
+      const supervision = scopedSupervisions.find(s => s.committee_number === num);
       const proctor = users.find(u => u.id === supervision?.teacher_id);
-      const logs = deliveryLogs.filter(l => l.committee_number === num && matchesMonitorDate(l.time, activeDate));
+      const logs = scopedDeliveryLogs.filter(l => l.committee_number === num);
       const confirmed = grades.length > 0 && grades.every(g => logs.some(l => l.grade === g && l.status === 'CONFIRMED'));
       const submitted = !confirmed && grades.length > 0 && grades.every(g => logs.some(l => l.grade === g));
-      const normalRequests = requests.filter(r => r.committee === num && !isReceiverSummon(r) && !isSignatureRequest(r) && !isInternalSignatureRecord(r));
-      const receiverSummons = requests
+      const normalRequests = scopedRequests.filter(r => r.committee === num && !isReceiverSummon(r) && !isSignatureRequest(r) && !isInternalSignatureRecord(r));
+      const receiverSummons = scopedRequests
         .filter(r => r.committee === num && r.status !== 'DONE' && isReceiverSummon(r))
         .sort((a, b) => b.time.localeCompare(a.time));
       const activeSummon = receiverSummons[0];
@@ -178,7 +243,7 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
         : null;
       const pendingAlert = !confirmed && normalRequests.some(r => r.status === 'PENDING');
       const inProgressAlert = !confirmed && normalRequests.some(r => r.status === 'IN_PROGRESS');
-      const committeeAbsences = absences.filter(a => a.committee_number === num && matchesMonitorDate(a.date, activeDate));
+      const committeeAbsences = scopedAbsences.filter(a => a.committee_number === num);
       const hasActualJoin = supervision && !isPlaceholderProctorStart(supervision.date);
       const status = confirmed ? 'confirmed' : submitted ? 'submitted' : pendingAlert ? 'alert' : inProgressAlert ? 'progress' : hasActualJoin ? 'active' : 'idle';
       const receiptLog = logs.find(l => l.status === 'CONFIRMED');
@@ -203,7 +268,7 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
         receiverName: receiptLog?.teacher_name || '',
       };
     });
-  }, [absences, activeDate, deliveryLogs, requests, students, supervisions, users]);
+  }, [scopedAbsences, scopedDeliveryLogs, scopedRequests, scopedSupervisions, students, users]);
 
   const insights = useMemo(() => {
     const total = committees.length;
@@ -211,10 +276,10 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
     const active = committees.filter(c => c.status === 'active' || c.status === 'progress' || c.status === 'alert').length;
     const submitted = committees.filter(c => c.status === 'submitted').length;
     const idle = committees.filter(c => c.status === 'idle').length;
-    const urgent = requests.filter(r => r.status === 'PENDING').length;
-    const activeRequests = requests.filter(r => r.status !== 'DONE').length;
-    const absentCount = absences.filter(a => a.type === 'ABSENT').length;
-    const lateCount = absences.filter(a => a.type === 'LATE').length;
+    const urgent = scopedRequests.filter(r => r.status === 'PENDING').length;
+    const activeRequests = scopedRequests.filter(r => r.status !== 'DONE').length;
+    const absentCount = scopedAbsences.filter(a => a.type === 'ABSENT').length;
+    const lateCount = scopedAbsences.filter(a => a.type === 'LATE').length;
     const totalStudents = students.length;
     const attendanceIssueCount = absentCount + lateCount;
     const presentCount = Math.max(0, totalStudents - attendanceIssueCount);
@@ -237,7 +302,7 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
       ...committees.filter(c => c.status === 'submitted').map(c => ({ ...c, mins: null })),
     ].slice(0, 5);
 
-    const alertsByCommittee = requests.reduce((acc, item) => {
+    const alertsByCommittee = scopedRequests.reduce((acc, item) => {
       const key = item.committee || 'غير محدد';
       acc[key] = (acc[key] || 0) + 1;
       return acc;
@@ -267,24 +332,24 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
       topAlert: topAlert ? { committee: topAlert[0], count: topAlert[1] } : null,
       attendanceHotspot,
     };
-  }, [absences, committees, requests, students.length]);
+  }, [committees, scopedAbsences, scopedRequests, students.length]);
 
   const recentEvents = useMemo(() => {
-    const deliveryEvents = deliveryLogs.map(log => ({
+    const deliveryEvents = scopedDeliveryLogs.map(log => ({
       time: log.time,
       tone: log.status === 'CONFIRMED' ? 'emerald' : 'orange',
       title: log.status === 'CONFIRMED' ? 'استلام نهائي' : 'إغلاق ميداني',
       text: `لجنة ${log.committee_number} - ${log.grade} - ${log.teacher_name}`,
       icon: log.status === 'CONFIRMED' ? PackageCheck : Truck,
     }));
-    const requestEvents = requests.map(req => ({
+    const requestEvents = scopedRequests.map(req => ({
       time: req.time,
       tone: req.status === 'DONE' ? 'slate' : 'red',
       title: req.status === 'DONE' ? 'إغلاق بلاغ' : 'بلاغ لجنة',
       text: `لجنة ${req.committee} - ${cleanControlRequestText(req.text)}`,
       icon: BellRing,
     }));
-    const absenceEvents = absences.map(absence => ({
+    const absenceEvents = scopedAbsences.map(absence => ({
       time: absence.date,
       tone: absence.type === 'ABSENT' ? 'rose' : 'amber',
       title: getAbsenceKindLabel(absence.type),
@@ -292,10 +357,10 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
       icon: absence.type === 'ABSENT' ? UserX : Timer,
     }));
     return [...deliveryEvents, ...requestEvents, ...absenceEvents].sort((a, b) => b.time.localeCompare(a.time)).slice(0, 12);
-  }, [absences, deliveryLogs, requests]);
+  }, [scopedAbsences, scopedDeliveryLogs, scopedRequests]);
 
   const alertBoardItems = useMemo(() => {
-    return requests.filter(req => !isInternalSignatureRecord(req)).map(req => {
+    return scopedRequests.filter(req => !isInternalSignatureRecord(req)).map(req => {
       const receiverSummon = isReceiverSummon(req);
       const signatureRequest = isSignatureRequest(req);
       return {
@@ -315,7 +380,7 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
     })
       .sort((a, b) => b.time.localeCompare(a.time))
       .slice(0, 8);
-  }, [requests]);
+  }, [scopedRequests]);
 
   const newsItems = useMemo(() => {
     const items = [
@@ -487,6 +552,9 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
             <div>
               <p className="text-xs font-black text-orange-200">TV2 العرض الذكي</p>
               <h1 className="text-3xl font-black tracking-tight">غرفة الكنترول الحية</h1>
+              <p className="mt-1 w-fit rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-[10px] font-black text-cyan-100">
+                عرض الفترة {activePeriod} · {activeDate}
+              </p>
             </div>
           </div>
 
@@ -831,7 +899,7 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
               <div className="col-span-7 rounded-[3rem] border border-white/10 bg-white/[0.04] p-8 shadow-2xl">
                 <h3 className="mb-6 text-4xl font-black">آخر حالات الغياب والتأخير</h3>
                 <div className="space-y-4 overflow-hidden">
-                  {[...absences].sort((a, b) => b.date.localeCompare(a.date)).length ? [...absences].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7).map(a => {
+                  {[...scopedAbsences].sort((a, b) => b.date.localeCompare(a.date)).length ? [...scopedAbsences].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7).map(a => {
                     const receipt = getAbsenceReceipt(a);
                     return (
                       <div key={a.id} className="grid grid-cols-[1fr_auto] items-center gap-4 rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">

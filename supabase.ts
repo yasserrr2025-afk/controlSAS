@@ -158,12 +158,23 @@ export const db = {
       return (data || []) as Absence[];
     },
     upsert: async (absence: Partial<Absence>) => {
-      const { error } = await supabase.from('absences').upsert([absence], { onConflict: 'student_id' });
+      const { error } = await supabase.from('absences').upsert([absence], { onConflict: 'id' });
+      if (error?.code === '23505' && String(error.message || '').includes('absences_student_id_key')) {
+        const { error: fallbackError } = await supabase
+          .from('absences')
+          .upsert([absence], { onConflict: 'student_id' });
+        const fallbackErr = handleError(fallbackError, "absences.upsertByStudent");
+        if (fallbackErr) throw new Error(fallbackErr);
+        return;
+      }
       const err = handleError(error, "absences.upsert");
       if (err) throw new Error(err);
     },
-    delete: async (studentId: string) => {
-      const { error } = await supabase.from('absences').delete().eq('student_id', studentId);
+    delete: async (studentId: string, period?: number, date?: string) => {
+      let query = supabase.from('absences').delete().eq('student_id', studentId);
+      if (period !== undefined) query = query.eq('period', period);
+      if (date) query = query.gte('date', `${date}T00:00:00`).lt('date', `${date}T23:59:59.999Z`);
+      const { error } = await query;
       const err = handleError(error, "absences.delete");
       if (err) throw new Error(err);
     }
@@ -171,7 +182,11 @@ export const db = {
 
   supervision: {
     getAll: async () => {
-      const { data, error } = await supabase.from('supervision').select('*');
+      const { data, error } = await supabase
+        .from('supervision')
+        .select('*')
+        .order('date', { ascending: false })
+        .limit(5000);
       const err = handleError(error, "supervision.getAll");
       if (err) throw new Error(err);
       return (data || []) as Supervision[];
@@ -292,7 +307,11 @@ export const db = {
 
   envelopeOpenings: {
     getAll: async () => {
-      const { data, error } = await supabase.from('envelope_openings').select('*');
+      const { data, error } = await supabase
+        .from('envelope_openings')
+        .select('*')
+        .order('time', { ascending: false })
+        .limit(500);
       const err = handleError(error, "envelopeOpenings.getAll");
       if (err) throw new Error(err);
       return (data || []) as EnvelopeOpening[];
