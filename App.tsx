@@ -296,16 +296,80 @@ const App: React.FC = () => {
           filterDate = cfg.active_exam_date || currentToday;
         }
       }
-      const [u, s, sv, ab, cr, dl, reports, exams, visits] = await Promise.all([
-        db.users.getAll(),
-        db.students.getAll(),
-        db.supervision.getAll(),
-        db.absences.getAll(),
-        db.controlRequests.getAll(),
-        db.deliveryLogs.getAll(),
-        db.committeeReports.getAll(),
-        db.examSchedule.getAll(),
-        db.supervisorVisits.getAll().catch(() => []),
+      const safeFetch = async <T,>(label: string, action: () => Promise<T>, fallback: T): Promise<T> => {
+        try {
+          return await action();
+        } catch (error: any) {
+          console.warn(`Sync Warning [${label}]:`, error?.message || error);
+          return fallback;
+        }
+      };
+
+      const nextDate = new Date(`${filterDate}T00:00:00`);
+      nextDate.setDate(nextDate.getDate() + 1);
+      const nextDateKey = nextDate.toISOString().slice(0, 10);
+      const dayStart = filterDate;
+      const dayEndValue = nextDateKey;
+
+      const [u, s, sv, exams, visits] = await Promise.all([
+        safeFetch('users', db.users.getAll, [] as User[]),
+        safeFetch('students', db.students.getAll, [] as Student[]),
+        safeFetch('supervision', db.supervision.getAll, [] as Supervision[]),
+        safeFetch('examSchedule', db.examSchedule.getAll, [] as ExamSchedule[]),
+        safeFetch('supervisorVisits', () => db.supervisorVisits.getAll(), [] as SupervisorVisit[]),
+      ]);
+
+      const [ab, cr, dl, reports] = await Promise.all([
+        safeFetch('absences.today', async () => {
+          const { data, error } = await supabase
+            .from('absences')
+            .select('*')
+            .gte('date', dayStart)
+            .lt('date', dayEndValue)
+            .limit(1000);
+          if (error) throw new Error(error.message);
+          return (data || []) as Absence[];
+        }, [] as Absence[]),
+        safeFetch('controlRequests.today', async () => {
+          const { data, error } = await supabase
+            .from('control_requests')
+            .select('*')
+            .gte('time', dayStart)
+            .lt('time', dayEndValue)
+            .order('time', { ascending: false })
+            .limit(500);
+          if (error) throw new Error(error.message);
+          return (data || []).map((d: any) => ({
+            id: d.id,
+            from: d.from_user_name,
+            committee: d.committee_number,
+            text: d.text,
+            time: d.time,
+            status: d.status,
+            assistant_name: d.assistant_name
+          })) as ControlRequest[];
+        }, [] as ControlRequest[]),
+        safeFetch('deliveryLogs.today', async () => {
+          const { data, error } = await supabase
+            .from('delivery_logs')
+            .select('*')
+            .gte('time', dayStart)
+            .lt('time', dayEndValue)
+            .limit(1000);
+          if (error) throw new Error(error.message);
+          return (data || []) as DeliveryLog[];
+        }, [] as DeliveryLog[]),
+        safeFetch('committeeReports.today', async () => {
+          const { data, error } = await supabase
+            .from('committee_reports')
+            .select('*')
+            .gte('date', dayStart)
+            .lt('date', dayEndValue)
+            .order('created_at', { ascending: false })
+            .limit(500);
+          if (error) throw new Error(error.message);
+          return (data || []) as CommitteeReport[];
+        }, [] as CommitteeReport[]),
       ]);
       setUsers(u);
       const savedUser = localStorage.getItem('currentUser');
