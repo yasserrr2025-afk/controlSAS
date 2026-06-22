@@ -149,6 +149,10 @@ const matchesExamDate = (value: string | undefined | null, examDate: string) => 
   return String(value).startsWith(examDate) || getRiyadhDateKeyFromValue(value) === examDate;
 };
 
+const sortDateKeysDesc = (dates: string[]) =>
+  Array.from(new Set(dates.filter(Boolean).map(date => String(date).slice(0, 10))))
+    .sort((a, b) => b.localeCompare(a));
+
 const buildExamDateTimestamp = (examDate: string) => {
   const now = new Date();
   const pad = (value: number) => String(value).padStart(2, '0');
@@ -280,21 +284,9 @@ const App: React.FC = () => {
     try {
       const cfg = await db.config.get();
       const currentToday = todayKey();
-      let filterDate = currentToday;
+      let filterDate = cfg?.active_exam_date || currentToday;
       if (cfg) {
-        if (cfg.active_exam_date !== currentToday) {
-          const nextCfg = { ...cfg, active_exam_date: currentToday };
-          const lastAutoActiveDate = localStorage.getItem('last_auto_active_exam_date');
-          if (lastAutoActiveDate !== currentToday) {
-            await db.config.upsert(nextCfg);
-            localStorage.setItem('last_auto_active_exam_date', currentToday);
-          }
-          setSystemConfig(prev => ({ ...prev, ...nextCfg }));
-          filterDate = currentToday;
-        } else {
-          setSystemConfig(prev => ({ ...prev, ...cfg }));
-          filterDate = cfg.active_exam_date || currentToday;
-        }
+        setSystemConfig(prev => ({ ...prev, ...cfg }));
       }
       const [u, s, sv, ab, cr, dl, reports, exams, visits] = await Promise.all([
         db.users.getAll(),
@@ -343,6 +335,38 @@ const App: React.FC = () => {
       setAllCommitteeReports(reports);
       setExamSchedule(exams);
       setSupervisorVisits(visits as SupervisorVisit[]);
+
+      const hasDateData = (date: string) =>
+        sv.some(i => matchesExamDate(i.date, date) && !isReserveSupervision(i)) ||
+        exams.some(i => String(i.exam_date).slice(0, 10) === date) ||
+        dl.some(i => matchesExamDate(i.time, date)) ||
+        ab.some(i => matchesExamDate(i.date, date)) ||
+        reports.some(i => matchesExamDate(i.date, date));
+
+      if (!hasDateData(filterDate)) {
+        const fallbackDates = sortDateKeysDesc([
+          ...sv.filter(i => !isReserveSupervision(i)).map(i => getRiyadhDateKeyFromValue(i.date)),
+          ...exams.map(i => String(i.exam_date || '').slice(0, 10)),
+          ...dl.map(i => getRiyadhDateKeyFromValue(i.time)),
+          ...ab.map(i => getRiyadhDateKeyFromValue(i.date)),
+          ...reports.map(i => getRiyadhDateKeyFromValue(i.date)),
+        ]);
+        const fallbackDate = fallbackDates.find(date => date <= currentToday) || fallbackDates[0];
+        if (fallbackDate) {
+          filterDate = fallbackDate;
+          const fixedConfig = {
+            id: 'main_config',
+            exam_start_time: '08:00',
+            exam_date: '',
+            ...(cfg || {}),
+            active_exam_date: fallbackDate,
+          } as SystemConfig;
+          setSystemConfig(prev => ({ ...prev, ...fixedConfig }));
+          if (cfg?.active_exam_date && cfg.active_exam_date !== fallbackDate) {
+            await db.config.upsert(fixedConfig);
+          }
+        }
+      }
       
       if (filterDate) {
         setSupervisions(sv.filter(i => matchesExamDate(i.date, filterDate) && !isReserveSupervision(i))); 
