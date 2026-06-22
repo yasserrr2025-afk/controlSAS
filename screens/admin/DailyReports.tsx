@@ -265,8 +265,8 @@ const AdminDailyReports: React.FC<Props> = ({
         const resolvedSubject = scheduleItem?.subject || sv?.subject || '—';
 
         // Retrieve digital signatures
-        const proctorSig = findStoredSignature(controlRequests, 'proctor', num, grade)?.[0] || findStoredSignature(controlRequests, 'proctor', num, ALL_GRADES_SIGNATURE)?.[0];
-        const receiverSig = findStoredSignature(controlRequests, 'receiver', num, grade)?.[0] || findStoredSignature(controlRequests, 'receiver', num, ALL_GRADES_SIGNATURE)?.[0];
+        const proctorSig = findStoredSignature(controlRequests, 'proctor', num, grade, selectedPeriod) || findStoredSignature(controlRequests, 'proctor', num, ALL_GRADES_SIGNATURE, selectedPeriod);
+        const receiverSig = findStoredSignature(controlRequests, 'receiver', num, grade, selectedPeriod) || findStoredSignature(controlRequests, 'receiver', num, ALL_GRADES_SIGNATURE, selectedPeriod);
 
         return {
           committee: String(num),

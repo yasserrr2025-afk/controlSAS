@@ -55,6 +55,11 @@ export const MasterPortfolio: React.FC<Props> = ({
   };
 
   const eqCom = (a: any, b: any) => String(a) === String(b);
+  const requestMatchesPeriod = (request: ControlRequest, period?: number) => {
+    if (period === undefined) return true;
+    const match = String(request.text || '').match(/\[PERIOD:(\d+)\]/);
+    return Number(match?.[1] || 1) === Number(period || 1);
+  };
 
   const getProctorName = (teacherId?: string) => {
     if (!teacherId) return '';
@@ -761,11 +766,11 @@ export const MasterPortfolio: React.FC<Props> = ({
                         const supvs = supervisions.filter(s => eqCom(s.committee_number, cNum) && matchesDate(s.date, exam.exam_date) && String(s.period) === String(exam.period));
                         const proctors = supvs.map(s => getProctorName(s.teacher_id));
                         const loginTime = getActualSupervisionStart(supvs);
-                        const closeLog = deliveryLogs.find(l => eqCom(l?.committee_number, cNum) && matchesDate(l?.time, exam.exam_date) && l?.type === 'RECEIVE');
-                        const receiptLog = deliveryLogs.find(l => eqCom(l?.committee_number, cNum) && matchesDate(l?.time, exam.exam_date) && l?.status === 'CONFIRMED');
-                        const comAbsences = absences.filter(a => eqCom(a.committee_number, cNum) && matchesDate(a.date, exam.exam_date) && a.type === 'ABSENT');
-                        const comLates = absences.filter(a => eqCom(a.committee_number, cNum) && matchesDate(a.date, exam.exam_date) && a.type === 'LATE');
-                        const comRequests = controlRequests.filter(r => eqCom(r.committee, cNum) && matchesDate(r.time, exam.exam_date));
+                        const closeLog = deliveryLogs.find(l => eqCom(l?.committee_number, cNum) && matchesDate(l?.time, exam.exam_date) && String(l?.period || 1) === String(exam.period || 1) && l?.type === 'RECEIVE');
+                        const receiptLog = deliveryLogs.find(l => eqCom(l?.committee_number, cNum) && matchesDate(l?.time, exam.exam_date) && String(l?.period || 1) === String(exam.period || 1) && l?.status === 'CONFIRMED');
+                        const comAbsences = absences.filter(a => eqCom(a.committee_number, cNum) && matchesDate(a.date, exam.exam_date) && String(a.period || 1) === String(exam.period || 1) && a.type === 'ABSENT');
+                        const comLates = absences.filter(a => eqCom(a.committee_number, cNum) && matchesDate(a.date, exam.exam_date) && String(a.period || 1) === String(exam.period || 1) && a.type === 'LATE');
+                        const comRequests = controlRequests.filter(r => eqCom(r.committee, cNum) && matchesDate(r.time, exam.exam_date) && requestMatchesPeriod(r, exam.period));
                         const comStudents = examStudents.filter(s => eqCom(s.committee_number, cNum));
                         const absentIds = new Set(comAbsences.map(a => a.student_id));
                         const presentCount = Math.max(comStudents.length - absentIds.size, 0);

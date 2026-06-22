@@ -26,6 +26,7 @@ interface Props {
   onDeleteExamSchedule?: (id: string) => Promise<void>;
   onCommit?: (items: any[], replaceExisting: boolean) => Promise<void>;
   onDeleteSupervisions?: (ids: string[]) => Promise<void>;
+  onStartSecondPeriod?: () => Promise<void>;
   systemConfig?: { academic_year?: string; [key: string]: any };
 }
 
@@ -69,6 +70,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
   onDeleteExamSchedule,
   onCommit,
   onDeleteSupervisions,
+  onStartSecondPeriod,
 }) => {
   const [step, setStep] = useState<WizardStep>('SELECT_EXAM');
   const [selectedPeriod, setSelectedPeriod] = useState<DistributionPeriod | null>(null);
@@ -80,10 +82,13 @@ const SmartProctorDistribution: React.FC<Props> = ({
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [distributionMode, setDistributionMode] = useState<DistributionMode>('AUTO');
   const [expandedPeriodKey, setExpandedPeriodKey] = useState<string | null>(null);
+  const [isSecondPeriodPreparing, setIsSecondPeriodPreparing] = useState(false);
+  const [isStartingSecondPeriod, setIsStartingSecondPeriod] = useState(false);
   
   const [distributionFilter, setDistributionFilter] = useState(''); // Used to view past distributions
   
   const today = new Date().toISOString().split('T')[0];
+  const activeExamDate = String(systemConfig?.active_exam_date || today).slice(0, 10);
   const [newExam, setNewExam] = useState<Partial<ExamSchedule>>({
     exam_date: today,
     subject: '',
@@ -138,6 +143,63 @@ const SmartProctorDistribution: React.FC<Props> = ({
     });
     return Array.from(groups.values()).sort((a, b) => a.date.localeCompare(b.date) || a.period - b.period);
   }, [examSchedule]);
+
+  const todaySecondPeriod = useMemo(
+    () => availablePeriods.find(period => period.date === activeExamDate && Number(period.period || 1) === 2) || null,
+    [availablePeriods, activeExamDate],
+  );
+
+  const isSecondPeriodCommitted = useMemo(
+    () => pastDistributions.some(item => item.date === activeExamDate && Number(item.period || 1) === 2),
+    [pastDistributions, activeExamDate],
+  );
+
+  const isSecondPeriodStarted = useMemo(
+    () =>
+      String(systemConfig?.active_period_date || '') === activeExamDate &&
+      Number(systemConfig?.active_period || 1) >= 2,
+    [systemConfig?.active_period, systemConfig?.active_period_date, activeExamDate],
+  );
+
+  const secondPeriodDistribution = useMemo(
+    () => pastDistributions.find(item => item.date === activeExamDate && Number(item.period || 1) === 2) || null,
+    [pastDistributions, activeExamDate],
+  );
+
+  const startSecondPeriodPreparation = () => {
+    if (secondPeriodDistribution) {
+      startEditDistribution(secondPeriodDistribution);
+      return;
+    }
+    if (!todaySecondPeriod) {
+      alert(`لا يوجد اختبار مسجل للفترة الثانية بتاريخ ${activeExamDate}. أضف اختبار الفترة الثانية أولاً من نموذج "إضافة اختبار للجدول"، ثم اضغط تجهيز الفترة الثانية.`);
+      return;
+    }
+    setIsSecondPeriodPreparing(true);
+    setSelectedPeriod(todaySecondPeriod);
+    setExcludedProctorIds([]);
+    setDistribution([]);
+    setReserveSearch('');
+    setSearchProctor('');
+    setDistributionMode('AUTO');
+    setStep('EXCLUDE_PROCTORS');
+    window.setTimeout(() => setIsSecondPeriodPreparing(false), 250);
+  };
+
+  const startSecondPeriodNow = async () => {
+    if (!onStartSecondPeriod || isStartingSecondPeriod) return;
+    if (!isSecondPeriodCommitted) {
+      alert('اعتمد تسكين الفترة الثانية أولاً، ثم اضغط بدء الفترة الثانية.');
+      return;
+    }
+    if (!confirm('بدء الفترة الثانية الآن؟ سيظهر زر اعتماد دخول اللجنة للمراقبين المسندين في الفترة الثانية.')) return;
+    setIsStartingSecondPeriod(true);
+    try {
+      await onStartSecondPeriod();
+    } finally {
+      setIsStartingSecondPeriod(false);
+    }
+  };
 
   // Handlers for Drag and Drop
   const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -672,6 +734,63 @@ const SmartProctorDistribution: React.FC<Props> = ({
 
       {step === 'SELECT_EXAM' && (
         <div className="space-y-8">
+          <div className={`rounded-3xl border p-5 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-5 ${
+            isSecondPeriodCommitted
+              ? 'bg-emerald-50 border-emerald-200'
+              : 'bg-blue-50 border-blue-200'
+          }`}>
+            <div>
+              <div className={`text-[11px] font-black mb-1 ${isSecondPeriodCommitted ? 'text-emerald-700' : 'text-blue-700'}`}>
+                تاريخ اليوم النشط: {activeExamDate}
+              </div>
+              <h4 className="text-xl font-black text-slate-900">
+                {isSecondPeriodCommitted ? 'تسكين الفترة الثانية' : 'تجهيز الفترة الثانية'}
+              </h4>
+              <p className="mt-1 text-sm font-bold text-slate-600">
+                {isSecondPeriodCommitted
+                  ? 'توزيع الفترة الثانية محفوظ ومعتمد. يمكنك فتحه الآن لمراجعة أو تعديل تسكين المراقبين دون خلطه مع الفترة الأولى.'
+                  : todaySecondPeriod
+                    ? `اختبار الفترة الثانية جاهز للتجهيز: ${todaySecondPeriod.subjects.join('، ') || 'مواد متعددة'}.`
+                    : 'أضف اختبار الفترة الثانية لهذا التاريخ أولاً، ثم استخدم هذا الزر لتجهيز توزيعها.'}
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={startSecondPeriodPreparation}
+                disabled={isSecondPeriodPreparing}
+                className={`px-7 py-4 rounded-2xl font-black flex items-center justify-center gap-3 shadow-lg transition-all active:scale-95 disabled:cursor-not-allowed ${
+                  isSecondPeriodCommitted
+                    ? 'bg-emerald-600 text-white shadow-emerald-100 hover:bg-emerald-700'
+                    : 'bg-blue-600 text-white shadow-blue-100 hover:bg-blue-700 disabled:opacity-60'
+                }`}
+              >
+                {isSecondPeriodPreparing ? (
+                  <RefreshCcw size={20} className="animate-spin" />
+                ) : isSecondPeriodCommitted ? (
+                  <Edit2 size={20} />
+                ) : (
+                  <Wand2 size={20} />
+                )}
+                {isSecondPeriodCommitted ? 'عرض/تعديل تسكين الفترة الثانية' : 'تجهيز الفترة الثانية'}
+              </button>
+              <button
+                onClick={startSecondPeriodNow}
+                disabled={!isSecondPeriodCommitted || isSecondPeriodStarted || isStartingSecondPeriod}
+                className={`px-7 py-4 rounded-2xl font-black flex items-center justify-center gap-3 shadow-lg transition-all active:scale-95 disabled:cursor-not-allowed ${
+                  isSecondPeriodStarted
+                    ? 'bg-emerald-700 text-white shadow-emerald-100'
+                    : 'bg-slate-950 text-white shadow-slate-200 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none'
+                }`}
+              >
+                {isStartingSecondPeriod ? (
+                  <RefreshCcw size={20} className="animate-spin" />
+                ) : (
+                  <Check size={20} />
+                )}
+                {isSecondPeriodStarted ? 'الفترة الثانية بدأت' : 'بدء الفترة الثانية'}
+              </button>
+            </div>
+          </div>
           
           {/* Add Exam Form */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
@@ -964,7 +1083,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
 
       {step === 'PREVIEW' && selectedPeriod && (
         <div className="space-y-6">
-          <div className="bg-orange-50 border border-orange-200 p-4 rounded-xl flex gap-3 text-orange-800 font-bold items-start">
+          <div className={`${selectedPeriod.period === 2 ? 'bg-blue-50 border-blue-200 text-blue-900' : 'bg-orange-50 border-orange-200 text-orange-800'} border p-4 rounded-xl flex gap-3 font-bold items-start`}>
             <AlertTriangle size={24} className="shrink-0" />
             <div>
               <h4 className="font-black text-lg">{distributionMode === 'MANUAL' ? 'معاينة التوزيع اليدوي' : 'معاينة التوزيع الذكي'}</h4>
@@ -981,7 +1100,7 @@ const SmartProctorDistribution: React.FC<Props> = ({
                 className="bg-emerald-600 text-white px-6 py-2 rounded-xl font-black flex items-center gap-2 hover:bg-emerald-700 disabled:opacity-50"
               >
                 {isCommitting ? <RefreshCcw size={18} className="animate-spin" /> : <Check size={18} />}
-                حفظ واعتماد التوزيع
+                {selectedPeriod.period === 2 ? 'تأكيد اعتماد الفترة الثانية' : 'حفظ واعتماد التوزيع'}
               </button>
             </div>
           </div>

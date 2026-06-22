@@ -255,6 +255,17 @@ const ControlManager: React.FC<ControlManagerProps> = ({
     alert('تم حفظ أرشيف اليوم محليًا على هذا الجهاز.');
   };
 
+  const handleStartSecondPeriod = async () => {
+    await setSystemConfig({
+      ...systemConfig,
+      active_period: 2,
+      active_period_date: activeExamDateKey,
+      second_period_started_at: new Date().toISOString(),
+    });
+    onBroadcast(`تم بدء الفترة الثانية بتاريخ ${activeExamDateKey}. يمكن للمراقبين المسندين للفترة الثانية تأكيد دخول اللجان الآن.`, 'PROCTOR');
+    addAuditEvent('بدء الفترة الثانية', `تم فتح اعتماد دخول الفترة الثانية بتاريخ ${activeExamDateKey}`);
+  };
+
   const broadcastTemplates = [
     { tone: 'INFO', title: 'تعليمات عامة', msg: 'تنبيه من الكنترول: يرجى الالتزام بالتعليمات الرسمية ومتابعة إشعارات النظام أولًا بأول.' },
     { tone: 'URGENT', title: 'تنبيه عاجل', msg: 'تنبيه عاجل من الكنترول: يرجى مراجعة البلاغ فورًا واتخاذ الإجراء المطلوب دون تأخير.' },
@@ -387,6 +398,7 @@ const ControlManager: React.FC<ControlManagerProps> = ({
              onCommit={onCommitSmartDistribution}
              onDeleteSupervisions={onDeleteSmartDistributions}
              onUpdateSupervision={onUpdateSmartDistribution}
+             onStartSecondPeriod={handleStartSecondPeriod}
              systemConfig={systemConfig}
            />
 
@@ -884,7 +896,13 @@ const ControlManager: React.FC<ControlManagerProps> = ({
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-1">الصفوف المسجلة:</p>
                       <div className="flex flex-col gap-2">
                         {com.grades.map(grade => {
-                           const isAlreadyConfirmed = deliveryLogs.some(l => l.committee_number === com.num && l.grade === grade && l.status === 'CONFIRMED');
+                           const itemPeriod = Number(
+                             supervisions.find(s =>
+                               s.committee_number === com.num &&
+                               (!activeExamDateKey || String(s.date || '').slice(0, 10) === activeExamDateKey)
+                             )?.period || 1
+                           );
+                           const isAlreadyConfirmed = deliveryLogs.some(l => l.committee_number === com.num && l.grade === grade && Number(l.period || 1) === itemPeriod && l.status === 'CONFIRMED');
                            return (
                              <div key={grade} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100 group-hover:bg-white transition-colors">
                                <span className="font-black text-sm text-slate-700">{grade}</span>
@@ -893,7 +911,7 @@ const ControlManager: React.FC<ControlManagerProps> = ({
                                ) : (
                                  <button onClick={async () => {
                                    if (confirm(`استلام لجنة ${com.num} (${grade}) يدوياً؟`)) {
-                                     await setDeliveryLogs({ id: crypto.randomUUID(), teacher_name: 'رئيس الكنترول (يدوي)', proctor_name: 'تجاوز طوارئ', committee_number: com.num, grade, type: 'RECEIVE', time: new Date().toISOString(), period: 1, status: 'CONFIRMED' });
+                                     await setDeliveryLogs({ id: crypto.randomUUID(), teacher_name: 'رئيس الكنترول (يدوي)', proctor_name: 'تجاوز طوارئ', committee_number: com.num, grade, type: 'RECEIVE', time: new Date().toISOString(), period: itemPeriod, status: 'CONFIRMED' });
                                    }
                                  }} className="bg-slate-900 text-white px-4 py-2 rounded-xl font-black text-[10px] hover:bg-red-600 transition-all active:scale-95">استلام طوارئ</button>
                                )}
