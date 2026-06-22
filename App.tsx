@@ -49,7 +49,7 @@ import {
 } from './services/browserNotifications';
 import { registerExternalPush } from './services/pushNotifications';
 import { isSignatureRequest } from './services/signatures';
-import { BellRing, Menu, X, CheckCircle2, AlertCircle, Info, AlertTriangle } from 'lucide-react';
+import { BellRing, Menu, X, CheckCircle2, AlertCircle, Info, AlertTriangle, Loader2 } from 'lucide-react';
 import { db, supabase } from './supabase';
 
 const ROLE_TABS: Record<UserRole, string[]> = {
