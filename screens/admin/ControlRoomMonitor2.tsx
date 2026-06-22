@@ -99,7 +99,7 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
   const [showDayComplete, setShowDayComplete] = useState(false);
   const latestSeenRef = useRef({ request: '', absence: '', delivery: '' });
   const wasCompleteRef = useRef(false);
-  const activeDate = getRiyadhDateKey(new Date());
+  const activeDate = systemConfig?.active_exam_date || getRiyadhDateKey(new Date());
   const activePeriod =
     String(systemConfig?.active_period_date || '') === activeDate
       ? Math.max(1, Number(systemConfig?.active_period || 1))
