@@ -6,7 +6,6 @@ export interface StoredSignature {
   role: SignatureRole;
   committee: string;
   grade?: string;
-  period?: number;
   name: string;
   time: string;
   signature: string;
@@ -42,17 +41,14 @@ export const findStoredSignature = (
   role: SignatureRole,
   committee: string | number,
   grade?: string,
-  period?: number,
 ) => {
   const committeeKey = String(committee).trim();
   const gradeKey = grade?.trim();
-  const periodKey = period === undefined ? null : Number(period) || 1;
   return getStoredSignatures(requests)
     .filter(item =>
       item.role === role &&
       String(item.committee).trim() === committeeKey &&
-      (!gradeKey || item.grade === gradeKey || item.grade === ALL_GRADES_SIGNATURE) &&
-      (periodKey === null || Number(item.period || 1) === periodKey)
+      (!gradeKey || item.grade === gradeKey || item.grade === ALL_GRADES_SIGNATURE)
     )
     .sort((a, b) => b.time.localeCompare(a.time))[0] || null;
 };
@@ -63,17 +59,14 @@ export const findStoredSignatureByName = (
   committee: string | number,
   name: string,
   grade?: string,
-  period?: number,
 ) => {
   const nameKey = String(name || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const periodKey = period === undefined ? null : Number(period) || 1;
   return getStoredSignatures(requests)
     .filter(item =>
       item.role === role &&
       String(item.committee).trim() === String(committee).trim() &&
       String(item.name || '').replace(/\s+/g, ' ').trim().toLowerCase() === nameKey &&
-      (!grade || item.grade === grade || item.grade === ALL_GRADES_SIGNATURE) &&
-      (periodKey === null || Number(item.period || 1) === periodKey)
+      (!grade || item.grade === grade || item.grade === ALL_GRADES_SIGNATURE)
     )
     .sort((a, b) => b.time.localeCompare(a.time))[0] || null;
 };
@@ -93,7 +86,6 @@ export const cleanSignatureRequestText = (text?: string) =>
   String(text || '')
     .replace(SIGNATURE_REQUEST_PREFIX, '')
     .replace(/\[SIGNATURE_ROLE:[^\]]+\]/g, '')
-    .replace(/\[PERIOD:\d+\]/g, '')
     .trim();
 
 export const isInternalSignatureRecord = (request: ControlRequest) => request.text?.startsWith(SIGNATURE_PREFIX);
@@ -105,6 +97,5 @@ export const cleanControlRequestText = (text?: string) => {
     .replace('[CALL_RECEIVER]', '')
     .replace(SIGNATURE_REQUEST_PREFIX, '')
     .replace(/\[SIGNATURE_ROLE:[^\]]+\]/g, '')
-    .replace(/\[PERIOD:\d+\]/g, '')
     .trim();
 };

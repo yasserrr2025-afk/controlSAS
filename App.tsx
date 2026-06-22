@@ -1,9 +1,44 @@
 
-import React, { Suspense, lazy, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { User, UserRole, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, ExamSchedule, SupervisorVisit, AppNotification } from './types';
 import Sidebar from './components/Sidebar';
 import Login from './screens/Login';
-import type { SmartDistributionItem } from './screens/admin/SmartProctorDistribution';
+import AdminDashboardOverview from './screens/admin/DashboardOverview';
+import AdminUsersManager from './screens/admin/UsersManager';
+import AdminStudentsManager from './screens/admin/StudentsManager';
+import AdminSupervisionMonitor from './screens/admin/SupervisionMonitor';
+import AdminDailyReports from './screens/admin/DailyReports';
+import AdminOfficialForms from './screens/admin/OfficialForms';
+import AdminSystemSettings from './screens/admin/SystemSettings';
+import AdminProctorPerformance from './screens/admin/ProctorPerformance';
+import PrintSheets from './screens/admin/PrintSheets';
+import SeatingPlanner from './screens/admin/SeatingPlanner';
+import { ArchiveBoxesManager } from './screens/admin/ArchiveBoxesManager';
+import { MasterPortfolio } from './screens/admin/MasterPortfolio';
+import { PublicBoxReport } from './screens/public/PublicBoxReport';
+import { SupervisorMiniPortfolio, SupervisorVisitForm } from './screens/public/SupervisorVisitPublic';
+import AiDashboard from './screens/admin/AiDashboard';
+import ComprehensiveStats from './screens/admin/ComprehensiveStats';
+import CommitteeLabelsPrint from './screens/admin/CommitteeLabelsPrint';
+import ControlHeadDashboard from './screens/admin/ControlHeadDashboard';
+import ControlManager from './screens/admin/ControlManager';
+import { SmartDistributionItem } from './screens/admin/SmartProctorDistribution';
+import ControlRoomMonitor from './screens/admin/ControlRoomMonitor';
+import ControlRoomMonitor2 from './screens/admin/ControlRoomMonitor2';
+import ProctorDailyAssignmentFlow from './screens/proctor/DailyAssignmentFlow';
+import ProctorAlertsHistory from './screens/proctor/ProctorAlertsHistory';
+import ProctorScheduleView from './screens/proctor/ProctorScheduleView';
+import TeacherBadgeView from './screens/proctor/TeacherBadgeView';
+import CounselorAbsenceMonitor from './screens/counselor/AbsenceMonitor';
+import ControlReceiptView from './screens/control/ReceiptView';
+import ReceiptLogsView from './screens/control/ReceiptLogsView';
+import AssistantControlView from './screens/control/AssistantControlView';
+import EnvelopeOpeningView from './screens/control/EnvelopeOpeningView';
+import EnvelopeLabelsPrint from './screens/admin/EnvelopeLabelsPrint';
+import DoorLabelsPrint from './screens/admin/DoorLabelsPrint';
+import CommitteePublicView from './screens/public/CommitteePublicView';
+import StudentCommitteeInquiry from './screens/public/StudentCommitteeInquiry';
+import SupervisionVerification from './screens/public/SupervisionVerification';
 import { buildAbsenceContactNote, buildAbsenceReceiptNote, getAbsenceKindLabel } from './services/absenceReceipt';
 import {
   BrowserNotificationPermission,
@@ -14,45 +49,9 @@ import {
 } from './services/browserNotifications';
 import { registerExternalPush } from './services/pushNotifications';
 import { isSignatureRequest } from './services/signatures';
+import GlobalQRScanner from './components/GlobalQRScanner';
 import { BellRing, Menu, X, CheckCircle2, AlertCircle, Info, AlertTriangle, Loader2 } from 'lucide-react';
 import { db, supabase } from './supabase';
-
-const AdminDashboardOverview = lazy(() => import('./screens/admin/DashboardOverview'));
-const AdminUsersManager = lazy(() => import('./screens/admin/UsersManager'));
-const AdminStudentsManager = lazy(() => import('./screens/admin/StudentsManager'));
-const AdminSupervisionMonitor = lazy(() => import('./screens/admin/SupervisionMonitor'));
-const AdminDailyReports = lazy(() => import('./screens/admin/DailyReports'));
-const AdminOfficialForms = lazy(() => import('./screens/admin/OfficialForms'));
-const AdminSystemSettings = lazy(() => import('./screens/admin/SystemSettings'));
-const AdminProctorPerformance = lazy(() => import('./screens/admin/ProctorPerformance'));
-const PrintSheets = lazy(() => import('./screens/admin/PrintSheets'));
-const SeatingPlanner = lazy(() => import('./screens/admin/SeatingPlanner'));
-const ArchiveBoxesManager = lazy(() => import('./screens/admin/ArchiveBoxesManager').then(module => ({ default: module.ArchiveBoxesManager })));
-const MasterPortfolio = lazy(() => import('./screens/admin/MasterPortfolio').then(module => ({ default: module.MasterPortfolio })));
-const PublicBoxReport = lazy(() => import('./screens/public/PublicBoxReport').then(module => ({ default: module.PublicBoxReport })));
-const SupervisorVisitForm = lazy(() => import('./screens/public/SupervisorVisitPublic').then(module => ({ default: module.SupervisorVisitForm })));
-const SupervisorMiniPortfolio = lazy(() => import('./screens/public/SupervisorVisitPublic').then(module => ({ default: module.SupervisorMiniPortfolio })));
-const AiDashboard = lazy(() => import('./screens/admin/AiDashboard'));
-const ComprehensiveStats = lazy(() => import('./screens/admin/ComprehensiveStats'));
-const CommitteeLabelsPrint = lazy(() => import('./screens/admin/CommitteeLabelsPrint'));
-const ControlHeadDashboard = lazy(() => import('./screens/admin/ControlHeadDashboard'));
-const ControlManager = lazy(() => import('./screens/admin/ControlManager'));
-const ControlRoomMonitor = lazy(() => import('./screens/admin/ControlRoomMonitor'));
-const ControlRoomMonitor2 = lazy(() => import('./screens/admin/ControlRoomMonitor2'));
-const ProctorDailyAssignmentFlow = lazy(() => import('./screens/proctor/DailyAssignmentFlow'));
-const ProctorAlertsHistory = lazy(() => import('./screens/proctor/ProctorAlertsHistory'));
-const ProctorScheduleView = lazy(() => import('./screens/proctor/ProctorScheduleView'));
-const TeacherBadgeView = lazy(() => import('./screens/proctor/TeacherBadgeView'));
-const CounselorAbsenceMonitor = lazy(() => import('./screens/counselor/AbsenceMonitor'));
-const ControlReceiptView = lazy(() => import('./screens/control/ReceiptView'));
-const ReceiptLogsView = lazy(() => import('./screens/control/ReceiptLogsView'));
-const AssistantControlView = lazy(() => import('./screens/control/AssistantControlView'));
-const EnvelopeOpeningView = lazy(() => import('./screens/control/EnvelopeOpeningView'));
-const EnvelopeLabelsPrint = lazy(() => import('./screens/admin/EnvelopeLabelsPrint'));
-const DoorLabelsPrint = lazy(() => import('./screens/admin/DoorLabelsPrint'));
-const CommitteePublicView = lazy(() => import('./screens/public/CommitteePublicView'));
-const StudentCommitteeInquiry = lazy(() => import('./screens/public/StudentCommitteeInquiry'));
-const SupervisionVerification = lazy(() => import('./screens/public/SupervisionVerification'));
 
 const ROLE_TABS: Record<UserRole, string[]> = {
   ADMIN: [
@@ -101,22 +100,6 @@ const getDefaultTab = (role: UserRole) => {
   return defaults[role] || 'my-tasks';
 };
 
-const ScreenLoader = () => (
-  <div className="min-h-[55vh] flex flex-col items-center justify-center gap-5 text-center font-['Tajawal']" dir="rtl">
-    <Loader2 size={44} className="animate-spin text-blue-600" />
-    <div>
-      <p className="text-lg font-black text-slate-800">جاري فتح الشاشة...</p>
-      <p className="mt-1 text-xs font-bold text-slate-400">يتم تحميل الجزء المطلوب فقط لتسريع النظام.</p>
-    </div>
-  </div>
-);
-
-const withSuspense = (node: React.ReactNode) => (
-  <Suspense fallback={<ScreenLoader />}>
-    {node}
-  </Suspense>
-);
-
 const canOpenTab = (user: User, tab: string) => ROLE_TABS[user.role]?.includes(tab) ?? false;
 const isReserveSupervision = (item: Supervision) => String(item.subject || '').includes('[RESERVE]');
 const getRiyadhDateKey = () => {
@@ -148,10 +131,6 @@ const matchesExamDate = (value: string | undefined | null, examDate: string) => 
   if (!value || !examDate) return false;
   return String(value).startsWith(examDate) || getRiyadhDateKeyFromValue(value) === examDate;
 };
-
-const sortDateKeysDesc = (dates: string[]) =>
-  Array.from(new Set(dates.filter(Boolean).map(date => String(date).slice(0, 10))))
-    .sort((a, b) => b.localeCompare(a));
 
 const buildExamDateTimestamp = (examDate: string) => {
   const now = new Date();
@@ -215,8 +194,6 @@ const App: React.FC = () => {
     exam_start_time: '08:00', 
     exam_date: '',
     active_exam_date: getRiyadhDateKey(),
-    active_period: 1,
-    active_period_date: getRiyadhDateKey(),
     allow_manual_join: false
   });
   const todayKey = () => getRiyadhDateKey();
@@ -284,9 +261,21 @@ const App: React.FC = () => {
     try {
       const cfg = await db.config.get();
       const currentToday = todayKey();
-      let filterDate = cfg?.active_exam_date || currentToday;
+      let filterDate = currentToday;
       if (cfg) {
-        setSystemConfig(prev => ({ ...prev, ...cfg }));
+        if (cfg.active_exam_date !== currentToday) {
+          const nextCfg = { ...cfg, active_exam_date: currentToday };
+          const lastAutoActiveDate = localStorage.getItem('last_auto_active_exam_date');
+          if (lastAutoActiveDate !== currentToday) {
+            await db.config.upsert(nextCfg);
+            localStorage.setItem('last_auto_active_exam_date', currentToday);
+          }
+          setSystemConfig(prev => ({ ...prev, ...nextCfg }));
+          filterDate = currentToday;
+        } else {
+          setSystemConfig(prev => ({ ...prev, ...cfg }));
+          filterDate = cfg.active_exam_date || currentToday;
+        }
       }
       const [u, s, sv, ab, cr, dl, reports, exams, visits] = await Promise.all([
         db.users.getAll(),
@@ -335,38 +324,6 @@ const App: React.FC = () => {
       setAllCommitteeReports(reports);
       setExamSchedule(exams);
       setSupervisorVisits(visits as SupervisorVisit[]);
-
-      const hasDateData = (date: string) =>
-        sv.some(i => matchesExamDate(i.date, date) && !isReserveSupervision(i)) ||
-        exams.some(i => String(i.exam_date).slice(0, 10) === date) ||
-        dl.some(i => matchesExamDate(i.time, date)) ||
-        ab.some(i => matchesExamDate(i.date, date)) ||
-        reports.some(i => matchesExamDate(i.date, date));
-
-      if (!hasDateData(filterDate)) {
-        const fallbackDates = sortDateKeysDesc([
-          ...sv.filter(i => !isReserveSupervision(i)).map(i => getRiyadhDateKeyFromValue(i.date)),
-          ...exams.map(i => String(i.exam_date || '').slice(0, 10)),
-          ...dl.map(i => getRiyadhDateKeyFromValue(i.time)),
-          ...ab.map(i => getRiyadhDateKeyFromValue(i.date)),
-          ...reports.map(i => getRiyadhDateKeyFromValue(i.date)),
-        ]);
-        const fallbackDate = fallbackDates.find(date => date <= currentToday) || fallbackDates[0];
-        if (fallbackDate) {
-          filterDate = fallbackDate;
-          const fixedConfig = {
-            id: 'main_config',
-            exam_start_time: '08:00',
-            exam_date: '',
-            ...(cfg || {}),
-            active_exam_date: fallbackDate,
-          } as SystemConfig;
-          setSystemConfig(prev => ({ ...prev, ...fixedConfig }));
-          if (cfg?.active_exam_date && cfg.active_exam_date !== fallbackDate) {
-            await db.config.upsert(fixedConfig);
-          }
-        }
-      }
       
       if (filterDate) {
         setSupervisions(sv.filter(i => matchesExamDate(i.date, filterDate) && !isReserveSupervision(i))); 
@@ -760,7 +717,7 @@ const App: React.FC = () => {
            <button onClick={() => setActiveTab('dashboard')} className="fixed top-6 left-6 z-[230] bg-white/10 text-white p-3 rounded-full hover:bg-white/20">
               <X size={32} />
            </button>
-           <ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} systemConfig={systemConfig} />
+           <ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} />
         </div>
       );
       case 'comprehensive-stats': return <ComprehensiveStats students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} systemConfig={systemConfig} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />;
@@ -782,7 +739,7 @@ const App: React.FC = () => {
       case 'proctor-alerts': return <ProctorAlertsHistory requests={controlRequests} userFullName={currentUser.full_name} currentUser={currentUser} deliveryLogs={deliveryLogs} supervisions={supervisions} systemConfig={systemConfig} setRequests={fetchData} />;
       case 'my-schedule': return <ProctorScheduleView user={currentUser} supervisions={allSupervisions} systemConfig={systemConfig} />;
       case 'student-absences': return <CounselorAbsenceMonitor user={currentUser} absences={absences} students={students} supervisions={supervisions} users={users} onAcknowledgeAbsence={(absence) => acknowledgeAbsenceReceipt(absence, currentUser)} onUpdateContactNote={(absence, contact) => updateAbsenceContactNote(absence, contact, currentUser)} />;
-      case 'my-tasks': return <ProctorDailyAssignmentFlow user={currentUser} supervisions={supervisions} setSupervisions={fetchData} students={students} absences={absences} setAbsences={fetchData} deliveryLogs={deliveryLogs} setDeliveryLogs={async (log) => { await db.deliveryLogs.upsert(log); await fetchData(); }} sendRequest={async (txt, com) => { await db.controlRequests.insert({ from: currentUser.full_name, committee: com, text: txt, time: new Date().toISOString(), status: 'PENDING' }); await fetchData(); }} controlRequests={controlRequests} users={users} systemConfig={systemConfig} examSchedule={examSchedule} committeeReports={committeeReports} onReportUpsert={async (report) => { await db.committeeReports.upsert(report); await fetchData(); }} onAlert={addLocalNotification} />;
+      case 'my-tasks': return <ProctorDailyAssignmentFlow user={currentUser} supervisions={supervisions} setSupervisions={fetchData} students={students} absences={absences} setAbsences={fetchData} deliveryLogs={deliveryLogs} setDeliveryLogs={async (log) => { await db.deliveryLogs.upsert(log); await fetchData(); }} sendRequest={async (txt, com) => { await db.controlRequests.insert({ from: currentUser.full_name, committee: com, text: txt, time: new Date().toISOString(), status: 'PENDING' }); await fetchData(); }} controlRequests={controlRequests} users={users} systemConfig={systemConfig} committeeReports={committeeReports} onReportUpsert={async (report) => { await db.committeeReports.upsert(report); await fetchData(); }} onAlert={addLocalNotification} />;
       case 'envelope-opening': return <EnvelopeOpeningView user={currentUser} systemConfig={systemConfig} users={users} controlRequests={allControlRequests} onRefresh={fetchData} onAlert={addLocalNotification} />;
       case 'envelope-labels': return <EnvelopeLabelsPrint students={students} users={users} currentUser={currentUser} systemConfig={systemConfig} onAlert={addLocalNotification} />;
       case 'door-labels': return <DoorLabelsPrint students={students} systemConfig={systemConfig} />;
@@ -813,47 +770,47 @@ const App: React.FC = () => {
 
   const publicCommitteeId = params.get('public_committee');
   if (publicCommitteeId) {
-    return withSuspense(<CommitteePublicView committeeNumber={publicCommitteeId} students={students} supervisions={supervisions} absences={absences} users={users} />);
+    return <CommitteePublicView committeeNumber={publicCommitteeId} students={students} supervisions={supervisions} absences={absences} users={users} />;
   }
 
   const boxReportId = params.get('box_report');
   if (boxReportId) {
-    return withSuspense(<PublicBoxReport boxId={boxReportId} students={students} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} deliveryLogs={allDeliveryLogs} users={users} examSchedule={examSchedule} systemConfig={systemConfig} absences={allAbsences} />);
+    return <PublicBoxReport boxId={boxReportId} students={students} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} deliveryLogs={allDeliveryLogs} users={users} examSchedule={examSchedule} systemConfig={systemConfig} absences={allAbsences} />;
   }
 
   const portfolioLive = params.get('portfolio_live');
   if (portfolioLive) {
-    return withSuspense(<ComprehensiveStats publicMode students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} systemConfig={systemConfig} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />);
+    return <ComprehensiveStats publicMode students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} systemConfig={systemConfig} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />;
   }
 
   const portfolioBookLive = params.get('portfolio_book_live');
   if (portfolioBookLive) {
-    return withSuspense(<MasterPortfolio publicMode students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} systemConfig={systemConfig} absences={allAbsences} committeeReports={allCommitteeReports} examSchedule={examSchedule} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} supervisorVisits={supervisorVisits} />);
+    return <MasterPortfolio publicMode students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} systemConfig={systemConfig} absences={allAbsences} committeeReports={allCommitteeReports} examSchedule={examSchedule} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} supervisorVisits={supervisorVisits} />;
   }
 
   const supervisorVisitId = params.get('supervisor_visit');
   if (supervisorVisitId) {
-    return withSuspense(<SupervisorVisitForm visitId={supervisorVisitId} systemConfig={systemConfig} students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />);
+    return <SupervisorVisitForm visitId={supervisorVisitId} systemConfig={systemConfig} students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />;
   }
 
   const supervisorPortfolioToken = params.get('supervisor_portfolio');
   if (supervisorPortfolioToken) {
-    return withSuspense(<SupervisorMiniPortfolio token={supervisorPortfolioToken} systemConfig={systemConfig} students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />);
+    return <SupervisorMiniPortfolio token={supervisorPortfolioToken} systemConfig={systemConfig} students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />;
   }
 
   const isTv2Public = params.get('tv2');
   if (isTv2Public) {
-    return withSuspense(<ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} systemConfig={systemConfig} />);
+    return <ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} />;
   }
 
   const isStudentInquiry = params.get('student_inquiry');
   if (isStudentInquiry) {
-    return withSuspense(<StudentCommitteeInquiry students={students} />);
+    return <StudentCommitteeInquiry students={students} />;
   }
 
   const isSupervisionVerification = params.get('supervision_verify') || params.get('sv');
   if (isSupervisionVerification) {
-    return withSuspense(<SupervisionVerification supervisions={supervisions} users={users} students={students} absences={absences} deliveryLogs={deliveryLogs} />);
+    return <SupervisionVerification supervisions={supervisions} users={users} students={students} absences={absences} deliveryLogs={deliveryLogs} />;
   }
 
   return (
@@ -973,7 +930,7 @@ const App: React.FC = () => {
         style={{ paddingTop: currentUser ? 'calc(env(safe-area-inset-top) + 80px)' : undefined }}
         className={`transition-all duration-300 min-h-screen ${currentUser ? (isSidebarCollapsed ? 'lg:mr-24' : 'lg:mr-80') : ''} ${currentUser ? 'px-4 pb-6 lg:p-10 lg:pt-10' : ''}`}
       >
-        {currentUser ? withSuspense(renderContent()) : <Login users={users} systemConfig={systemConfig} onLogin={handleLoginSuccess} onAlert={addLocalNotification} />}
+        {currentUser ? renderContent() : <Login users={users} systemConfig={systemConfig} onLogin={handleLoginSuccess} onAlert={addLocalNotification} />}
       </main>
 
       {/* 
