@@ -30,7 +30,6 @@ interface Props {
 
 const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliveryLogs, setDeliveryLogs, supervisions, users, onAlert, controlRequests, setControlRequests, systemConfig }) => {
   const [activeCommitteeId, setActiveCommitteeId] = useState<string | null>(null);
-  const [activeReceiptPeriod, setActiveReceiptPeriod] = useState<number>(1);
   const [currentQueueIndex, setCurrentQueueIndex] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [isSuccessState, setIsSuccessState] = useState(false);
@@ -75,8 +74,8 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
     return text.startsWith(date) || getRiyadhDateKey(text) === date;
   };
 
-  const getUniqueKey = (committee: string | number, grade: string, period: string | number = 1): string => {
-    return `${cleanId(committee)}_${grade.trim()}_${Number(period) || 1}`;
+  const getUniqueKey = (committee: string | number, grade: string): string => {
+    return `${cleanId(committee)}_${grade.trim()}`;
   };
 
   const actualTodayDate = useMemo(() => {
@@ -92,12 +91,12 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
     return new Set(
       deliveryLogs
         .filter(l => l.type === 'RECEIVE' && (l.status === 'PENDING' || l.proctor_name) && matchesReceiptWorkDate(l.time))
-        .map(l => `${cleanId(l.committee_number)}__${Number(l.period || 1)}`)
+        .map(l => cleanId(l.committee_number))
     );
   }, [deliveryLogs, todayDate, actualTodayDate]);
 
   const receivedKeys = useMemo(() => {
-    return new Set(deliveryLogs.filter(l => l.type === 'RECEIVE' && l.status === 'CONFIRMED' && matchDate(l.time, todayDate)).map(l => getUniqueKey(l.committee_number, l.grade, l.period || 1)));
+    return new Set(deliveryLogs.filter(l => l.type === 'RECEIVE' && l.status === 'CONFIRMED' && matchDate(l.time, todayDate)).map(l => getUniqueKey(l.committee_number, l.grade)));
   }, [deliveryLogs, todayDate]);
 
   const myGrades = useMemo(() => {
@@ -109,22 +108,14 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
   const myTotalScope = useMemo(() => {
     const map: Record<string, { grade: string, count: number, committee: string, key: string }> = {};
     students.filter(s => myGrades.includes(s.grade)).forEach(s => {
-      const committeePeriods = Array.from(new Set(
-        supervisions
-          .filter(sv => cleanId(sv.committee_number) === cleanId(s.committee_number) && matchDate(sv.date, todayDate))
-          .map(sv => Number(sv.period || 1))
-      ));
-      const periods = committeePeriods.length ? committeePeriods : [1];
-      periods.forEach(period => {
-      const key = getUniqueKey(s.committee_number, s.grade, period);
+      const key = getUniqueKey(s.committee_number, s.grade);
       if (!map[key]) {
-        map[key] = { grade: s.grade, count: 0, committee: cleanId(s.committee_number), period, key };
+        map[key] = { grade: s.grade, count: 0, committee: cleanId(s.committee_number), key };
       }
       map[key].count++;
-      });
     });
     return map;
-  }, [students, myGrades, supervisions, todayDate]);
+  }, [students, myGrades]);
 
   const stats = useMemo(() => {
     const allKeys = Object.keys(myTotalScope);
@@ -139,10 +130,10 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
   const currentQueue = useMemo(() => {
     if (!activeCommitteeId) return [];
     return Object.keys(myTotalScope)
-      .filter(k => myTotalScope[k].committee === cleanId(activeCommitteeId) && Number(myTotalScope[k].period || 1) === activeReceiptPeriod && !receivedKeys.has(k))
+      .filter(k => myTotalScope[k].committee === cleanId(activeCommitteeId) && !receivedKeys.has(k))
       .map(k => ({ ...myTotalScope[k] }))
       .sort((a, b) => a.grade.localeCompare(b.grade));
-  }, [activeCommitteeId, activeReceiptPeriod, myTotalScope, receivedKeys]);
+  }, [activeCommitteeId, myTotalScope, receivedKeys]);
 
   const recentLogs = useMemo(() => {
     return deliveryLogs
@@ -152,23 +143,14 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
   }, [deliveryLogs, todayDate, user.full_name]);
 
   const isReceiverSummon = (request: ControlRequest) => request.text?.startsWith('[CALL_RECEIVER]');
-  const cleanSummonText = (text?: string) => String(text || '').replace('[CALL_RECEIVER]', '').replace(/\[PERIOD:\d+\]/g, '').trim();
-  const getRequestPeriod = (request: ControlRequest) => {
-    const periodMatch = String(request.text || '').match(/\[PERIOD:(\d+)\]/) || String(request.text || '').match(/فترة\s*(\d+)/);
-    return periodMatch ? Number(periodMatch[1]) || 1 : 1;
-  };
-  const requestMatchesReceiptPeriod = (request: ControlRequest, period: number) => getRequestPeriod(request) === Number(period || 1);
+  const cleanSummonText = (text?: string) => String(text || '').replace('[CALL_RECEIVER]', '').trim();
 
   const activeCommitteeSummons = useMemo(() => {
     if (!activeCommitteeId) return [];
     return controlRequests
-      .filter(request => {
-        const periodMatch = String(request.text || '').match(/\[PERIOD:(\d+)\]/);
-        const requestPeriod = periodMatch ? Number(periodMatch[1]) || 1 : 1;
-        return request.committee === activeCommitteeId && request.status !== 'DONE' && isReceiverSummon(request) && requestPeriod === activeReceiptPeriod;
-      })
+      .filter(request => request.committee === activeCommitteeId && request.status !== 'DONE' && isReceiverSummon(request))
       .sort((a, b) => b.time.localeCompare(a.time));
-  }, [activeCommitteeId, activeReceiptPeriod, controlRequests]);
+  }, [activeCommitteeId, controlRequests]);
 
   const handleSendSummon = async () => {
     if (!activeCommitteeId || isSummonSaving) return;
@@ -178,7 +160,7 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
       await db.controlRequests.insert({
         from: `${user.full_name} - المستلم`,
         committee: activeCommitteeId,
-        text: `[CALL_RECEIVER] [PERIOD:${activeReceiptPeriod}] استدعاء المراقب: ${summonReason}${notePart}`,
+        text: `[CALL_RECEIVER] استدعاء المراقب: ${summonReason}${notePart}`,
         time: new Date().toISOString(),
         status: 'PENDING',
       });
@@ -217,22 +199,15 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
     return Object.values(myTotalScope)
       .map(info => {
         const isReceived = receivedKeys.has(info.key);
-        const period = Number((info as any).period || 1);
-        const sv = supervisions.find(s => cleanId(s.committee_number) === info.committee && matchDate(s.date, todayDate) && Number(s.period || 1) === period);
+        const sv = supervisions.find(s => cleanId(s.committee_number) === info.committee && matchDate(s.date, todayDate));
         const proctor = users.find(u => u.id === sv?.teacher_id);
-        const confirmedLog = deliveryLogs.find(l => l.status === 'CONFIRMED' && matchDate(l.time, todayDate) && getUniqueKey(l.committee_number, l.grade, l.period || 1) === info.key);
-        const pendingLog = deliveryLogs.find(l => l.status === 'PENDING' && matchesReceiptWorkDate(l.time) && getUniqueKey(l.committee_number, l.grade, l.period || 1) === info.key)
-          || deliveryLogs.find(l => l.type === 'RECEIVE' && l.status === 'PENDING' && matchesReceiptWorkDate(l.time) && cleanId(l.committee_number) === info.committee && Number(l.period || 1) === period);
-        const isReady = !isReceived && (proctorSubmittedCommittees.has(`${info.committee}__${period}`) || Boolean(pendingLog));
-        const gradeAbsences = absences.filter(a => a.committee_number === info.committee && Number(a.period || 1) === period && a.type === 'ABSENT' && matchDate(a.date, todayDate) && students.find(s => s.national_id === a.student_id)?.grade === info.grade);
-        const gradeLates = absences.filter(a => a.committee_number === info.committee && Number(a.period || 1) === period && a.type === 'LATE' && matchDate(a.date, todayDate) && students.find(s => s.national_id === a.student_id)?.grade === info.grade);
-        const openAlerts = controlRequests.filter(r =>
-          r.committee === info.committee &&
-          r.status !== 'DONE' &&
-          requestMatchesReceiptPeriod(r, period) &&
-          !isInternalSignatureRecord(r) &&
-          !isSignatureRequest(r)
-        );
+        const confirmedLog = deliveryLogs.find(l => l.status === 'CONFIRMED' && matchDate(l.time, todayDate) && getUniqueKey(l.committee_number, l.grade) === info.key);
+        const pendingLog = deliveryLogs.find(l => l.status === 'PENDING' && matchesReceiptWorkDate(l.time) && getUniqueKey(l.committee_number, l.grade) === info.key)
+          || deliveryLogs.find(l => l.type === 'RECEIVE' && l.status === 'PENDING' && matchesReceiptWorkDate(l.time) && cleanId(l.committee_number) === info.committee);
+        const isReady = !isReceived && (proctorSubmittedCommittees.has(info.committee) || Boolean(pendingLog));
+        const gradeAbsences = absences.filter(a => a.committee_number === info.committee && a.type === 'ABSENT' && matchDate(a.date, todayDate) && students.find(s => s.national_id === a.student_id)?.grade === info.grade);
+        const gradeLates = absences.filter(a => a.committee_number === info.committee && a.type === 'LATE' && matchDate(a.date, todayDate) && students.find(s => s.national_id === a.student_id)?.grade === info.grade);
+        const openAlerts = controlRequests.filter(r => r.committee === info.committee && r.status !== 'DONE' && !isInternalSignatureRecord(r) && !isSignatureRequest(r));
         const status = isReceived ? 'RECEIVED' : isReady ? 'READY' : 'WAITING';
         return {
           ...info,
@@ -266,8 +241,8 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
   const personalStats = useMemo(() => {
     const cards = Object.values(myTotalScope);
     const received = cards.filter(c => receivedKeys.has(c.key)).length;
-    const ready = cards.filter(c => !receivedKeys.has(c.key) && proctorSubmittedCommittees.has(`${c.committee}__${Number((c as any).period || 1)}`)).length;
-    const waiting = cards.filter(c => !receivedKeys.has(c.key) && !proctorSubmittedCommittees.has(`${c.committee}__${Number((c as any).period || 1)}`)).length;
+    const ready = cards.filter(c => !receivedKeys.has(c.key) && proctorSubmittedCommittees.has(c.committee)).length;
+    const waiting = cards.filter(c => !receivedKeys.has(c.key) && !proctorSubmittedCommittees.has(c.committee)).length;
     const mineToday = deliveryLogs.filter(l => l.status === 'CONFIRMED' && l.teacher_name === user.full_name && matchDate(l.time, todayDate));
     return { total: cards.length, received, ready, waiting, mineToday: mineToday.length };
   }, [deliveryLogs, myTotalScope, proctorSubmittedCommittees, receivedKeys, todayDate, user.full_name]);
@@ -278,52 +253,36 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
     if (!input) return;
 
     let targetCommitteeNum = input;
-    let targetPeriod = 1;
     
     // 1. التحقق أولاً: هل المدخل هو رقم هوية مراقب مسجل؟
     const proctorUser = users.find(u => cleanId(u.national_id) === input);
     
     if (proctorUser) {
       // إذا كانت هوية مراقب، نبحث عن تكليفه النشط اليوم
-      const sv = supervisions
-        .filter(s => s.teacher_id === proctorUser.id && matchDate(s.date, todayDate))
-        .sort((a, b) => Number(a.period || 1) - Number(b.period || 1))
-        .find(s => proctorSubmittedCommittees.has(`${cleanId(s.committee_number)}__${Number(s.period || 1)}`))
-        || supervisions.find(s => s.teacher_id === proctorUser.id && matchDate(s.date, todayDate));
+      const sv = supervisions.find(s => s.teacher_id === proctorUser.id && matchDate(s.date, todayDate));
       if (sv) {
         targetCommitteeNum = cleanId(sv.committee_number);
-        targetPeriod = Number(sv.period || 1);
-        onAlert(`تم التعرف على المراقب: ${proctorUser.full_name} - لجنة ${targetCommitteeNum} فترة ${targetPeriod}`);
+        onAlert(`تم التعرف على المراقب: ${proctorUser.full_name} - لجنة ${targetCommitteeNum}`);
       } else {
         onAlert(`تنبيه: المراقب ${proctorUser.full_name} ليس لديه تكليف مسجل اليوم.`);
         return;
       }
     }
 
-    if (!proctorUser) {
-      const candidatePeriods = Array.from(new Set(
-        Object.values(myTotalScope)
-          .filter(info => info.committee === targetCommitteeNum && !receivedKeys.has(info.key))
-          .map(info => Number((info as any).period || 1))
-      )).sort((a, b) => a - b);
-      targetPeriod = candidatePeriods.find(period => proctorSubmittedCommittees.has(`${targetCommitteeNum}__${period}`)) || candidatePeriods[0] || 1;
-    }
-
     // 2. التحقق من أن اللجنة (سواء أدخلت مباشرة أو عبر هوية المراقب) قد تم إنهاؤها ميدانياً
-    if (!proctorSubmittedCommittees.has(`${targetCommitteeNum}__${targetPeriod}`)) {
-      onAlert(`عذراً: اللجنة ${targetCommitteeNum} فترة ${targetPeriod} لم يتم إنهاؤها ميدانياً من قبل المراقب بعد.`);
+    if (!proctorSubmittedCommittees.has(targetCommitteeNum)) {
+      onAlert(`عذراً: اللجنة ${targetCommitteeNum} لم يتم إنهاؤها ميدانياً من قبل المراقب بعد.`);
       return;
     }
 
     // 3. التحقق من التبعية والصلاحيات
-    const waiting = Object.keys(myTotalScope).filter(k => myTotalScope[k].committee === targetCommitteeNum && Number((myTotalScope[k] as any).period || 1) === targetPeriod && !receivedKeys.has(k));
+    const waiting = Object.keys(myTotalScope).filter(k => myTotalScope[k].committee === targetCommitteeNum && !receivedKeys.has(k));
     if (waiting.length === 0) {
-      onAlert(`اللجنة ${targetCommitteeNum} فترة ${targetPeriod} مستلمة بالكامل أو خارج نطاق صلاحياتك الحالية.`);
+      onAlert(`اللجنة ${targetCommitteeNum} مستلمة بالكامل أو خارج نطاق صلاحياتك الحالية.`);
       return;
     }
 
     setActiveCommitteeId(targetCommitteeNum);
-    setActiveReceiptPeriod(targetPeriod);
     setCurrentQueueIndex(0);
     setSearchInput('');
     stopScanner();
@@ -416,8 +375,7 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
       return;
     }
 
-    const itemPeriod = Number((item as any).period || activeReceiptPeriod || 1);
-    const sv = supervisions.find(s => cleanId(s.committee_number) === item.committee && matchDate(s.date, todayDate) && Number(s.period || 1) === itemPeriod);
+    const sv = supervisions.find(s => cleanId(s.committee_number) === item.committee && matchDate(s.date, todayDate));
     const proctorObj = users.find(u => u.id === sv?.teacher_id);
     
     const newLog: DeliveryLog = { 
@@ -428,7 +386,7 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
       grade: item.grade, 
       type: 'RECEIVE', 
       time: new Date().toISOString(), 
-      period: itemPeriod, 
+      period: 1, 
       status: 'CONFIRMED' 
     };
 
@@ -442,7 +400,6 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
           role: 'receiver',
           committee: item.committee,
           grade: item.grade,
-          period: itemPeriod,
           name: user.full_name,
           time: newLog.time,
           signature: signatureData,
@@ -453,7 +410,7 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
       await db.controlRequests.insert({
         from: `${user.full_name} - المستلم`,
         committee: item.committee,
-        text: `${SIGNATURE_REQUEST_PREFIX} الرجاء توقيع مراقب اللجنة بعد استلام الكنترول للصف: ${item.grade} - فترة ${itemPeriod}`,
+        text: `${SIGNATURE_REQUEST_PREFIX} الرجاء توقيع مراقب اللجنة بعد استلام الكنترول للصف: ${item.grade}`,
         time: newLog.time,
         status: 'PENDING',
       });
@@ -675,19 +632,19 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
                           <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-[2rem] text-center shadow-sm">
                              <p className="text-[10px] font-black text-emerald-800 uppercase mb-1 leading-none">الحضور</p>
                              <p className="text-3xl font-black text-emerald-700 tabular-nums">
-                               {currentQueue[currentQueueIndex].count - absences.filter(a => a.committee_number === activeCommitteeId && Number(a.period || 1) === Number((currentQueue[currentQueueIndex] as any).period || activeReceiptPeriod || 1) && a.type === 'ABSENT' && a.date.startsWith(todayDate) && students.find(s => s.national_id === a.student_id)?.grade === currentQueue[currentQueueIndex].grade).length}
+                               {currentQueue[currentQueueIndex].count - absences.filter(a => a.committee_number === activeCommitteeId && a.type === 'ABSENT' && a.date.startsWith(todayDate) && students.find(s => s.national_id === a.student_id)?.grade === currentQueue[currentQueueIndex].grade).length}
                              </p>
                           </div>
                           <div className="bg-red-50 border border-red-100 p-6 rounded-[2rem] text-center shadow-sm">
                              <p className="text-[10px] font-black text-red-800 uppercase mb-1 leading-none">الغياب</p>
                              <p className="text-3xl font-black text-red-700 tabular-nums">
-                               {absences.filter(a => a.committee_number === activeCommitteeId && Number(a.period || 1) === Number((currentQueue[currentQueueIndex] as any).period || activeReceiptPeriod || 1) && a.type === 'ABSENT' && a.date.startsWith(todayDate) && students.find(s => s.national_id === a.student_id)?.grade === currentQueue[currentQueueIndex].grade).length}
+                               {absences.filter(a => a.committee_number === activeCommitteeId && a.type === 'ABSENT' && a.date.startsWith(todayDate) && students.find(s => s.national_id === a.student_id)?.grade === currentQueue[currentQueueIndex].grade).length}
                              </p>
                           </div>
                           <div className="bg-amber-50 border border-amber-100 p-6 rounded-[2rem] text-center shadow-sm">
                              <p className="text-[10px] font-black text-amber-800 uppercase mb-1 leading-none">التأخر</p>
                              <p className="text-3xl font-black text-amber-700 tabular-nums">
-                               {absences.filter(a => a.committee_number === activeCommitteeId && Number(a.period || 1) === Number((currentQueue[currentQueueIndex] as any).period || activeReceiptPeriod || 1) && a.type === 'LATE' && a.date.startsWith(todayDate) && students.find(s => s.national_id === a.student_id)?.grade === currentQueue[currentQueueIndex].grade).length}
+                               {absences.filter(a => a.committee_number === activeCommitteeId && a.type === 'LATE' && a.date.startsWith(todayDate) && students.find(s => s.national_id === a.student_id)?.grade === currentQueue[currentQueueIndex].grade).length}
                              </p>
                           </div>
                         </div>
@@ -701,7 +658,7 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
                             <div className="flex-1 text-right">
                               <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1">المراقب الميداني</p>
                               <h5 className="text-base font-black text-blue-900 leading-tight">
-                                {users.find(u => u.id === supervisions.find(s => cleanId(s.committee_number) === activeCommitteeId && matchDate(s.date, todayDate) && Number(s.period || 1) === Number((currentQueue[currentQueueIndex] as any).period || activeReceiptPeriod || 1))?.teacher_id)?.full_name || <span className="text-blue-300 italic text-sm">لم يُكلَّف بعد</span>}
+                                {users.find(u => u.id === supervisions.find(s => cleanId(s.committee_number) === activeCommitteeId && matchDate(s.date, todayDate))?.teacher_id)?.full_name || <span className="text-blue-300 italic text-sm">لم يُكلَّف بعد</span>}
                               </h5>
                             </div>
                           </div>
@@ -784,13 +741,7 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
                           )}
                         </div>
 
-                        {controlRequests.some(r =>
-                          r.committee === activeCommitteeId &&
-                          r.status !== 'DONE' &&
-                          requestMatchesReceiptPeriod(r, Number((currentQueue[currentQueueIndex] as any)?.period || activeReceiptPeriod || 1)) &&
-                          !isInternalSignatureRecord(r) &&
-                          !isSignatureRequest(r)
-                        ) && (
+                        {controlRequests.some(r => r.committee === activeCommitteeId && r.status !== 'DONE' && !isInternalSignatureRecord(r) && !isSignatureRequest(r)) && (
                           <div className="bg-red-50 border border-red-100 rounded-[2rem] p-5 flex items-start gap-4">
                             <ShieldAlert size={24} className="text-red-600 shrink-0 mt-1" />
                             <div className="text-right">
@@ -841,7 +792,7 @@ const ControlReceiptView: React.FC<Props> = ({ user, students, absences, deliver
               <div className="text-right">
                 <p className="text-xl font-black text-slate-950">توقيع مستلم الكنترول</p>
                 <p className="mt-1 text-xs font-bold text-slate-500">
-                  اللجنة {activeCommitteeId} · {currentQueue[currentQueueIndex].grade} · فترة {Number((currentQueue[currentQueueIndex] as any).period || activeReceiptPeriod || 1)}
+                  اللجنة {activeCommitteeId} · {currentQueue[currentQueueIndex].grade}
                 </p>
               </div>
               <button

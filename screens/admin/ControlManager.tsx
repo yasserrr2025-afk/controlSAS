@@ -159,7 +159,7 @@ const ControlManager: React.FC<ControlManagerProps> = ({
     if (!confirm(`بدء يوم جديد سيقوم بتصفير اللجان لليوم (${today}). هل أنت متأكد؟`)) return;
     setIsResetting(true);
     try {
-      // Do not clear supervision rows here; live exam assignments must stay intact.
+      await supabase.from('supervision').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       await setSystemConfig({ ...systemConfig, active_exam_date: today });
       onBroadcast(`تم تفعيل يوم الاختبار الجديد (${today}). يرجى المباشرة فوراً.`, 'ALL');
       addAuditEvent('بداية يوم جديد', `تم تصفير اللجان وتفعيل تاريخ ${today}`);
@@ -253,17 +253,6 @@ const ControlManager: React.FC<ControlManagerProps> = ({
     localStorage.setItem(key, JSON.stringify({ students, users, supervisions, absences, deliveryLogs, requests, archived_at: new Date().toISOString() }));
     addAuditEvent('أرشفة اليوم', `تم حفظ أرشيف محلي لتاريخ ${systemConfig.active_exam_date || new Date().toISOString().slice(0,10)}`);
     alert('تم حفظ أرشيف اليوم محليًا على هذا الجهاز.');
-  };
-
-  const handleStartSecondPeriod = async () => {
-    await setSystemConfig({
-      ...systemConfig,
-      active_period: 2,
-      active_period_date: activeExamDateKey,
-      second_period_started_at: new Date().toISOString(),
-    });
-    onBroadcast(`تم بدء الفترة الثانية بتاريخ ${activeExamDateKey}. يمكن للمراقبين المسندين للفترة الثانية تأكيد دخول اللجان الآن.`, 'PROCTOR');
-    addAuditEvent('بدء الفترة الثانية', `تم فتح اعتماد دخول الفترة الثانية بتاريخ ${activeExamDateKey}`);
   };
 
   const broadcastTemplates = [
@@ -390,7 +379,7 @@ const ControlManager: React.FC<ControlManagerProps> = ({
            <SmartProctorDistribution
              users={users}
              students={students}
-             supervisions={(smartSupervisions && smartSupervisions.length > 0) ? smartSupervisions : supervisions}
+             supervisions={smartSupervisions || supervisions}
              activeDate={systemConfig.active_exam_date}
              examSchedule={examSchedule}
              onUpsertExamSchedule={onUpsertExamSchedule}
@@ -398,7 +387,6 @@ const ControlManager: React.FC<ControlManagerProps> = ({
              onCommit={onCommitSmartDistribution}
              onDeleteSupervisions={onDeleteSmartDistributions}
              onUpdateSupervision={onUpdateSmartDistribution}
-             onStartSecondPeriod={handleStartSecondPeriod}
              systemConfig={systemConfig}
            />
 
@@ -896,13 +884,7 @@ const ControlManager: React.FC<ControlManagerProps> = ({
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-1">الصفوف المسجلة:</p>
                       <div className="flex flex-col gap-2">
                         {com.grades.map(grade => {
-                           const itemPeriod = Number(
-                             supervisions.find(s =>
-                               s.committee_number === com.num &&
-                               (!activeExamDateKey || String(s.date || '').slice(0, 10) === activeExamDateKey)
-                             )?.period || 1
-                           );
-                           const isAlreadyConfirmed = deliveryLogs.some(l => l.committee_number === com.num && l.grade === grade && Number(l.period || 1) === itemPeriod && l.status === 'CONFIRMED');
+                           const isAlreadyConfirmed = deliveryLogs.some(l => l.committee_number === com.num && l.grade === grade && l.status === 'CONFIRMED');
                            return (
                              <div key={grade} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100 group-hover:bg-white transition-colors">
                                <span className="font-black text-sm text-slate-700">{grade}</span>
@@ -911,7 +893,7 @@ const ControlManager: React.FC<ControlManagerProps> = ({
                                ) : (
                                  <button onClick={async () => {
                                    if (confirm(`استلام لجنة ${com.num} (${grade}) يدوياً؟`)) {
-                                     await setDeliveryLogs({ id: crypto.randomUUID(), teacher_name: 'رئيس الكنترول (يدوي)', proctor_name: 'تجاوز طوارئ', committee_number: com.num, grade, type: 'RECEIVE', time: new Date().toISOString(), period: itemPeriod, status: 'CONFIRMED' });
+                                     await setDeliveryLogs({ id: crypto.randomUUID(), teacher_name: 'رئيس الكنترول (يدوي)', proctor_name: 'تجاوز طوارئ', committee_number: com.num, grade, type: 'RECEIVE', time: new Date().toISOString(), period: 1, status: 'CONFIRMED' });
                                    }
                                  }} className="bg-slate-900 text-white px-4 py-2 rounded-xl font-black text-[10px] hover:bg-red-600 transition-all active:scale-95">استلام طوارئ</button>
                                )}

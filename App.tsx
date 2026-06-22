@@ -3,7 +3,6 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { User, UserRole, Student, Absence, Supervision, ControlRequest, DeliveryLog, SystemConfig, CommitteeReport, ExamSchedule, SupervisorVisit, AppNotification } from './types';
 import Sidebar from './components/Sidebar';
 import Login from './screens/Login';
-import type { SmartDistributionItem } from './screens/admin/SmartProctorDistribution';
 import AdminDashboardOverview from './screens/admin/DashboardOverview';
 import AdminUsersManager from './screens/admin/UsersManager';
 import AdminStudentsManager from './screens/admin/StudentsManager';
@@ -17,12 +16,13 @@ import SeatingPlanner from './screens/admin/SeatingPlanner';
 import { ArchiveBoxesManager } from './screens/admin/ArchiveBoxesManager';
 import { MasterPortfolio } from './screens/admin/MasterPortfolio';
 import { PublicBoxReport } from './screens/public/PublicBoxReport';
-import { SupervisorVisitForm, SupervisorMiniPortfolio } from './screens/public/SupervisorVisitPublic';
+import { SupervisorMiniPortfolio, SupervisorVisitForm } from './screens/public/SupervisorVisitPublic';
 import AiDashboard from './screens/admin/AiDashboard';
 import ComprehensiveStats from './screens/admin/ComprehensiveStats';
 import CommitteeLabelsPrint from './screens/admin/CommitteeLabelsPrint';
 import ControlHeadDashboard from './screens/admin/ControlHeadDashboard';
 import ControlManager from './screens/admin/ControlManager';
+import { SmartDistributionItem } from './screens/admin/SmartProctorDistribution';
 import ControlRoomMonitor from './screens/admin/ControlRoomMonitor';
 import ControlRoomMonitor2 from './screens/admin/ControlRoomMonitor2';
 import ProctorDailyAssignmentFlow from './screens/proctor/DailyAssignmentFlow';
@@ -49,6 +49,7 @@ import {
 } from './services/browserNotifications';
 import { registerExternalPush } from './services/pushNotifications';
 import { isSignatureRequest } from './services/signatures';
+import GlobalQRScanner from './components/GlobalQRScanner';
 import { BellRing, Menu, X, CheckCircle2, AlertCircle, Info, AlertTriangle, Loader2 } from 'lucide-react';
 import { db, supabase } from './supabase';
 
@@ -99,8 +100,6 @@ const getDefaultTab = (role: UserRole) => {
   return defaults[role] || 'my-tasks';
 };
 
-const withSuspense = (node: React.ReactNode) => node;
-
 const canOpenTab = (user: User, tab: string) => ROLE_TABS[user.role]?.includes(tab) ?? false;
 const isReserveSupervision = (item: Supervision) => String(item.subject || '').includes('[RESERVE]');
 const getRiyadhDateKey = () => {
@@ -131,34 +130,6 @@ const getRiyadhDateKeyFromValue = (value?: string | null) => {
 const matchesExamDate = (value: string | undefined | null, examDate: string) => {
   if (!value || !examDate) return false;
   return String(value).startsWith(examDate) || getRiyadhDateKeyFromValue(value) === examDate;
-};
-
-const normalizeDateKey = (value?: string | null) => {
-  if (!value) return '';
-  const key = String(value).slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : getRiyadhDateKeyFromValue(value);
-};
-
-const pickDynamicExamDate = (
-  today: string,
-  configDate: string | undefined,
-  supervisions: Supervision[],
-  exams: ExamSchedule[],
-) => {
-  const candidates = Array.from(new Set([
-    ...supervisions.map(item => normalizeDateKey(item.date)),
-    ...exams.map(item => normalizeDateKey(item.exam_date)),
-  ].filter(key => /^\d{4}-\d{2}-\d{2}$/.test(key)))).sort();
-
-  if (candidates.includes(today)) return today;
-
-  const pastOrToday = candidates.filter(key => key <= today);
-  if (pastOrToday.length > 0) return pastOrToday[pastOrToday.length - 1];
-
-  const normalizedConfigDate = normalizeDateKey(configDate);
-  if (normalizedConfigDate && candidates.includes(normalizedConfigDate)) return normalizedConfigDate;
-
-  return candidates[0] || normalizedConfigDate || today;
 };
 
 const buildExamDateTimestamp = (examDate: string) => {
@@ -223,8 +194,6 @@ const App: React.FC = () => {
     exam_start_time: '08:00', 
     exam_date: '',
     active_exam_date: getRiyadhDateKey(),
-    active_period: 1,
-    active_period_date: getRiyadhDateKey(),
     allow_manual_join: false
   });
   const todayKey = () => getRiyadhDateKey();
@@ -292,87 +261,32 @@ const App: React.FC = () => {
     try {
       const cfg = await db.config.get();
       const currentToday = todayKey();
-      const safeFetch = async <T,>(label: string, action: () => Promise<T>, fallback: T): Promise<T> => {
-        try {
-          return await action();
-        } catch (error: any) {
-          console.warn(`Sync Warning [${label}]:`, error?.message || error);
-          return fallback;
-        }
-      };
-
-      const [u, s, sv, exams, visits] = await Promise.all([
-        safeFetch('users', db.users.getAll, [] as User[]),
-        safeFetch('students', db.students.getAll, [] as Student[]),
-        safeFetch('supervision', db.supervision.getAll, [] as Supervision[]),
-        safeFetch('examSchedule', db.examSchedule.getAll, [] as ExamSchedule[]),
-        safeFetch('supervisorVisits', () => db.supervisorVisits.getAll(), [] as SupervisorVisit[]),
-      ]);
-      const supervisionRows = Array.isArray(sv) ? sv : [];
-      const filterDate = pickDynamicExamDate(currentToday, cfg?.active_exam_date, supervisionRows, exams);
+      let filterDate = currentToday;
       if (cfg) {
-        setSystemConfig(prev => ({ ...prev, ...cfg, active_exam_date: filterDate }));
-      } else {
-        setSystemConfig(prev => ({ ...prev, active_exam_date: filterDate }));
+        if (cfg.active_exam_date !== currentToday) {
+          const nextCfg = { ...cfg, active_exam_date: currentToday };
+          const lastAutoActiveDate = localStorage.getItem('last_auto_active_exam_date');
+          if (lastAutoActiveDate !== currentToday) {
+            await db.config.upsert(nextCfg);
+            localStorage.setItem('last_auto_active_exam_date', currentToday);
+          }
+          setSystemConfig(prev => ({ ...prev, ...nextCfg }));
+          filterDate = currentToday;
+        } else {
+          setSystemConfig(prev => ({ ...prev, ...cfg }));
+          filterDate = cfg.active_exam_date || currentToday;
+        }
       }
-
-      const nextDate = new Date(`${filterDate}T00:00:00`);
-      nextDate.setDate(nextDate.getDate() + 1);
-      const nextDateKey = nextDate.toISOString().slice(0, 10);
-      const dayStart = filterDate;
-      const dayEndValue = nextDateKey;
-
-      const [ab, cr, dl, reports] = await Promise.all([
-        safeFetch('absences.today', async () => {
-          const { data, error } = await supabase
-            .from('absences')
-            .select('*')
-            .gte('date', dayStart)
-            .lt('date', dayEndValue)
-            .limit(1000);
-          if (error) throw new Error(error.message);
-          return (data || []) as Absence[];
-        }, [] as Absence[]),
-        safeFetch('controlRequests.today', async () => {
-          const { data, error } = await supabase
-            .from('control_requests')
-            .select('*')
-            .gte('time', dayStart)
-            .lt('time', dayEndValue)
-            .order('time', { ascending: false })
-            .limit(500);
-          if (error) throw new Error(error.message);
-          return (data || []).map((d: any) => ({
-            id: d.id,
-            from: d.from_user_name,
-            committee: d.committee_number,
-            text: d.text,
-            time: d.time,
-            status: d.status,
-            assistant_name: d.assistant_name
-          })) as ControlRequest[];
-        }, [] as ControlRequest[]),
-        safeFetch('deliveryLogs.today', async () => {
-          const { data, error } = await supabase
-            .from('delivery_logs')
-            .select('*')
-            .gte('time', dayStart)
-            .lt('time', dayEndValue)
-            .limit(1000);
-          if (error) throw new Error(error.message);
-          return (data || []) as DeliveryLog[];
-        }, [] as DeliveryLog[]),
-        safeFetch('committeeReports.today', async () => {
-          const { data, error } = await supabase
-            .from('committee_reports')
-            .select('*')
-            .gte('date', dayStart)
-            .lt('date', dayEndValue)
-            .order('created_at', { ascending: false })
-            .limit(500);
-          if (error) throw new Error(error.message);
-          return (data || []) as CommitteeReport[];
-        }, [] as CommitteeReport[]),
+      const [u, s, sv, ab, cr, dl, reports, exams, visits] = await Promise.all([
+        db.users.getAll(),
+        db.students.getAll(),
+        db.supervision.getAll(),
+        db.absences.getAll(),
+        db.controlRequests.getAll(),
+        db.deliveryLogs.getAll(),
+        db.committeeReports.getAll(),
+        db.examSchedule.getAll(),
+        db.supervisorVisits.getAll().catch(() => []),
       ]);
       setUsers(u);
       const savedUser = localStorage.getItem('currentUser');
@@ -403,7 +317,7 @@ const App: React.FC = () => {
         }
       }
       setStudents(s);
-      setAllSupervisions(prev => supervisionRows.length > 0 ? supervisionRows : prev);
+      setAllSupervisions(sv);
       setAllAbsences(ab);
       setAllDeliveryLogs(dl);
       setAllControlRequests(cr);
@@ -412,9 +326,7 @@ const App: React.FC = () => {
       setSupervisorVisits(visits as SupervisorVisit[]);
       
       if (filterDate) {
-        if (supervisionRows.length > 0) {
-          setSupervisions(supervisionRows.filter(i => matchesExamDate(i.date, filterDate) && !isReserveSupervision(i)));
-        }
+        setSupervisions(sv.filter(i => matchesExamDate(i.date, filterDate) && !isReserveSupervision(i))); 
         setAbsences(ab.filter(i => matchesExamDate(i.date, filterDate))); 
         setDeliveryLogs(dl.filter(i => matchesExamDate(i.time, filterDate)));
         setControlRequests(cr.filter(i => matchesExamDate(i.time, filterDate)));
@@ -444,29 +356,21 @@ const App: React.FC = () => {
       }
     }
     fetchData();
-    const interval = setInterval(fetchData, 60000);
+    const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
   useEffect(() => {
-    let refreshTimer: number | undefined;
-    const scheduleRefresh = () => {
-      if (refreshTimer) window.clearTimeout(refreshTimer);
-      refreshTimer = window.setTimeout(() => {
-        if (document.visibilityState !== 'hidden') fetchData();
-      }, 1200);
-    };
     const channel = supabase
       .channel('control-requests-live-sync')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'control_requests' },
-        scheduleRefresh,
+        () => fetchData(),
       )
       .subscribe();
 
     return () => {
-      if (refreshTimer) window.clearTimeout(refreshTimer);
       supabase.removeChannel(channel);
     };
   }, [fetchData]);
@@ -813,7 +717,7 @@ const App: React.FC = () => {
            <button onClick={() => setActiveTab('dashboard')} className="fixed top-6 left-6 z-[230] bg-white/10 text-white p-3 rounded-full hover:bg-white/20">
               <X size={32} />
            </button>
-           <ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} systemConfig={systemConfig} />
+           <ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} />
         </div>
       );
       case 'comprehensive-stats': return <ComprehensiveStats students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} systemConfig={systemConfig} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />;
@@ -835,7 +739,7 @@ const App: React.FC = () => {
       case 'proctor-alerts': return <ProctorAlertsHistory requests={controlRequests} userFullName={currentUser.full_name} currentUser={currentUser} deliveryLogs={deliveryLogs} supervisions={supervisions} systemConfig={systemConfig} setRequests={fetchData} />;
       case 'my-schedule': return <ProctorScheduleView user={currentUser} supervisions={allSupervisions} systemConfig={systemConfig} />;
       case 'student-absences': return <CounselorAbsenceMonitor user={currentUser} absences={absences} students={students} supervisions={supervisions} users={users} onAcknowledgeAbsence={(absence) => acknowledgeAbsenceReceipt(absence, currentUser)} onUpdateContactNote={(absence, contact) => updateAbsenceContactNote(absence, contact, currentUser)} />;
-      case 'my-tasks': return <ProctorDailyAssignmentFlow user={currentUser} supervisions={supervisions} setSupervisions={fetchData} students={students} absences={absences} setAbsences={fetchData} deliveryLogs={deliveryLogs} setDeliveryLogs={async (log) => { await db.deliveryLogs.upsert(log); await fetchData(); }} sendRequest={async (txt, com) => { await db.controlRequests.insert({ from: currentUser.full_name, committee: com, text: txt, time: new Date().toISOString(), status: 'PENDING' }); await fetchData(); }} controlRequests={controlRequests} users={users} systemConfig={systemConfig} examSchedule={examSchedule} committeeReports={committeeReports} onReportUpsert={async (report) => { await db.committeeReports.upsert(report); await fetchData(); }} onAlert={addLocalNotification} />;
+      case 'my-tasks': return <ProctorDailyAssignmentFlow user={currentUser} supervisions={supervisions} setSupervisions={fetchData} students={students} absences={absences} setAbsences={fetchData} deliveryLogs={deliveryLogs} setDeliveryLogs={async (log) => { await db.deliveryLogs.upsert(log); await fetchData(); }} sendRequest={async (txt, com) => { await db.controlRequests.insert({ from: currentUser.full_name, committee: com, text: txt, time: new Date().toISOString(), status: 'PENDING' }); await fetchData(); }} controlRequests={controlRequests} users={users} systemConfig={systemConfig} committeeReports={committeeReports} onReportUpsert={async (report) => { await db.committeeReports.upsert(report); await fetchData(); }} onAlert={addLocalNotification} />;
       case 'envelope-opening': return <EnvelopeOpeningView user={currentUser} systemConfig={systemConfig} users={users} controlRequests={allControlRequests} onRefresh={fetchData} onAlert={addLocalNotification} />;
       case 'envelope-labels': return <EnvelopeLabelsPrint students={students} users={users} currentUser={currentUser} systemConfig={systemConfig} onAlert={addLocalNotification} />;
       case 'door-labels': return <DoorLabelsPrint students={students} systemConfig={systemConfig} />;
@@ -866,47 +770,47 @@ const App: React.FC = () => {
 
   const publicCommitteeId = params.get('public_committee');
   if (publicCommitteeId) {
-    return withSuspense(<CommitteePublicView committeeNumber={publicCommitteeId} students={students} supervisions={supervisions} absences={absences} users={users} />);
+    return <CommitteePublicView committeeNumber={publicCommitteeId} students={students} supervisions={supervisions} absences={absences} users={users} />;
   }
 
   const boxReportId = params.get('box_report');
   if (boxReportId) {
-    return withSuspense(<PublicBoxReport boxId={boxReportId} students={students} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} deliveryLogs={allDeliveryLogs} users={users} examSchedule={examSchedule} systemConfig={systemConfig} absences={allAbsences} />);
+    return <PublicBoxReport boxId={boxReportId} students={students} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} deliveryLogs={allDeliveryLogs} users={users} examSchedule={examSchedule} systemConfig={systemConfig} absences={allAbsences} />;
   }
 
   const portfolioLive = params.get('portfolio_live');
   if (portfolioLive) {
-    return withSuspense(<ComprehensiveStats publicMode students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} systemConfig={systemConfig} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />);
+    return <ComprehensiveStats publicMode students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} systemConfig={systemConfig} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />;
   }
 
   const portfolioBookLive = params.get('portfolio_book_live');
   if (portfolioBookLive) {
-    return withSuspense(<MasterPortfolio publicMode students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} systemConfig={systemConfig} absences={allAbsences} committeeReports={allCommitteeReports} examSchedule={examSchedule} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} supervisorVisits={supervisorVisits} />);
+    return <MasterPortfolio publicMode students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} systemConfig={systemConfig} absences={allAbsences} committeeReports={allCommitteeReports} examSchedule={examSchedule} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} supervisorVisits={supervisorVisits} />;
   }
 
   const supervisorVisitId = params.get('supervisor_visit');
   if (supervisorVisitId) {
-    return withSuspense(<SupervisorVisitForm visitId={supervisorVisitId} systemConfig={systemConfig} students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />);
+    return <SupervisorVisitForm visitId={supervisorVisitId} systemConfig={systemConfig} students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />;
   }
 
   const supervisorPortfolioToken = params.get('supervisor_portfolio');
   if (supervisorPortfolioToken) {
-    return withSuspense(<SupervisorMiniPortfolio token={supervisorPortfolioToken} systemConfig={systemConfig} students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />);
+    return <SupervisorMiniPortfolio token={supervisorPortfolioToken} systemConfig={systemConfig} students={students} users={users} supervisions={allSupervisions.filter(i => !isReserveSupervision(i))} absences={allAbsences} deliveryLogs={allDeliveryLogs} controlRequests={allControlRequests} committeeReports={allCommitteeReports} examSchedule={examSchedule} />;
   }
 
   const isTv2Public = params.get('tv2');
   if (isTv2Public) {
-    return withSuspense(<ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} systemConfig={systemConfig} />);
+    return <ControlRoomMonitor2 absences={absences} supervisions={supervisions} users={users} deliveryLogs={deliveryLogs} students={students} requests={controlRequests} />;
   }
 
   const isStudentInquiry = params.get('student_inquiry');
   if (isStudentInquiry) {
-    return withSuspense(<StudentCommitteeInquiry students={students} />);
+    return <StudentCommitteeInquiry students={students} />;
   }
 
   const isSupervisionVerification = params.get('supervision_verify') || params.get('sv');
   if (isSupervisionVerification) {
-    return withSuspense(<SupervisionVerification supervisions={supervisions} users={users} students={students} absences={absences} deliveryLogs={deliveryLogs} />);
+    return <SupervisionVerification supervisions={supervisions} users={users} students={students} absences={absences} deliveryLogs={deliveryLogs} />;
   }
 
   return (
@@ -1026,7 +930,7 @@ const App: React.FC = () => {
         style={{ paddingTop: currentUser ? 'calc(env(safe-area-inset-top) + 80px)' : undefined }}
         className={`transition-all duration-300 min-h-screen ${currentUser ? (isSidebarCollapsed ? 'lg:mr-24' : 'lg:mr-80') : ''} ${currentUser ? 'px-4 pb-6 lg:p-10 lg:pt-10' : ''}`}
       >
-        {currentUser ? withSuspense(renderContent()) : <Login users={users} systemConfig={systemConfig} onLogin={handleLoginSuccess} onAlert={addLocalNotification} />}
+        {currentUser ? renderContent() : <Login users={users} systemConfig={systemConfig} onLogin={handleLoginSuccess} onAlert={addLocalNotification} />}
       </main>
 
       {/* 

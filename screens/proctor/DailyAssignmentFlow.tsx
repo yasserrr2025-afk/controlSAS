@@ -7,7 +7,6 @@ import {
   DeliveryLog,
   ControlRequest,
   CommitteeReport,
-  ExamSchedule,
 } from "../../types";
 import { Html5Qrcode } from "html5-qrcode";
 import {
@@ -66,7 +65,6 @@ interface Props {
   deliveryLogs?: DeliveryLog[];
   setDeliveryLogs: (log: Partial<DeliveryLog>) => Promise<void>;
   systemConfig: any;
-  examSchedule?: ExamSchedule[];
   controlRequests?: ControlRequest[];
 }
 
@@ -83,7 +81,6 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   deliveryLogs = [],
   setDeliveryLogs,
   systemConfig,
-  examSchedule = [],
   controlRequests = [],
 }) => {
   const [isScanning, setIsScanning] = useState(false);
@@ -135,20 +132,14 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
 
   const isSupervisionFullyDone = useCallback((s: any) => {
     if (!s || !s.committee_number) return false;
-    const supervisionPeriod = Number(s.period || 1);
     const committeeGrades = Array.from(new Set(students.filter(st => st.committee_number === s.committee_number).map(st => st.grade)));
     if (committeeGrades.length === 0) return false;
     
-    const confirmedLogs = deliveryLogs.filter(l =>
-      l.committee_number === s.committee_number &&
-      matchesActiveDate(l.time) &&
-      Number(l.period || 1) === supervisionPeriod &&
-      l.status === 'CONFIRMED'
-    );
+    const confirmedLogs = deliveryLogs.filter(l => l.committee_number === s.committee_number && matchesActiveDate(l.time) && l.status === 'CONFIRMED');
     const reportedGrades = confirmedLogs.map(l => l.grade);
     
     const allConfirmed = committeeGrades.every(g => reportedGrades.includes(g));
-    const proctorSignature = findStoredSignature(controlRequests, 'proctor', s.committee_number, ALL_GRADES_SIGNATURE, supervisionPeriod);
+    const proctorSignature = findStoredSignature(controlRequests, 'proctor', s.committee_number, ALL_GRADES_SIGNATURE);
     
     return allConfirmed && !!proctorSignature;
   }, [students, deliveryLogs, controlRequests, activeDate]);
@@ -182,7 +173,6 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   }, [supervisions, matchesCurrentProctor, activeDate, isSupervisionFullyDone]);
 
   const activeCommittee = activeAssignment?.committee_number || null;
-  const activePeriod = Number(activeAssignment?.period || 1);
   const pendingEnvelopeSignatureRequests = useMemo(
     () => controlRequests.filter(
       request =>
@@ -223,10 +213,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   const isReserveCommitteeConfirmedByControl = useMemo(() => {
     if (!isEmergencyAssignment || !activeAssignment) return false;
     const committeeDelivery = deliveryLogs.find(
-      (l) =>
-        l.committee_number === activeAssignment.committee_number &&
-        Number(l.period || 1) === Number(activeAssignment.period || 1) &&
-        l.status === 'CONFIRMED'
+      (l) => l.committee_number === activeAssignment.committee_number && l.status === 'CONFIRMED'
     );
     return !!committeeDelivery;
   }, [isEmergencyAssignment, activeAssignment, deliveryLogs]);
@@ -237,24 +224,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   }, []);
 
   const assignmentGate = useMemo(() => {
-    if (activePeriod >= 2) {
-      const startedAt = systemConfig?.second_period_started_at
-        ? new Date(systemConfig.second_period_started_at)
-        : null;
-      const isPeriodStarted =
-        String(systemConfig?.active_period_date || '') === activeDate &&
-        Number(systemConfig?.active_period || 1) >= activePeriod;
-
-      return {
-        examStart: startedAt || new Date(`${activeDate}T00:00:00`),
-        opensAt: startedAt,
-        canConfirm: isPeriodStarted,
-        source: 'manual',
-      };
-    }
-
-    const startTime = systemConfig?.exam_start_time || '08:00';
-    const [hours, minutes] = String(startTime).split(':').map(Number);
+    const [hours, minutes] = String(systemConfig?.exam_start_time || '08:00').split(':').map(Number);
     const examStart = new Date(`${activeDate}T00:00:00`);
     examStart.setHours(Number.isFinite(hours) ? hours : 8, Number.isFinite(minutes) ? minutes : 0, 0, 0);
     const opensAt = new Date(examStart.getTime() - 15 * 60 * 1000);
@@ -262,16 +232,13 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       examStart,
       opensAt,
       canConfirm: gateNow.getTime() >= opensAt.getTime(),
-      source: 'system',
     };
-  }, [activeDate, activePeriod, systemConfig?.active_period, systemConfig?.active_period_date, systemConfig?.second_period_started_at, systemConfig?.exam_start_time, gateNow]);
+  }, [activeDate, systemConfig?.exam_start_time, gateNow]);
 
-  const gateTimeLabel = assignmentGate.opensAt
-    ? assignmentGate.opensAt.toLocaleTimeString('ar-SA', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : 'بدء الفترة الثانية من مدير النظام';
+  const gateTimeLabel = assignmentGate.opensAt.toLocaleTimeString('ar-SA', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 
   const buildActiveDateTimestamp = () => {
     const now = new Date();
@@ -352,19 +319,13 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     () =>
       controlRequests
         .filter(
-          (r) => {
-            const periodMatch = String(r.text || '').match(/\[PERIOD:(\d+)\]/) || String(r.text || '').match(/فترة\s*(\d+)/);
-            const requestPeriod = periodMatch ? Number(periodMatch[1]) || 1 : 1;
-            return (
-              r.committee === activeCommittee &&
-              r.status !== "DONE" &&
-              requestPeriod === activePeriod &&
-              (r.from === user.full_name || r.text?.startsWith('[CALL_RECEIVER]') || isSignatureRequest(r))
-            );
-          },
+          (r) =>
+            r.committee === activeCommittee &&
+            r.status !== "DONE" &&
+            (r.from === user.full_name || r.text?.startsWith('[CALL_RECEIVER]') || isSignatureRequest(r)),
         )
         .sort((a, b) => b.time.localeCompare(a.time)),
-    [controlRequests, user.full_name, activeCommittee, activePeriod],
+    [controlRequests, user.full_name, activeCommittee],
   );
 
   const isReceiverSummon = (request: ControlRequest) => request.text?.startsWith('[CALL_RECEIVER]');
@@ -440,7 +401,6 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
           role: "proctor",
           committee: activeCommittee,
           grade: ALL_GRADES_SIGNATURE,
-          period: activePeriod,
           name: user.full_name,
           time: new Date().toISOString(),
           signature,
@@ -498,7 +458,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
         if (!pending.length) return;
         for (const rec of pending) {
           if (rec._delete) {
-            await db.absences.delete(rec.student_id, rec.period, String(rec.date || activeDate).slice(0, 10)).catch(() => {});
+            await db.absences.delete(rec.student_id).catch(() => {});
           } else {
             await db.absences.upsert(rec).catch(() => {});
           }
@@ -535,8 +495,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       .filter(
         (l) =>
           l.committee_number === activeCommittee &&
-          matchesActiveDate(l.time) &&
-          Number(l.period || 1) === activePeriod,
+          matchesActiveDate(l.time),
       )
       .map((l) => l.grade);
 
@@ -544,7 +503,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       committeeGrades.length > 0 &&
       committeeGrades.every((g) => reportedGrades.includes(g))
     );
-  }, [deliveryLogs, activeCommittee, activeDate, activePeriod, students]);
+  }, [deliveryLogs, activeCommittee, activeDate, students]);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsInitialLoading(false), 800);
@@ -564,10 +523,9 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       absences.filter(
         (a) =>
           a.committee_number === activeCommittee &&
-          matchesActiveDate(a.date) &&
-          Number(a.period || 1) === activePeriod,
+          matchesActiveDate(a.date),
       ),
-    [absences, activeCommittee, activeDate, activePeriod],
+    [absences, activeCommittee, activeDate],
   );
 
   const stats = useMemo(() => {
@@ -608,8 +566,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
         .delete()
         .eq('teacher_id', user.id)
         .gte('date', `${activeDate}T00:00:00`)
-        .lt('date', `${activeDate}T23:59:59.999Z`)
-        .eq('period', 1);
+        .lt('date', `${activeDate}T23:59:59.999Z`);
       await db.supervision.insert({
         id: assignmentId,
         teacher_id: user.id,
@@ -655,10 +612,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   ) => {
     if (isCommitteeFinished) return;
     const existing = absences.find(
-      (a) =>
-        a.student_id === student.national_id &&
-        matchesActiveDate(a.date) &&
-        Number(a.period || 1) === activePeriod,
+      (a) => a.student_id === student.national_id && matchesActiveDate(a.date),
     );
     const isRemoving = existing && existing.type === type;
 
@@ -668,22 +622,17 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
       try {
         const raw = localStorage.getItem(localKey);
         const list: any[] = raw ? JSON.parse(raw) : [];
-        const idx = list.findIndex(r =>
-          r.student_id === rec.student_id &&
-          Number(r.period || 1) === Number(rec.period || 1)
-        );
+        const idx = list.findIndex(r => r.student_id === rec.student_id);
         if (idx >= 0) list[idx] = rec; else list.push(rec);
         localStorage.setItem(localKey, JSON.stringify(list));
         setLocalPendingCount(list.length);
       } catch {}
     };
-    const removeFromLocal = (studentId: string, period = activePeriod) => {
+    const removeFromLocal = (studentId: string) => {
       try {
         const raw = localStorage.getItem(localKey);
         if (!raw) return;
-        const list: any[] = JSON.parse(raw).filter((r: any) =>
-          !(r.student_id === studentId && Number(r.period || 1) === Number(period || 1))
-        );
+        const list: any[] = JSON.parse(raw).filter((r: any) => r.student_id !== studentId);
         localStorage.setItem(localKey, JSON.stringify(list));
         setLocalPendingCount(list.length);
       } catch {}
@@ -692,15 +641,15 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     // ── ثانياً: رفع للسيرفر (مع fallback محلي) ──
     try {
       if (isRemoving) {
-        removeFromLocal(student.national_id, activePeriod);
-        await db.absences.delete(student.national_id, activePeriod, activeDate);
+        removeFromLocal(student.national_id);
+        await db.absences.delete(student.national_id);
       } else {
         const rec = {
           id: existing?.id || crypto.randomUUID(),
           student_id: student.national_id,
           student_name: student.name,
           committee_number: activeCommittee!,
-          period: activePeriod,
+          period: 1,
           type,
           proctor_id: user.id,
           date: new Date().toISOString(),
@@ -713,7 +662,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
           return;
         }
         await db.absences.upsert(rec);
-        removeFromLocal(student.national_id, activePeriod); // نجح الرفع → نمسح المحلي
+        removeFromLocal(student.national_id); // نجح الرفع → نمسح المحلي
       }
       await setAbsences();
     } catch (err: any) {
@@ -724,7 +673,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
           student_id: student.national_id,
           student_name: student.name,
           committee_number: activeCommittee!,
-          period: activePeriod, type,
+          period: 1, type,
           proctor_id: user.id,
           date: new Date().toISOString(),
         };
@@ -764,7 +713,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     }
 
     try {
-      await sendRequest(`${message} [PERIOD:${activePeriod}]`, activeCommittee!);
+      await sendRequest(message, activeCommittee!);
       onAlert("تم إرسال البلاغ فوراً لوحدة التحكم", "success");
       setIsReportModalOpen(false);
       resetReportState();
@@ -806,22 +755,21 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   const finalizeClosing = async () => {
     setIsVerifying(true);
     try {
-      const now = new Date().toISOString();
-      const closingLogs = myGrades.map(grade => ({
-        id: crypto.randomUUID(),
-        teacher_name: "بانتظار الكنترول",
-        proctor_name: user.full_name,
-        committee_number: activeCommittee!,
-        grade,
-        type: "RECEIVE",
-        time: now,
-        period: activePeriod,
-        status: "PENDING",
-      }));
-      const { error } = await supabase.from("delivery_logs").upsert(closingLogs, { onConflict: "id" });
-      if (error) throw new Error(error.message);
+      for (const grade of myGrades) {
+        await setDeliveryLogs({
+          id: crypto.randomUUID(),
+          teacher_name: "بانتظار الكنترول",
+          proctor_name: user.full_name,
+          committee_number: activeCommittee!,
+          grade,
+          type: "RECEIVE",
+          time: new Date().toISOString(),
+          period: 1,
+          status: "PENDING",
+        });
+      }
       await sendRequest(
-        `المراقب ${user.full_name} أنهى رصد اللجنة ومتجه للكنترول للتسليم. [PERIOD:${activePeriod}]`,
+        `المراقب ${user.full_name} أنهى رصد اللجنة ومتجه للكنترول للتسليم.`,
         activeCommittee!,
       );
       setIsClosingWizardOpen(false);
@@ -923,9 +871,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
   if (isCommitteeFinished) {
     const committeeLogs = deliveryLogs.filter(
       (l) =>
-        l.committee_number === activeCommittee &&
-        matchesActiveDate(l.time) &&
-        Number(l.period || 1) === activePeriod,
+        l.committee_number === activeCommittee && matchesActiveDate(l.time),
     );
     
     // منع التكرار: نحتفظ بسجل واحد لكل صف، مع أولوية السجل المؤكد (CONFIRMED)
@@ -937,7 +883,7 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     }, {} as Record<string, DeliveryLog>)) as DeliveryLog[];
 
     const isFullyConfirmed = myLogs.length > 0 && myLogs.every(l => l.status === 'CONFIRMED');
-    const proctorSignature = findStoredSignature(controlRequests, 'proctor', activeCommittee, ALL_GRADES_SIGNATURE, activePeriod);
+    const proctorSignature = findStoredSignature(controlRequests, 'proctor', activeCommittee, ALL_GRADES_SIGNATURE);
 
     return (
       <div className="max-w-4xl mx-auto py-10 px-4 animate-fade-in pb-48 space-y-10">
@@ -1196,7 +1142,6 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
                 (a) =>
                   a.committee_number === activeCommittee &&
                   matchesActiveDate(a.date) &&
-                  Number(a.period || 1) === activePeriod &&
                   students.find((s) => s.national_id === a.student_id)
                     ?.grade === log.grade,
               );
