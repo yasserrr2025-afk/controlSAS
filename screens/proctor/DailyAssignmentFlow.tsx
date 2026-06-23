@@ -619,6 +619,8 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
     if (studentActionKeysRef.current.has(actionKey)) return;
     studentActionKeysRef.current.add(actionKey);
     setStudentActionKeys(prev => ({ ...prev, [actionKey]: true }));
+    
+    // جلب السجل محلياً حتى نتأكد من حالة الطالب
     const existing = absences.find(
       (a) => a.student_id === student.national_id && matchesActiveDate(a.date),
     );
@@ -1647,16 +1649,16 @@ const ProctorDailyAssignmentFlow: React.FC<Props> = ({
                   disabled={isAbsentSaving || isLateSaving}
                   className={`py-4 rounded-[1.8rem] font-black text-xs transition-all flex items-center justify-center gap-2 active:scale-[0.97] ${isAbsent ? "bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-lg" : "bg-gradient-to-r from-red-600 to-red-500 text-white shadow-md hover:from-red-500 hover:to-red-400"}`}
                 >
-                  {isAbsent ? <Check size={16} /> : <X size={16} />} 
-                  {isAbsent ? "إلغاء الغياب" : "رصد غياب"}
+                  {isAbsentSaving ? <Loader2 size={16} className="animate-spin" /> : (isAbsent ? <Check size={16} /> : <X size={16} />)} 
+                  {isAbsentSaving ? "جاري..." : (isAbsent ? "إلغاء الغياب" : "رصد غياب")}
                 </button>
                 <button
                   onClick={() => toggleStudentStatus(s, "LATE")}
                   disabled={isAbsent || isAbsentSaving || isLateSaving}
                   className={`py-4 rounded-[1.8rem] font-black text-xs transition-all flex items-center justify-center gap-2 active:scale-[0.97] ${isAbsent ? "opacity-50 cursor-not-allowed bg-slate-50 text-slate-300" : isLate ? "bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-lg" : "bg-gradient-to-r from-amber-500 to-amber-400 text-white shadow-md hover:from-amber-400 hover:to-amber-300"}`}
                 >
-                  {isLate ? <Check size={16} /> : <Clock size={16} />}
-                  {isLate ? "إلغاء التأخر" : "رصد تأخر"}
+                  {isLateSaving ? <Loader2 size={16} className="animate-spin" /> : (isLate ? <Check size={16} /> : <Clock size={16} />)}
+                  {isLateSaving ? "جاري..." : (isLate ? "إلغاء التأخر" : "رصد تأخر")}
                 </button>
               </div>
             </div>

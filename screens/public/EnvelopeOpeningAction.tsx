@@ -37,8 +37,27 @@ const EnvelopeOpeningAction: React.FC<Props> = ({ grade, subject, period, curren
                 time: new Date().toISOString(),
                 status: envStatus
             });
+            
+            // جلب معلم المادة من المظروف
+            const envelopes = await db.examEnvelopes.getAll();
+            const activeDate = new Date().toISOString().split('T')[0];
+            const targetEnvelope = envelopes.find(
+               (env) => env.subject === subject && env.grade === grade && env.exam_date.startsWith(activeDate)
+            );
+            
+            if (targetEnvelope && targetEnvelope.subject_teacher_name) {
+               // إرسال طلب توقيع لمعلم المادة
+               await db.controlRequests.insert({
+                   from: targetEnvelope.subject_teacher_name,
+                   committee: `ENV:${subject}`,
+                   text: `[SIGNATURE_REQUEST][SIGNATURE_ROLE:subjectTeacher] يرجى التوقيع على محضر فتح مظروف مادة ${subject} للصف ${grade}`,
+                   time: new Date().toISOString(),
+                   status: 'PENDING'
+               });
+            }
+
             setIsDone(true);
-            onAlert(`تم توثيق فتح مظروف (${grade}) بنجاح.`, 'success');
+            onAlert(`تم توثيق فتح مظروف (${grade}) بنجاح وإرسال طلبات التوقيع.`, 'success');
         } catch (e: any) {
             onAlert(e.message, 'error');
         } finally {

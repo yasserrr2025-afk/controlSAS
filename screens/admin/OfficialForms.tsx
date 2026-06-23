@@ -1,7 +1,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Absence, Student, Supervision, User, SystemConfig } from '../../types';
+import { Absence, Student, Supervision, User, SystemConfig, EnvelopeLog, ExamEnvelope, ControlRequest } from '../../types';
+import { db } from '../../supabase';
+import { isSignatureRequest } from '../../services/signatures';
 import { Printer, Calendar, AlertTriangle, FileCheck, Info, Loader2, ListChecks, History, UserMinus, Clock } from 'lucide-react';
 import OfficialHeader from '../../components/OfficialHeader';
 
@@ -17,8 +19,27 @@ const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions,
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [isPrinting, setIsPrinting] = useState(false);
   const [printQueue, setPrintQueue] = useState<Absence[]>([]);
-  const [printType, setPrintType] = useState<'INDIVIDUAL' | 'CUMULATIVE'>('INDIVIDUAL');
+  const [printType, setPrintType] = useState<'INDIVIDUAL' | 'CUMULATIVE' | 'ENVELOPES'>('INDIVIDUAL');
   const [cumulativeType, setCumulativeType] = useState<'ABSENT' | 'LATE'>('ABSENT');
+  const [envelopeLogs, setEnvelopeLogs] = useState<EnvelopeLog[]>([]);
+  const [examEnvelopes, setExamEnvelopes] = useState<ExamEnvelope[]>([]);
+  const [controlRequests, setControlRequests] = useState<ControlRequest[]>([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+       try {
+           const logs = await db.envelopeLogs.getAll();
+           const envs = await db.examEnvelopes.getAll();
+           const reqs = await db.controlRequests.getAll();
+           setEnvelopeLogs(logs);
+           setExamEnvelopes(envs);
+           setControlRequests(reqs);
+       } catch (e) {
+           console.error("Failed to load envelopes for reports", e);
+       }
+    };
+    fetchData();
+  }, []);
 
   const dailyAbsences = useMemo(() => {
     return absences.filter(a => a.date.startsWith(selectedDate));
@@ -67,7 +88,7 @@ const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions,
     return new Intl.DateTimeFormat('ar-SA', { weekday: 'long' }).format(new Date(dateStr));
   };
 
-  const triggerPrint = (queue: Absence[], type: 'INDIVIDUAL' | 'CUMULATIVE' = 'INDIVIDUAL') => {
+  const triggerPrint = (queue: Absence[], type: 'INDIVIDUAL' | 'CUMULATIVE' | 'ENVELOPES' = 'INDIVIDUAL') => {
     setPrintType(type);
     setPrintQueue(queue);
     setIsPrinting(true);
@@ -300,6 +321,112 @@ const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions,
     );
   };
 
+  // --- محضر فتح المظاريف ---
+  const EnvelopeReport = () => {
+    const dailyLogs = envelopeLogs.filter(l => l.time.startsWith(selectedDate));
+    
+    if (dailyLogs.length === 0) {
+       return (
+         <div className="official-page-container flex items-center justify-center font-black text-2xl text-slate-300">
+            لا توجد محاضر فتح مظاريف في هذا اليوم.
+         </div>
+       );
+    }
+
+    return (
+      <>
+        {dailyLogs.map(log => {
+           const envelope = examEnvelopes.find(e => e.subject === log.subject && e.grade === log.grade && e.exam_date.startsWith(selectedDate));
+           const teacherName = envelope?.subject_teacher_name || '.........................';
+           const controlChiefFromSettings = systemConfig?.control_chief_id ? users.find(u => u.id === systemConfig.control_chief_id)?.full_name : null;
+           const headName = controlChiefFromSettings || getRandomUserByRole('CONTROL_MANAGER');
+           const teacherReq = controlRequests.find(r => r.committee === `ENV:${log.subject}` && isSignatureRequest(r) && r.text?.includes('subjectTeacher'));
+           const isTeacherSigned = teacherReq?.status === 'DONE';
+           
+           return (
+             <div key={log.id} className="official-page-container">
+               <div className="official-a4-page relative flex flex-col border-[1.5pt] border-slate-900 p-4 pt-2">
+                 <OfficialHeader systemConfig={systemConfig} date={log.time} />
+                 <div className="text-center mb-8">
+                   <h2 className="text-[12pt] font-black mb-1 border-b-2 border-slate-900 inline-block px-8">محضر فتح مظروف أسئلة</h2>
+                 </div>
+                 
+                 <div className="w-full border-[1pt] border-slate-900 mb-6 text-[10pt]">
+                    <div className="grid grid-cols-2 border-b-[1pt] border-slate-900">
+                       <div className="p-2 border-l-[1pt] border-slate-900 flex justify-between items-center">
+                          <span className="font-bold">المادة:</span>
+                          <span className="font-black text-right flex-1 px-2">{log.subject}</span>
+                       </div>
+                       <div className="p-2 flex justify-between items-center">
+                          <span className="font-bold">الصف:</span>
+                          <span className="font-black">{log.grade}</span>
+                       </div>
+                    </div>
+                    <div className="grid grid-cols-2 border-b-[1pt] border-slate-900">
+                       <div className="p-2 border-l-[1pt] border-slate-900 flex justify-between items-center">
+                          <span className="font-bold">حالة المظروف:</span>
+                          <span className="font-black text-right flex-1 px-2">{log.status === 'INTACT' ? 'سليم ومحكم الإغلاق' : 'غير سليم'}</span>
+                       </div>
+                       <div className="p-2 flex justify-between items-center">
+                          <span className="font-bold">وقت الفتح:</span>
+                          <span className="font-black">{new Date(log.time).toLocaleTimeString('ar-SA', {hour:'2-digit', minute:'2-digit'})}</span>
+                       </div>
+                    </div>
+                 </div>
+
+                 <div className="mb-6">
+                   <div className="bg-slate-100 p-2 border-[1pt] border-slate-900 text-right font-black text-[10pt] mb-[-1px] px-4">أعضاء لجنة فتح المظروف</div>
+                   <table className="w-full border-[1pt] border-slate-900 text-[10pt] text-right border-collapse">
+                     <thead className="bg-slate-50 font-bold">
+                       <tr>
+                         <th className="border border-slate-900 p-2 w-8 text-center">م</th>
+                         <th className="border border-slate-900 p-2">الاسم</th>
+                         <th className="border border-slate-900 p-2 w-32">الصفة</th>
+                         <th className="border border-slate-900 p-2 w-40">التوقيع</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                       <tr className="h-12">
+                         <td className="border border-slate-900 p-2 text-center font-bold">1</td>
+                         <td className="border border-slate-900 p-2 font-black px-3">{headName}</td>
+                         <td className="border border-slate-900 p-2 font-bold px-3">رئيس الكنترول</td>
+                         <td className="border border-slate-900 p-2">.....................</td>
+                       </tr>
+                       <tr className="h-12">
+                         <td className="border border-slate-900 p-2 text-center font-bold">2</td>
+                         <td className="border border-slate-900 p-2 font-black px-3">{log.opened_by_name}</td>
+                         <td className="border border-slate-900 p-2 font-bold px-3">الموظف الفاتح</td>
+                         <td className="border border-slate-900 p-2 font-black text-[8pt]">مُوثق رقمياً عبر النظام</td>
+                       </tr>
+                       <tr className="h-12">
+                         <td className="border border-slate-900 p-2 text-center font-bold">3</td>
+                         <td className="border border-slate-900 p-2 font-black px-3">{teacherName}</td>
+                         <td className="border border-slate-900 p-2 font-bold px-3">معلم المادة</td>
+                         <td className="border border-slate-900 p-2 font-black text-[8pt]">{isTeacherSigned ? 'تم التوقيع إلكترونياً' : '.....................'}</td>
+                       </tr>
+                     </tbody>
+                   </table>
+                 </div>
+                 
+                 <div className="mt-auto flex justify-end px-6 pb-6 text-[10pt]">
+                    <div className="text-center space-y-12">
+                      <p className="font-black underline underline-offset-4">مدير المدرسة</p>
+                      <div className="space-y-1">
+                        {systemConfig?.principal_name && <p className="font-black">{systemConfig.principal_name}</p>}
+                        <p className="font-bold">.........................</p>
+                        <p className="text-slate-400 italic text-[8pt]">(الختم الرسمي)</p>
+                      </div>
+                    </div>
+                 </div>
+
+               </div>
+             </div>
+           );
+        })}
+      </>
+    );
+  };
+
   return (
     <div className="space-y-10 animate-fade-in text-right pb-24 relative">
       
@@ -341,7 +468,7 @@ const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions,
                    {item.type === 'ABSENT' ? <AbsenceForm absence={item} /> : <DelayForm absence={item} />}
                 </div>
               ))
-            ) : <CumulativeReport />}
+            ) : printType === 'ENVELOPES' ? <EnvelopeReport /> : <CumulativeReport />}
          </div>,
          document.body
       )}
@@ -368,8 +495,8 @@ const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions,
           </div>
         </div>
 
-        {/* التراكمي */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* التراكمي ومحضر المظاريف */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="bg-slate-950 p-10 rounded-[3.5rem] text-white shadow-2xl relative overflow-hidden group border-b-[15px] border-red-600">
               <h3 className="text-2xl font-black mb-4 flex items-center gap-3"><ListChecks className="text-red-500" /> سجل الغياب التراكمي</h3>
               <p className="text-sm text-slate-400 mb-8 italic">استخراج كشف شامل بجميع غيابات المرحلة مرتبة تنازلياً.</p>
@@ -379,6 +506,11 @@ const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions,
               <h3 className="text-2xl font-black mb-4 flex items-center gap-3"><History className="text-amber-500" /> سجل التأخر التراكمي</h3>
               <p className="text-sm text-slate-400 mb-8 italic">استخراج كشف تعهدات التأخر لطلاب اللجان.</p>
               <button onClick={() => { setCumulativeType('LATE'); triggerPrint([], 'CUMULATIVE'); }} className="w-full py-5 bg-white text-slate-900 rounded-2xl font-black text-lg hover:bg-amber-600 hover:text-white transition-all">استخراج الكشف</button>
+          </div>
+          <div className="bg-slate-950 p-10 rounded-[3.5rem] text-white shadow-2xl relative overflow-hidden group border-b-[15px] border-emerald-500">
+              <h3 className="text-2xl font-black mb-4 flex items-center gap-3"><FileCheck className="text-emerald-500" /> محاضر المظاريف</h3>
+              <p className="text-sm text-slate-400 mb-8 italic">استخراج محاضر فتح المظاريف للمواد (محضر لكل مادة) لتوقيع المعلمين.</p>
+              <button onClick={() => { triggerPrint([], 'ENVELOPES'); }} className="w-full py-5 bg-white text-slate-900 rounded-2xl font-black text-lg hover:bg-emerald-600 hover:text-white transition-all">طباعة المحاضر</button>
           </div>
         </div>
 
