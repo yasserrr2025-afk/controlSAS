@@ -27,29 +27,41 @@ const EnvelopeOpeningAction: React.FC<Props> = ({ grade, subject, period, curren
         if (!currentUser) return;
         setIsSaving(true);
         try {
-            await db.envelopeLogs.insert({
-                id: crypto.randomUUID(),
-                grade,
+            const activeDate = new Date().toISOString().split('T')[0];
+            const newId = crypto.randomUUID();
+            await db.envelopeOpenings.upsert({
+                id: newId,
+                date: activeDate,
+                time: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
                 subject,
-                period,
-                opened_by_id: currentUser.id,
-                opened_by_name: currentUser.full_name,
-                time: new Date().toISOString(),
+                grade,
+                opened_by: currentUser.full_name,
                 status: envStatus
             });
             
             // جلب معلم المادة من المظروف
             const envelopes = await db.examEnvelopes.getAll();
-            const activeDate = new Date().toISOString().split('T')[0];
             const targetEnvelope = envelopes.find(
                (env) => env.subject === subject && env.grade === grade && env.exam_date.startsWith(activeDate)
             );
             
             if (targetEnvelope && targetEnvelope.subject_teacher_name) {
+               await db.envelopeOpenings.upsert({
+                   id: newId,
+                   date: activeDate,
+                   time: new Date().toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+                   subject,
+                   grade,
+                   opened_by: currentUser.full_name,
+                   status: envStatus,
+                   subject_teacher_id: targetEnvelope.subject_teacher_id,
+                   subject_teacher_name: targetEnvelope.subject_teacher_name
+               });
+
                // إرسال طلب توقيع لمعلم المادة
                await db.controlRequests.insert({
                    from: targetEnvelope.subject_teacher_name,
-                   committee: `ENV:${subject}`,
+                   committee: `ENV:${newId}`,
                    text: `[SIGNATURE_REQUEST][SIGNATURE_ROLE:subjectTeacher] يرجى التوقيع على محضر فتح مظروف مادة ${subject} للصف ${grade}`,
                    time: new Date().toISOString(),
                    status: 'PENDING'

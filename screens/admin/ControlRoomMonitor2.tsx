@@ -26,6 +26,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { Absence, ControlRequest, DeliveryLog, Student, Supervision, User } from '../../types';
+import { db } from '../../supabase';
 import { getAbsenceKindLabel, getAbsenceReceipt } from '../../services/absenceReceipt';
 import { isPlaceholderProctorStart } from '../../utils/proctorTime';
 import { cleanControlRequestText, isInternalSignatureRecord, isSignatureRequest } from '../../services/signatures';
@@ -296,6 +297,25 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
     }));
     return [...deliveryEvents, ...requestEvents, ...absenceEvents].sort((a, b) => b.time.localeCompare(a.time)).slice(0, 12);
   }, [absences, deliveryLogs, requests]);
+
+  const handleCloseAllRequests = async () => {
+    if (!confirm('هل أنت متأكد من إغلاق جميع البلاغات المفتوحة (عدا بلاغات الغياب والتأخير)؟')) return;
+    const openRequests = requests.filter(r => 
+       r.status !== 'DONE' && 
+       !isInternalSignatureRecord(r) && 
+       !r.text.includes('غياب') && 
+       !r.text.includes('تأخير') && 
+       !r.text.includes('[ABSENCE_NOTICE]')
+    );
+    try {
+      for (const req of openRequests) {
+         await db.controlRequests.update(req.id, { status: 'DONE' });
+      }
+      alert('تم إغلاق البلاغات المحددة بنجاح.');
+    } catch (e: any) {
+      alert('حدث خطأ أثناء الإغلاق: ' + e.message);
+    }
+  };
 
   const alertBoardItems = useMemo(() => {
     return requests.filter(req => !isInternalSignatureRecord(req)).map(req => {
@@ -708,12 +728,21 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
           {scene === 'alerts' && (
             <div className="grid h-full grid-cols-12 gap-5 tv2-scene">
               <div className="col-span-7 rounded-[3rem] border border-red-400/20 bg-red-500/10 p-8 shadow-2xl">
-                <div className="mb-7 flex items-center gap-4">
-                  <BellRing size={44} className="animate-pulse text-red-300" />
-                  <div>
-                    <h2 className="text-5xl font-black">لوحة البلاغات</h2>
-                    <p className="mt-2 text-sm font-black text-red-100">متابعة البلاغات المفتوحة والمغلقة خلال اليوم.</p>
+                <div className="mb-7 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <BellRing size={44} className="animate-pulse text-red-300" />
+                    <div>
+                      <h2 className="text-5xl font-black">لوحة البلاغات</h2>
+                      <p className="mt-2 text-sm font-black text-red-100">متابعة البلاغات المفتوحة والمغلقة خلال اليوم.</p>
+                    </div>
                   </div>
+                  <button 
+                    onClick={handleCloseAllRequests}
+                    className="flex items-center gap-2 rounded-2xl bg-red-600/50 border border-red-400 px-6 py-3 font-black text-white transition-all hover:bg-red-500 hover:shadow-lg hover:shadow-red-500/20 active:scale-95 pointer-events-auto z-50"
+                  >
+                    <CheckCircle2 size={20} />
+                    إغلاق جميع البلاغات
+                  </button>
                 </div>
                 <div className="space-y-4 overflow-hidden">
                   {alertBoardItems.length ? alertBoardItems.map(item => (
