@@ -35,7 +35,7 @@ const CounselorAbsenceMonitor: React.FC<Props> = ({ user, absences, students, su
 
   const enrichedAbsences = useMemo(() => {
     return absences.map((a: Absence) => {
-      const student = students.find((s: Student) => s.national_id === a.student_id);
+      const student = students.find((s: Student) => s.national_id === a.student_id || s.id === a.student_id);
       const supervision = supervisions.find((sv: Supervision) => sv.committee_number === a.committee_number);
       const proctor = users.find((u: User) => u.id === (supervision?.teacher_id || a.proctor_id));
 

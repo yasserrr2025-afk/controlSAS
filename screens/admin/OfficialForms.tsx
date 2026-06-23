@@ -54,9 +54,23 @@ const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions,
     
     targetAbsences.forEach(a => {
       if (!map[a.student_id]) {
-        const s = students.find(st => st.national_id === a.student_id);
+        const s = students.find(st => st.national_id === a.student_id || st.id === a.student_id);
         if (s) {
           map[a.student_id] = { student: s, count: 0, committees: new Set() };
+        } else {
+          map[a.student_id] = { 
+            student: { 
+              id: a.student_id, 
+              national_id: a.student_id, 
+              name: a.student_name || 'غير معروف', 
+              grade: '---', 
+              section: '---', 
+              parent_phone: '---', 
+              committee_number: a.committee_number 
+            }, 
+            count: 0, 
+            committees: new Set() 
+          };
         }
       }
       if (map[a.student_id]) {
@@ -106,7 +120,7 @@ const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions,
 
   // --- محضر غياب طالب (نموذج 36) ---
   const AbsenceForm = ({ absence }: { absence: Absence }) => {
-    const student = students.find(s => s.national_id === absence.student_id);
+    const student = students.find(s => s.national_id === absence.student_id || s.id === absence.student_id);
     const proctorName = getProctorName(absence.committee_number, absence.date);
     // رئيس الكنترول: من الإعدادات أولاً ثم من الأدوار
     const controlChiefFromSettings = systemConfig?.control_chief_id
@@ -215,7 +229,7 @@ const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions,
 
   // --- تعهد تأخر طالب (نموذج 31) ---
   const DelayForm = ({ absence }: { absence: Absence }) => {
-    const student = students.find(s => s.national_id === absence.student_id);
+    const student = students.find(s => s.national_id === absence.student_id || s.id === absence.student_id);
     const proctorName = getProctorName(absence.committee_number, absence.date);
     const controlChiefFromSettings = systemConfig?.control_chief_id
       ? users.find(u => u.id === systemConfig.control_chief_id)?.full_name
