@@ -42,11 +42,11 @@ const AdminOfficialForms: React.FC<Props> = ({ absences, students, supervisions,
   }, []);
 
   const dailyAbsences = useMemo(() => {
-    return absences.filter(a => a.date.startsWith(selectedDate));
+    return absences.filter(a => (a.date || '').startsWith(selectedDate));
   }, [absences, selectedDate]);
 
-  const allAbsences = useMemo(() => absences.filter(a => a.type === 'ABSENT').sort((a,b) => b.date.localeCompare(a.date)), [absences]);
-  const allDelays = useMemo(() => absences.filter(a => a.type === 'LATE').sort((a,b) => b.date.localeCompare(a.date)), [absences]);
+  const allAbsences = useMemo(() => absences.filter(a => a.type === 'ABSENT').sort((a,b) => (b.date || '').localeCompare(a.date || '')), [absences]);
+  const allDelays = useMemo(() => absences.filter(a => a.type === 'LATE').sort((a,b) => (b.date || '').localeCompare(a.date || '')), [absences]);
 
   const cumulativeData = useMemo(() => {
     const targetAbsences = cumulativeType === 'ABSENT' ? allAbsences : allDelays;

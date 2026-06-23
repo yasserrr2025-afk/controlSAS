@@ -141,7 +141,7 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
 
     if (latestRequest && latestRequest.id !== seen.request) {
       latestSeenRef.current = { ...latestSeenRef.current, request: latestRequest.id };
-      showPriority('alerts', 12000, `بلاغ جديد من لجنة ${latestRequest.committee}`);
+      showPriority('alerts', 12000, `بلاغ جديد من ${latestRequest.committee?.startsWith('ENV:') ? 'مظروف' : `لجنة ${latestRequest.committee}`}`);
       return;
     }
 
@@ -285,7 +285,7 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
       time: req.time,
       tone: req.status === 'DONE' ? 'slate' : 'red',
       title: req.status === 'DONE' ? 'إغلاق بلاغ' : 'بلاغ لجنة',
-      text: `لجنة ${req.committee} - ${cleanControlRequestText(req.text)}`,
+      text: `${req.committee?.startsWith('ENV:') ? 'فتح مظروف' : `لجنة ${req.committee}`} - ${cleanControlRequestText(req.text)}`,
       icon: BellRing,
     }));
     const absenceEvents = absences.map(absence => ({
@@ -309,7 +309,7 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
     );
     try {
       for (const req of openRequests) {
-         await db.controlRequests.update(req.id, { status: 'DONE' });
+         await db.controlRequests.updateStatus(req.id, 'DONE');
       }
       alert('تم إغلاق البلاغات المحددة بنجاح.');
     } catch (e: any) {
@@ -324,7 +324,7 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
       return {
         id: `request-${req.id}`,
         time: req.time,
-        committee: req.committee,
+        committee: req.committee?.startsWith('ENV:') ? 'مظروف' : req.committee,
         title: signatureRequest
           ? 'طلب توقيع مراقب'
           : receiverSummon
@@ -764,7 +764,9 @@ const ControlRoomMonitor2: React.FC<Props> = ({ absences, supervisions, users, d
                     >
                       <div className="mb-3 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <span className="rounded-2xl bg-slate-950 px-5 py-2 text-xl font-black">لجنة {item.committee}</span>
+                          <span className="rounded-2xl bg-slate-950 px-5 py-2 text-xl font-black">
+                            {item.committee === 'مظروف' ? 'فتح مظروف' : `لجنة ${item.committee}`}
+                          </span>
                           <span className={`rounded-2xl px-4 py-2 text-xs font-black ${
                             item.tone === 'late'
                               ? 'bg-amber-500'

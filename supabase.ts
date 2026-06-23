@@ -158,7 +158,7 @@ export const db = {
       return (data || []) as Absence[];
     },
     upsert: async (absence: Partial<Absence>) => {
-      const { error } = await supabase.from('absences').upsert([absence], { onConflict: 'student_id' });
+      const { error } = await supabase.from('absences').upsert([absence], { onConflict: 'id' });
       const err = handleError(error, "absences.upsert");
       if (err) throw new Error(err);
     },
